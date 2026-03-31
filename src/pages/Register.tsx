@@ -1,0 +1,337 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AuthBackground from '../components/layout/AuthBackground';
+
+const { width, height } = Dimensions.get('window');
+
+export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () => void }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  return (
+    <AuthBackground>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.heroSection} />
+
+          {/* White bottom sheet */}
+          <View style={styles.whiteSheet}>
+
+            {/* Dumbbell icon */}
+            <Image
+              source={require('../assets/dumbell.png')}
+              style={styles.smallIcon}
+              resizeMode="contain"
+            />
+
+            <Text style={styles.title}>Let's Get Started</Text>
+            <Text style={styles.subtitle}>Begin your quest for fitness.</Text>
+
+            <View style={styles.titleDivider} />
+
+            {/* Form */}
+            <View style={styles.form}>
+
+              <Text style={styles.label}>     Email Address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email"
+                placeholderTextColor="#999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.label}>     Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                >
+                  <View style={styles.eyeIcon}>
+                    {showPassword ? (
+                      <Image
+                        source={require('../assets/show.png')}
+                        style={{ width: 22, height: 22 }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Image
+                        source={require('../assets/hide.png')}
+                        style={{ width: 22, height: 22 }}
+                        resizeMode="contain"
+                      />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>     Confirm Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Re-enter your password"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showConfirmPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeBtn}
+                >
+                  <View style={styles.eyeIcon}>
+                    {showConfirmPassword ? (
+                      <Image
+                        source={require('../assets/show.png')}
+                        style={{ width: 22, height: 22 }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Image
+                        source={require('../assets/hide.png')}
+                        style={{ width: 22, height: 22 }}
+                        resizeMode="contain"
+                      />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Sign Up Button */}
+              <TouchableOpacity style={styles.signInButton} activeOpacity={0.8}>
+                <LinearGradient
+                  colors={['#CCFF00', '#7A9900']}
+                  locations={[0.3, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <Text style={styles.signInText}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.line} />
+              <Text style={styles.dividerText}>or continue with</Text>
+              <View style={styles.line} />
+            </View>
+
+            {/* Social Buttons */}
+            <View style={styles.socialRow}>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Image
+                  source={{ uri: 'https://www.google.com/favicon.ico' }}
+                  style={styles.socialLogo}
+                />
+                <Text style={styles.socialText}>Google</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Image
+                  source={{ uri: 'https://www.facebook.com/favicon.ico' }}
+                  style={styles.socialLogo}
+                />
+                <Text style={styles.socialText}>Facebook</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Footer */}
+            <TouchableOpacity 
+  style={styles.footer} 
+  activeOpacity={0.7}
+  onPress={onNavigateToLogin} // <--- This triggers the switch back to Login
+>
+  <Text style={styles.footerText}>
+    Already have an account?{'  '}
+    <Text style={styles.signUpLink}>Sign In</Text>
+  </Text>
+</TouchableOpacity>
+
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </AuthBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  heroSection: {
+    height: height * 0.22,
+  },
+  whiteSheet: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 45,
+    borderTopRightRadius: 45,
+    paddingHorizontal: 30,
+    paddingTop: 28,
+    alignItems: 'center',
+    minHeight: height * 0.78,
+  },
+  smallIcon: {
+    width: 44,
+    height: 44,
+    marginBottom: 5,
+    tintColor: '#000',
+  },
+  title: {
+    fontFamily: 'Montserrat-Black',
+    fontSize: 36,
+    color: '#000',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 15,
+    color: '#000000',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  titleDivider: {
+    width: 340,
+    height: 3.5,
+    backgroundColor: '#000000',
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  form: { width: '100%' },
+  label: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 15,
+    color: '#000',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  input: {
+    width: '100%',
+    height: 50,
+    borderWidth: 1,
+    borderColor: '#000000',
+    paddingHorizontal: 15,
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 15,
+    color: '#000',
+    backgroundColor: '#FAFAFA',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#000000',
+    backgroundColor: '#FAFAFA',
+    height: 50,
+    paddingRight: 10,
+  },
+  eyeIcon: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeBtn: {
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 15,
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: '#000',
+  },
+  signInButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#000000',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    marginTop: 24,
+  },
+  signInText: {
+    fontFamily: 'Montserrat-ExtraBold',
+    fontSize: 24,
+    color: '#000',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 22,
+    width: '100%',
+  },
+  line: { flex: 1, height: 1, backgroundColor: '#EEE' },
+  dividerText: {
+    marginHorizontal: 10,
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 12,
+    color: '#AAA',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 15,
+  },
+  socialBtn: {
+    flex: 1,
+    width: 130,
+    height: 30,
+    borderWidth: 1,
+    borderColor: '#a1a1a1',
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FAFAFA',
+  },
+  socialLogo: {
+    width: 20,
+    height: 20,
+  },
+  socialText: {
+    fontFamily: 'Montserrat-SemiBold',
+    fontSize: 14,
+    color: '#333',
+  },
+  footer: {
+  paddingBottom: 50, 
+  paddingTop: 30,
+  alignItems: 'center',
+  width: '100%',
+},
+  footerText: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 13,
+    color: '#666',
+  },
+  signUpLink: {
+    fontFamily: 'Montserrat-Bold',
+    color: '#000',
+  },
+});
