@@ -16,7 +16,10 @@ import AuthBackground from '../components/layout/AuthBackground';
 
 const { width, height } = Dimensions.get('window');
 
-export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () => void }) {
+export default function Register({ onNavigateToLogin, onSignup }: { 
+  onNavigateToLogin: () => void; 
+  onSignup: () => void; 
+}) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -33,10 +36,8 @@ export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () 
         >
           <View style={styles.heroSection} />
 
-          {/* White bottom sheet */}
           <View style={styles.whiteSheet}>
 
-            {/* Dumbbell icon */}
             <Image
               source={require('../assets/dumbell.png')}
               style={styles.smallIcon}
@@ -120,8 +121,7 @@ export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () 
                 </TouchableOpacity>
               </View>
 
-              {/* Sign Up Button */}
-              <TouchableOpacity style={styles.signInButton} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.signInButton} activeOpacity={0.8} onPress={onSignup}>
                 <LinearGradient
                   colors={['#CCFF00', '#7A9900']}
                   locations={[0.3, 1]}
@@ -133,14 +133,12 @@ export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () 
               </TouchableOpacity>
             </View>
 
-            {/* Divider */}
             <View style={styles.dividerRow}>
               <View style={styles.line} />
               <Text style={styles.dividerText}>or continue with</Text>
               <View style={styles.line} />
             </View>
 
-            {/* Social Buttons */}
             <View style={styles.socialRow}>
               <TouchableOpacity style={styles.socialBtn}>
                 <Image
@@ -158,11 +156,10 @@ export default function Register({ onNavigateToLogin }: { onNavigateToLogin: () 
               </TouchableOpacity>
             </View>
 
-            {/* Footer */}
             <TouchableOpacity 
   style={styles.footer} 
   activeOpacity={0.7}
-  onPress={onNavigateToLogin} // <--- This triggers the switch back to Login
+  onPress={onNavigateToLogin}
 >
   <Text style={styles.footerText}>
     Already have an account?{'  '}
