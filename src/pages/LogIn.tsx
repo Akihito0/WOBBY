@@ -16,7 +16,7 @@ import AuthBackground from '../components/layout/AuthBackground';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: () => void }) {
+export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateToRegister: () => void, onSignIn: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
@@ -32,10 +32,7 @@ export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: 
         >
           <View style={styles.heroSection} />
 
-          {/* White bottom sheet */}
           <View style={styles.whiteSheet}>
-
-            {/* Dumbbell icon */}
             <Image
               source={require('../assets/dumbell.png')}
               style={styles.smallIcon}
@@ -47,7 +44,6 @@ export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: 
 
             <View style={styles.titleDivider} />
 
-            {/* Form */}
             <View style={styles.form}>
               <Text style={styles.label}>     Email Address</Text>
               <TextInput
@@ -59,40 +55,36 @@ export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: 
               />
 
               <Text style={styles.label}>     Password</Text>
-<View style={styles.passwordContainer}>
-  <TextInput
-    style={styles.passwordInput}
-    placeholder="Enter your password"
-    placeholderTextColor="#999"
-    secureTextEntry={!showPassword}
-  />
-  <TouchableOpacity
-    onPress={() => setShowPassword(!showPassword)}
-    style={styles.eyeBtn}
-  >
-    <View style={styles.eyeIcon}>
-      {showPassword ? (
-        <Image 
-          source={require('../assets/show.png')} 
-          style={{ width: 22, height: 22 }} 
-          resizeMode="contain" 
-        />
-      ) : (
-        <Image 
-          source={require('../assets/hide.png')} 
-          style={{ width: 22, height: 22 }} 
-          resizeMode="contain" 
-        />
-      )}
-    </View>
-  </TouchableOpacity>
-</View>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                >
+                  <View style={styles.eyeIcon}>
+                    <Image 
+                      source={showPassword ? require('../assets/show.png') : require('../assets/hide.png')} 
+                      style={{ width: 22, height: 22 }} 
+                      resizeMode="contain" 
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity>
                 <Text style={styles.forgotPass}>         Forgot your password?</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.signInButton} activeOpacity={0.8}>
+              <TouchableOpacity 
+                style={styles.signInButton} 
+                activeOpacity={0.8}
+                onPress={onSignIn} 
+              >
                 <LinearGradient
                   colors={['#CCFF00', '#7A9900']}
                   locations={[0.3, 1]}
@@ -104,14 +96,12 @@ export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: 
               </TouchableOpacity>
             </View>
 
-            {/* Divider */}
             <View style={styles.dividerRow}>
               <View style={styles.line} />
               <Text style={styles.dividerText}>or continue with</Text>
               <View style={styles.line} />
             </View>
 
-            {/* Social Buttons */}
             <View style={styles.socialRow}>
               <TouchableOpacity style={styles.socialBtn}>
                 <Image
@@ -129,17 +119,16 @@ export default function LogIn({ onNavigateToRegister }: { onNavigateToRegister: 
               </TouchableOpacity>
             </View>
 
-            {/* Footer */}
- <TouchableOpacity 
-  style={styles.footer} 
-  activeOpacity={0.7}
-  onPress={onNavigateToRegister} // <--- Added this trigger
->
-  <Text style={styles.footerText}>
-    Don't have an account yet?{' '}
-    <Text style={styles.signUpLink}>  Sign Up</Text>
-  </Text>
-</TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.footer} 
+              activeOpacity={0.7}
+              onPress={onNavigateToRegister}
+            >
+              <Text style={styles.footerText}>
+                Don't have an account yet?{' '}
+                <Text style={styles.signUpLink}>  Sign Up</Text>
+              </Text>
+            </TouchableOpacity>
 
           </View>
         </ScrollView>
@@ -214,21 +203,21 @@ const styles = StyleSheet.create({
     borderColor: '#000000',
     backgroundColor: '#FAFAFA',
     height: 50,
-  paddingRight: 10, // Give the icon some space from the edge
+  paddingRight: 10,
 },
 eyeIcon: {
   justifyContent: 'center',
   alignItems: 'center',
 },
 eyeBtn: {
-  padding: 10, // Makes the "hit area" bigger so it's easier to tap
+  padding: 10,
   justifyContent: 'center',
   alignItems: 'center',
 },
 eyeImage: {
   width: 22,
   height: 22,
-  tintColor: '#666', // Optional: forces the icon to a specific color
+  tintColor: '#666',
 },
   passwordInput: {
     flex: 1,
