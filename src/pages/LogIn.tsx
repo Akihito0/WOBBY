@@ -9,15 +9,70 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AuthBackground from '../components/layout/AuthBackground';
+import { supabase } from '../supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateToRegister: () => void, onSignIn: () => void }) {
+export default function LogIn({ onNavigateToRegister, onSignIn }: { 
+  onNavigateToRegister: () => void;
+  onSignIn: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+    if (error) {
+      Alert.alert('Sign In Error', error.message);
+    } else {
+      onSignIn();
+    }
+    setLoading(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    const redirectUrl = Linking.createURL('/');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: redirectUrl },
+    });
+    if (error) {
+      Alert.alert('Google Error', error.message);
+      return;
+    }
+    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
+  };
+
+  const handleFacebookSignIn = async () => {
+    const redirectUrl = Linking.createURL('/');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: { redirectTo: redirectUrl },
+    });
+    if (error) {
+      Alert.alert('Facebook Error', error.message);
+      return;
+    }
+    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
+  };
 
   return (
     <AuthBackground>
@@ -52,6 +107,8 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
                 placeholderTextColor="#999"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
               />
 
               <Text style={styles.label}>     Password</Text>
@@ -61,16 +118,18 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
                   placeholder="Enter your password"
                   placeholderTextColor="#999"
                   secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeBtn}
                 >
                   <View style={styles.eyeIcon}>
-                    <Image 
-                      source={showPassword ? require('../assets/show.png') : require('../assets/hide.png')} 
-                      style={{ width: 22, height: 22 }} 
-                      resizeMode="contain" 
+                    <Image
+                      source={showPassword ? require('../assets/show.png') : require('../assets/hide.png')}
+                      style={{ width: 22, height: 22 }}
+                      resizeMode="contain"
                     />
                   </View>
                 </TouchableOpacity>
@@ -80,10 +139,11 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
                 <Text style={styles.forgotPass}>         Forgot your password?</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.signInButton} 
+              <TouchableOpacity
+                style={[styles.signInButton, loading && { opacity: 0.8 }]}
                 activeOpacity={0.8}
-                onPress={onSignIn} 
+                onPress={handleSignIn}
+                disabled={loading}
               >
                 <LinearGradient
                   colors={['#CCFF00', '#7A9900']}
@@ -92,7 +152,11 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
                   end={{ x: 1, y: 0 }}
                   style={StyleSheet.absoluteFillObject}
                 />
-                <Text style={styles.signInText}>Sign In</Text>
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.signInText}>Sign In</Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -103,14 +167,14 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
             </View>
 
             <View style={styles.socialRow}>
-              <TouchableOpacity style={styles.socialBtn}>
+              <TouchableOpacity style={styles.socialBtn} onPress={handleGoogleSignIn}>
                 <Image
                   source={{ uri: 'https://www.google.com/favicon.ico' }}
                   style={styles.socialLogo}
                 />
                 <Text style={styles.socialText}>Google</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialBtn}>
+              <TouchableOpacity style={styles.socialBtn} onPress={handleFacebookSignIn}>
                 <Image
                   source={{ uri: 'https://www.facebook.com/favicon.ico' }}
                   style={styles.socialLogo}
@@ -119,8 +183,8 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: { onNavigateTo
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity 
-              style={styles.footer} 
+            <TouchableOpacity
+              style={styles.footer}
               activeOpacity={0.7}
               onPress={onNavigateToRegister}
             >
@@ -203,22 +267,22 @@ const styles = StyleSheet.create({
     borderColor: '#000000',
     backgroundColor: '#FAFAFA',
     height: 50,
-  paddingRight: 10,
-},
-eyeIcon: {
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-eyeBtn: {
-  padding: 10,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-eyeImage: {
-  width: 22,
-  height: 22,
-  tintColor: '#666',
-},
+    paddingRight: 10,
+  },
+  eyeIcon: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeBtn: {
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeImage: {
+    width: 22,
+    height: 22,
+    tintColor: '#666',
+  },
   passwordInput: {
     flex: 1,
     paddingHorizontal: 15,
@@ -238,7 +302,7 @@ eyeImage: {
     width: '100%',
     height: 56,
     borderRadius: 15,
-    borderWidth: 2 ,
+    borderWidth: 2,
     borderColor: '#000000',
     overflow: 'hidden',
     justifyContent: 'center',

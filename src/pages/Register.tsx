@@ -9,19 +9,73 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AuthBackground from '../components/layout/AuthBackground';
+import { supabase } from '../supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
 
-export default function Register({ onNavigateToLogin, onSignup }: { 
+export default function Register({ onNavigateToLogin }: { 
   onNavigateToLogin: () => void; 
-  onSignup: () => void; 
 }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const handleSignUp = async () => {
+    if (!email || !password || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      Alert.alert('Sign Up Error', error.message);
+    } else {
+      Alert.alert('Success', 'Check your email for the confirmation link!');
+    }
+    setLoading(false);
+  };
+
+  // ✅ Only one version of each — inside the component, with WebBrowser
+  const handleGoogleSignUp = async () => {
+    const redirectUrl = Linking.createURL('/');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: redirectUrl },
+    });
+    if (error) {
+      Alert.alert('Google Error', error.message);
+      return;
+    }
+    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
+  };
+
+  const handleFacebookSignUp = async () => {
+    const redirectUrl = Linking.createURL('/');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: { redirectTo: redirectUrl },
+    });
+    if (error) {
+      Alert.alert('Facebook Error', error.message);
+      return;
+    }
+    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
+  };
 
   return (
     <AuthBackground>
@@ -37,7 +91,6 @@ export default function Register({ onNavigateToLogin, onSignup }: {
           <View style={styles.heroSection} />
 
           <View style={styles.whiteSheet}>
-
             <Image
               source={require('../assets/dumbell.png')}
               style={styles.smallIcon}
@@ -49,9 +102,7 @@ export default function Register({ onNavigateToLogin, onSignup }: {
 
             <View style={styles.titleDivider} />
 
-            {/* Form */}
             <View style={styles.form}>
-
               <Text style={styles.label}>     Email Address</Text>
               <TextInput
                 style={styles.input}
@@ -59,6 +110,8 @@ export default function Register({ onNavigateToLogin, onSignup }: {
                 placeholderTextColor="#999"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
               />
 
               <Text style={styles.label}>     Password</Text>
@@ -68,6 +121,8 @@ export default function Register({ onNavigateToLogin, onSignup }: {
                   placeholder="Enter your password"
                   placeholderTextColor="#999"
                   secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -98,6 +153,8 @@ export default function Register({ onNavigateToLogin, onSignup }: {
                   placeholder="Re-enter your password"
                   placeholderTextColor="#999"
                   secureTextEntry={!showConfirmPassword}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
                 />
                 <TouchableOpacity
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -121,7 +178,12 @@ export default function Register({ onNavigateToLogin, onSignup }: {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.signInButton} activeOpacity={0.8} onPress={onSignup}>
+              <TouchableOpacity
+                style={[styles.signInButton, loading && { opacity: 0.8 }]}
+                activeOpacity={0.8}
+                onPress={handleSignUp}
+                disabled={loading}
+              >
                 <LinearGradient
                   colors={['#CCFF00', '#7A9900']}
                   locations={[0.3, 1]}
@@ -129,7 +191,11 @@ export default function Register({ onNavigateToLogin, onSignup }: {
                   end={{ x: 1, y: 0 }}
                   style={StyleSheet.absoluteFillObject}
                 />
-                <Text style={styles.signInText}>Sign Up</Text>
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.signInText}>Sign Up</Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -140,14 +206,14 @@ export default function Register({ onNavigateToLogin, onSignup }: {
             </View>
 
             <View style={styles.socialRow}>
-              <TouchableOpacity style={styles.socialBtn}>
+              <TouchableOpacity style={styles.socialBtn} onPress={handleGoogleSignUp}>
                 <Image
                   source={{ uri: 'https://www.google.com/favicon.ico' }}
                   style={styles.socialLogo}
                 />
                 <Text style={styles.socialText}>Google</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialBtn}>
+              <TouchableOpacity style={styles.socialBtn} onPress={handleFacebookSignUp}>
                 <Image
                   source={{ uri: 'https://www.facebook.com/favicon.ico' }}
                   style={styles.socialLogo}
@@ -156,16 +222,16 @@ export default function Register({ onNavigateToLogin, onSignup }: {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity 
-  style={styles.footer} 
-  activeOpacity={0.7}
-  onPress={onNavigateToLogin}
->
-  <Text style={styles.footerText}>
-    Already have an account?{'  '}
-    <Text style={styles.signUpLink}>Sign In</Text>
-  </Text>
-</TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footer}
+              activeOpacity={0.7}
+              onPress={onNavigateToLogin}
+            >
+              <Text style={styles.footerText}>
+                Already have an account?{'  '}
+                <Text style={styles.signUpLink}>Sign In</Text>
+              </Text>
+            </TouchableOpacity>
 
           </View>
         </ScrollView>
@@ -317,11 +383,11 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   footer: {
-  paddingBottom: 50, 
-  paddingTop: 30,
-  alignItems: 'center',
-  width: '100%',
-},
+    paddingBottom: 50,
+    paddingTop: 30,
+    alignItems: 'center',
+    width: '100%',
+  },
   footerText: {
     fontFamily: 'Montserrat-Regular',
     fontSize: 13,
