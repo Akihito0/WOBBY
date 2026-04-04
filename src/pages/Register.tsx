@@ -41,11 +41,23 @@ export default function Register({ onNavigateToLogin }: {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      Alert.alert('Sign Up Error', error.message);
-    } else {
-      Alert.alert('Success', 'Check your email for the confirmation link!');
+    try {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        // Check for a specific trigger-related error
+        if (error.message.includes('Database error saving new user')) {
+          Alert.alert(
+            'Registration Error',
+            'An error occurred while creating your profile. Please contact support.'
+          );
+        } else {
+          Alert.alert('Sign Up Error', error.message);
+        }
+      } else {
+        Alert.alert('Success', 'Check your email for the confirmation link!');
+      }
+    } catch (catchError: any) {
+      Alert.alert('Unexpected Error', catchError.message);
     }
     setLoading(false);
   };
