@@ -42,7 +42,13 @@ export default function Register({ onNavigateToLogin }: {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: 'exp://192.168.1.183:8081/--/',
+        },
+      });
       if (error) {
         // Check for a specific trigger-related error
         if (error.message.includes('Database error saving new user')) {
@@ -64,17 +70,32 @@ export default function Register({ onNavigateToLogin }: {
 
   // ✅ Only one version of each — inside the component, with WebBrowser
   const handleGoogleSignUp = async () => {
-    const redirectUrl = Linking.createURL('/');
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: redirectUrl },
-    });
-    if (error) {
-      Alert.alert('Google Error', error.message);
-      return;
+  // Use the exact string you found in your console log
+  const redirectUrl = 'exp://192.168.1.183:8081/--/'; 
+  
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { 
+      redirectTo: redirectUrl,
+    },
+  });
+
+  if (error) {
+    Alert.alert('Google Error', error.message);
+    return;
+  }
+
+  // Use openAuthSessionAsync instead of openBrowserAsync
+  // This helps the browser "redirect" back into your app automatically
+  if (data?.url) {
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    
+    // Optional: Handle the result if you need to perform actions after login
+    if (result.type === 'success' && result.url) {
+       // Logic for successful return can go here
     }
-    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
-  };
+  }
+};
 
   const handleFacebookSignUp = async () => {
     const redirectUrl = Linking.createURL('/');

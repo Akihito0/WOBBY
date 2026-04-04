@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { TouchableOpacity, Image, StyleSheet, Dimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from './src/supabase';
+import { Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 
 import { 
   useFonts, 
@@ -167,7 +170,6 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Register 
           onNavigateToLogin={() => setCurrentScreen('login')} 
-          onSignup={() => setCurrentScreen('username')} 
         />
       </View>
     );
