@@ -50,7 +50,7 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
 
   const handleGoogleSignIn = async () => {
     // Use the exact string you found in your console log
-    const redirectUrl = 'exp://192.168.1.183:8081/--/';
+    const redirectUrl = Linking.createURL('/');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -78,7 +78,7 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
 
   const handleFacebookSignIn = async () => {
     // Use the exact Expo URL to match your Supabase Whitelist
-    const redirectUrl = 'exp://192.168.1.183:8081/--/';
+    const redirectUrl = Linking.createURL('/');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',

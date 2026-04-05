@@ -46,7 +46,7 @@ export default function Register({ onNavigateToLogin }: {
         email,
         password,
         options: {
-          emailRedirectTo: 'exp://192.168.1.183:8081/--/',
+          emailRedirectTo: Linking.createURL('/'),
         },
       });
       if (error) {
@@ -71,7 +71,7 @@ export default function Register({ onNavigateToLogin }: {
   // ✅ Only one version of each — inside the component, with WebBrowser
   const handleGoogleSignUp = async () => {
   // Use the exact string you found in your console log
-  const redirectUrl = 'exp://192.168.1.183:8081/--/'; 
+  const redirectUrl = Linking.createURL('/'); 
   
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -98,18 +98,31 @@ export default function Register({ onNavigateToLogin }: {
 };
 
   const handleFacebookSignUp = async () => {
-    const redirectUrl = Linking.createURL('/');
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'facebook',
-      options: { redirectTo: redirectUrl },
-    });
-    if (error) {
-      Alert.alert('Facebook Error', error.message);
-      return;
-    }
-    if (data?.url) await WebBrowser.openBrowserAsync(data.url);
-  };
+  // Use the exact Expo URL to match your Supabase Whitelist
+  const redirectUrl = Linking.createURL('/'); 
+  
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: { 
+      redirectTo: redirectUrl,
+    },
+  });
 
+  if (error) {
+    Alert.alert('Facebook Error', error.message);
+    return;
+  }
+
+  // openAuthSessionAsync handles the redirect back to Expo much better
+  if (data?.url) {
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    
+    if (result.type === 'success' && result.url) {
+      // User is back in the app! 
+      // Supabase handles the session automatically in the background.
+    }
+  }
+};
   return (
     <AuthBackground>
       <KeyboardAvoidingView

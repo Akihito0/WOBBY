@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { TouchableOpacity, Image, StyleSheet, Dimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
@@ -49,6 +49,32 @@ export default function App() {
     'Montserrat-Black': Montserrat_900Black,
   });
 
+  // Handle deep link after email confirmation
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      if (url) {
+        // Give Supabase a moment to process the token from the URL
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          setCurrentScreen('login');
+        }
+      }
+    };
+
+    // App was already open when confirmation link was tapped
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url);
+    });
+
+    // App was cold-started from the confirmation link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded) {
       await SplashScreen.hideAsync();
@@ -61,7 +87,7 @@ export default function App() {
 
   // NAVIGATION FLOW
 
-      if (currentScreen === 'begin') {
+  if (currentScreen === 'begin') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Begin onBegin={() => setCurrentScreen('entry')} />
@@ -181,7 +207,7 @@ export default function App() {
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')} 
           onSignIn={() => setCurrentScreen('entry')}
-          />
+        />
       </View>
     );
   }
