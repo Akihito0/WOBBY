@@ -43,8 +43,11 @@ import Weight from './src/pages/Weight';
 import Height from './src/pages/Height';
 import PhysLvl from './src/pages/PhysLvl';
 import Begin from './src/pages/Begin';
+import WorkoutScreen from './src/pages/WorkoutScreen';
 
 SplashScreen.preventAutoHideAsync();
+
+const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
 
 const Tab = createBottomTabNavigator();
 
@@ -103,10 +106,30 @@ export default function App() {
 
   // --- NAVIGATION FLOW ---
 
+  if (currentScreen === 'workout') {
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationContainer>
+        <Tab.Navigator
+          tabBar={(props) => <NavBar {...props} />}
+          screenOptions={{ headerShown: false }}
+        >
+          <Tab.Screen name="Home" component={PlaceholderScreen} />
+          <Tab.Screen name="Routines" component={PlaceholderScreen} />
+          <Tab.Screen name="Workout" component={WorkoutScreen} />
+          <Tab.Screen name="Performance" component={PlaceholderScreen} />
+          <Tab.Screen name="You" component={PlaceholderScreen} />
+        </Tab.Navigator>
+      </NavigationContainer>
+      <StatusBar style="light" />
+    </View>
+  );
+}
+
   if (currentScreen === 'begin') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <Begin onBegin={() => setCurrentScreen('workout')} />
+        <Begin onBegin={() => setCurrentScreen('dashboard')} />
       </View>
     );
   }
@@ -222,7 +245,7 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')} 
-          onSignIn={() => setCurrentScreen('dashboard')} 
+          onSignIn={() => setCurrentScreen('workout')} 
           />
       </View>
     );
