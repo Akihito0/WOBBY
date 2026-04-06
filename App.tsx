@@ -4,6 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
 import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import NavBar from './src/components/layout/NavBar';
 
 import { 
   useFonts, 
@@ -14,8 +17,16 @@ import {
   Montserrat_800ExtraBold,
   Montserrat_900Black
 } from '@expo-google-fonts/montserrat';
+
+import {
+  Barlow_700Bold,
+  Barlow_600SemiBold,
+  Barlow_400Regular
+} from '@expo-google-fonts/barlow';
+
 import * as SplashScreen from 'expo-splash-screen';
 
+// Import your existing pages
 import Entry from './src/pages/Entry';
 import Login from './src/pages/LogIn'; 
 import Register from './src/pages/Register';
@@ -35,6 +46,8 @@ import Begin from './src/pages/Begin';
 
 SplashScreen.preventAutoHideAsync();
 
+const Tab = createBottomTabNavigator();
+
 const { width, height } = Dimensions.get('window');
 
 export default function App() {
@@ -47,6 +60,9 @@ export default function App() {
     'Montserrat-Bold': Montserrat_700Bold,
     'Montserrat-ExtraBold': Montserrat_800ExtraBold,
     'Montserrat-Black': Montserrat_900Black,
+    'Barlow-Bold': Barlow_700Bold,
+    'Barlow-SemiBold': Barlow_600SemiBold,
+    'Barlow-Regular': Barlow_400Regular,
   });
 
   // Handle deep link after email confirmation
@@ -85,12 +101,12 @@ export default function App() {
     return null;
   }
 
-  // NAVIGATION FLOW
+  // --- NAVIGATION FLOW ---
 
   if (currentScreen === 'begin') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <Begin onBegin={() => setCurrentScreen('entry')} />
+        <Begin onBegin={() => setCurrentScreen('workout')} />
       </View>
     );
   }
@@ -206,8 +222,8 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')} 
-          onSignIn={() => setCurrentScreen('entry')}
-        />
+          onSignIn={() => setCurrentScreen('dashboard')} 
+          />
       </View>
     );
   }
@@ -233,8 +249,8 @@ export default function App() {
     >
       <Image 
         source={require('./src/assets/splash.png')} 
-        style={styles.splashImage}
         resizeMode="cover" 
+        style={styles.splashImage}
       />
       <StatusBar style="light" />
     </TouchableOpacity>
