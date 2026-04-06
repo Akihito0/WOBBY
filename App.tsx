@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { TouchableOpacity, Image, StyleSheet, Dimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import NavBar from './src/components/layout/NavBar';
 
 import { 
   useFonts, 
@@ -40,6 +43,8 @@ import Begin from './src/pages/Begin';
 
 SplashScreen.preventAutoHideAsync();
 
+const Tab = createBottomTabNavigator();
+
 const { width, height } = Dimensions.get('window');
 
 export default function App() {
@@ -72,8 +77,7 @@ export default function App() {
   if (currentScreen === 'begin') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        {/* After Begin, move to Dashboard */}
-        <Begin onBegin={() => setCurrentScreen('dashboard')} />
+        <Begin onBegin={() => setCurrentScreen('workout')} />
       </View>
     );
   }
