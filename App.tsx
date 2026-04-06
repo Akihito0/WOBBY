@@ -1,6 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { TouchableOpacity, Image, StyleSheet, Dimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from './src/supabase';
+import { Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import NavBar from './src/components/layout/NavBar';
@@ -61,6 +64,32 @@ export default function App() {
     'Barlow-SemiBold': Barlow_600SemiBold,
     'Barlow-Regular': Barlow_400Regular,
   });
+
+  // Handle deep link after email confirmation
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      if (url) {
+        // Give Supabase a moment to process the token from the URL
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          setCurrentScreen('login');
+        }
+      }
+    };
+
+    // App was already open when confirmation link was tapped
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url);
+    });
+
+    // App was cold-started from the confirmation link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded) {
@@ -183,7 +212,6 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Register 
           onNavigateToLogin={() => setCurrentScreen('login')} 
-          onSignup={() => setCurrentScreen('username')} 
         />
       </View>
     );

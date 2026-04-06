@@ -3,6 +3,7 @@
     "name": "Wobby",
     "slug": "Wobby",
     "version": "1.0.0",
+    "scheme": "wobby",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -27,7 +28,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-web-browser"
     ]
   }
 }
