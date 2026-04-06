@@ -12,48 +12,71 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 const { width } = Dimensions.get('window');
 
+// 1. This Interface tells TypeScript it's okay to use either Library or Manual props
+interface NavBarProps extends Partial<BottomTabBarProps> {
+  activeTab?: string;
+  onTabPress?: (tabName: string) => void;
+}
+
 const icons: { [key: string]: { inactive: any; active: any } } = {
   Home: {
     inactive: require('../../assets/home.png'),
     active: require('../../assets/home0.png'),
   },
   Routines: {
-    inactive: require('../../assets/routines.png'),
-    active: require('../../assets/routines0.png'),
+    inactive: require('../../assets/routines1.png'),
+    active: require('../../assets/routines00.png'),
   },
   Workout: {
     inactive: require('../../assets/workout.png'),
     active: require('../../assets/workout0.png'),
   },
   Performance: {
-    inactive: require('../../assets/perf.png'),
-    active: require('../../assets/perf0.png'),
+    inactive: require('../../assets/perf1.png'),
+    active: require('../../assets/perf00.png'),
   },
   You: {
-    inactive: require('../../assets/you.png'),
-    active: require('../../assets/you0.png'),
+    inactive: require('../../assets/you1.png'),
+    active: require('../../assets/you00.png'),
   },
 };
 
-const NavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
+const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeTab, onTabPress }) => {
+  
+  // 2. We define the routes. If the library 'state' exists, we use it. 
+  // Otherwise, we use a manual list for your WorkoutScreen test.
+  const routes = state?.routes || [
+    { key: 'home', name: 'Home' },
+    { key: 'routines', name: 'Routines' },
+    { key: 'workout', name: 'Workout' },
+    { key: 'performance', name: 'Performance' },
+    { key: 'you', name: 'You' },
+  ];
+
   return (
     <View style={styles.container}>
-      {state.routes.map((route, index) => {
-        const isFocused = state.index === index;
-        const { options } = descriptors[route.key];
-        const label =
-          options.tabBarLabel !== undefined
-            ? options.tabBarLabel
-            : route.name;
+      {routes.map((route, index) => {
+        // 3. Logic to determine if the tab is focused (Works for both methods)
+        const isFocused = state ? state.index === index : activeTab === route.name;
+        
+        const label = descriptors && descriptors[route.key]?.options.tabBarLabel 
+          ? descriptors[route.key].options.tabBarLabel 
+          : route.name;
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+        const handlePress = () => {
+          // If manual prop exists, call it
+          if (onTabPress) onTabPress(route.name);
+
+          // If navigation library exists, use it
+          if (navigation) {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
           }
         };
 
@@ -65,28 +88,15 @@ const NavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation })
         if (isWorkout) {
           return (
             <View key={route.key} style={styles.workoutWrapper}>
-              {/* Curved cutout background */}
               <View style={styles.workoutBump} />
               <TouchableOpacity
-                onPress={onPress}
+                onPress={handlePress}
                 style={styles.workoutButton}
                 activeOpacity={0.8}
               >
                 <Image source={iconSource} style={styles.workoutIcon} />
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isFocused ? '#CCFF00' : '#FFFFFF' },
-                  ]}
-                >
-                  {typeof label === 'function'
-                    ? label({
-                        focused: isFocused,
-                        color: isFocused ? '#CCFF00' : '#FFFFFF',
-                        position: 'below-icon',
-                        children: route.name,
-                      })
-                    : label}
+                <Text style={[styles.label, { color: isFocused ? '#CCFF00' : '#FFFFFF' }]}>
+                  {route.name}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -96,31 +106,16 @@ const NavBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation })
         return (
           <TouchableOpacity
             key={route.key}
-            onPress={onPress}
+            onPress={handlePress}
             style={styles.tabItem}
             activeOpacity={0.7}
           >
             <Image
               source={iconSource}
-              style={[
-                styles.icon,
-                !isFocused && { tintColor: '#FFFFFF' },
-              ]}
+              style={[styles.icon, !isFocused && { tintColor: '#FFFFFF' }]}
             />
-            <Text
-              style={[
-                styles.label,
-                { color: isFocused ? '#CCFF00' : '#FFFFFF' },
-              ]}
-            >
-              {typeof label === 'function'
-                ? label({
-                    focused: isFocused,
-                    color: isFocused ? '#CCFF00' : '#FFFFFF',
-                    position: 'below-icon',
-                    children: route.name,
-                  })
-                : label}
+            <Text style={[styles.label, { color: isFocused ? '#CCFF00' : '#FFFFFF' }]}>
+              {route.name}
             </Text>
           </TouchableOpacity>
         );
@@ -136,8 +131,8 @@ const styles = StyleSheet.create({
     height: 80,
     alignItems: 'center',
     justifyContent: 'space-around',
-    borderTopWidth: 0,
     position: 'relative',
+    bottom: 0,
   },
   tabItem: {
     flex: 1,
@@ -146,17 +141,16 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   icon: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     resizeMode: 'contain',
     marginBottom: 4,
   },
   label: {
     fontSize: 12,
     fontFamily: 'Barlow-SemiBold',
+    marginTop: 1,
   },
-
-  // Workout raised button
   workoutWrapper: {
     flex: 1,
     alignItems: 'center',
@@ -166,7 +160,7 @@ const styles = StyleSheet.create({
   },
   workoutBump: {
     position: 'absolute',
-    top: 0,
+    top: 10,
     width: 88,
     height: 50,
     backgroundColor: '#000000',
@@ -183,9 +177,10 @@ const styles = StyleSheet.create({
     bottom: 4,
   },
   workoutIcon: {
-    width: 42,
-    height: 42,
+    width: 50,
+    height: 50,
     resizeMode: 'contain',
+    marginTop: -10,
   },
 });
 
