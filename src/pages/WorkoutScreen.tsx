@@ -10,9 +10,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+
 const { width } = Dimensions.get('window');
 
-const WorkoutScreen: React.FC = () => {
+const WorkoutScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View>
@@ -27,7 +28,7 @@ const WorkoutScreen: React.FC = () => {
         {/* Solo Workout Card */}
         <TouchableOpacity 
             activeOpacity={0.8} 
-            onPress={() => navigation.navigate('SoloWorkoutDetail')} // Example navigation
+            onPress={() => navigation.navigate('SoloWorkoutScreen')} // Example navigation
         >
           <LinearGradient
             colors={['#0F4933', '#000000']}
@@ -46,7 +47,7 @@ const WorkoutScreen: React.FC = () => {
         {/* Versus Workout Card */}
         <TouchableOpacity 
            activeOpacity={0.8} 
-           onPress={() => navigation.navigate('VersusWorkoutDetail')} // Example navigation
+           onPress={() => navigation.navigate('VersusWorkoutScreen')} // Example navigation
        >
           <LinearGradient
             colors={['#432B16', '#000000']}
@@ -65,7 +66,7 @@ const WorkoutScreen: React.FC = () => {
         {/* Run Card */}
         <TouchableOpacity 
             activeOpacity={0.8} 
-            onPress={() => navigation.navigate('RunDetail')} // Example navigation
+            onPress={() => navigation.navigate('RunScreen')} // Example navigation
         >
           <LinearGradient
             colors={['#193845', '#000000']}
