@@ -7,6 +7,7 @@ import * as Linking from 'expo-linking';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import NavBar from './src/components/layout/NavBar';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { 
   useFonts, 
@@ -45,8 +46,13 @@ import PhysLvl from './src/pages/PhysLvl';
 import Begin from './src/pages/Begin';
 import WorkoutScreen from './src/pages/WorkoutScreen';
 import UserDashboard from './src/pages/UserDashboard';
+import SoloWorkoutScreen from './src/pages/SoloWorkout';
+import VersusWorkoutScreen from './src/pages/VersusWorkout';
+import RunScreen from './src/pages/Run';
 
 SplashScreen.preventAutoHideAsync();
+const WorkoutStack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator();
 
 const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
 
@@ -105,6 +111,17 @@ export default function App() {
     return null;
   }
 
+  function WorkoutStackScreen() {
+  return (
+    <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
+      <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
+      <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
+      <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
+      <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+    </WorkoutStack.Navigator>
+  );
+}
+
   // --- NAVIGATION FLOW ---
 
   if (currentScreen === 'dashboard') {
@@ -117,7 +134,7 @@ export default function App() {
         >
           <Tab.Screen name="Home" component={UserDashboard} />
           <Tab.Screen name="Routines" component={PlaceholderScreen} />
-          <Tab.Screen name="Workout" component={WorkoutScreen} />
+          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
           <Tab.Screen name="Performance" component={PlaceholderScreen} />
           <Tab.Screen name="You" component={PlaceholderScreen} />
         </Tab.Navigator>
@@ -255,10 +272,10 @@ export default function App() {
   if (currentScreen === 'entry') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <Entry       
-          onNavigateToLogin={() => setCurrentScreen('login')} 
-          onNavigateToRegister={() => setCurrentScreen('dashboard')} 
-        /> 
+        <Entry 
+          onNavigateToLogin={() => setCurrentScreen('workout')} 
+          onNavigateToRegister={() => setCurrentScreen('register')} 
+        />
       </View>
     );
   }
