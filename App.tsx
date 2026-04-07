@@ -49,9 +49,15 @@ import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import RoutinesScreen from './src/pages/RoutinesScreen';
+import PushScreen from './src/pages/PushScreen';
+
 
 SplashScreen.preventAutoHideAsync();
+
+const RoutinesStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
+
 const Stack = createNativeStackNavigator();
 
 const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
@@ -122,6 +128,17 @@ export default function App() {
   );
 }
 
+function RoutinesStackScreen() {
+  return (
+    <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
+      <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
+      <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
+      <RoutinesStack.Screen name="PullScreen" component={PlaceholderScreen} />
+      <RoutinesStack.Screen name="LegScreen" component={PlaceholderScreen} />
+    </RoutinesStack.Navigator>
+  );
+}
+
   // --- NAVIGATION FLOW ---
 
   if (currentScreen === 'dashboard') {
@@ -133,7 +150,7 @@ export default function App() {
           screenOptions={{ headerShown: false }}
         >
           <Tab.Screen name="Home" component={UserDashboard} />
-          <Tab.Screen name="Routines" component={PlaceholderScreen} />
+          <Tab.Screen name="Routines" component={RoutinesStackScreen} />
           <Tab.Screen name="Workout" component={WorkoutStackScreen} />
           <Tab.Screen name="Performance" component={PlaceholderScreen} />
           <Tab.Screen name="You" component={PlaceholderScreen} />
@@ -273,7 +290,7 @@ export default function App() {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Entry 
-          onNavigateToLogin={() => setCurrentScreen('workout')} 
+          onNavigateToLogin={() => setCurrentScreen('login')} 
           onNavigateToRegister={() => setCurrentScreen('register')} 
         />
       </View>

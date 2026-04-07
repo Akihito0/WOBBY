@@ -32,7 +32,7 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         colors={['#000000', '#323C2E']}
         start={{ x: 0.02, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
-        style={styles.statsCard}
+        style={styles.statsCard} 
       >
         <Text style={styles.labelSmall}>DURATION</Text>
         <Text style={styles.timerText}>00:00:00</Text>
