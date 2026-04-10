@@ -48,6 +48,8 @@ import WorkoutScreen from './src/pages/WorkoutScreen';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
+import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 
 SplashScreen.preventAutoHideAsync();
 const WorkoutStack = createNativeStackNavigator();
@@ -117,9 +119,26 @@ export default function App() {
       <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
       <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
     </WorkoutStack.Navigator>
   );
 }
+
+  // Main Tabs where TabBar is visible
+  function MainTabs() {
+    return (
+      <Tab.Navigator
+        tabBar={(props) => <NavBar {...props} />}
+        screenOptions={{ headerShown: false }}
+      >
+        <Tab.Screen name="Home" component={PlaceholderScreen} />
+        <Tab.Screen name="Routines" component={PlaceholderScreen} />
+        <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+        <Tab.Screen name="Performance" component={PlaceholderScreen} />
+        <Tab.Screen name="You" component={PlaceholderScreen} />
+      </Tab.Navigator>
+    );
+  }
 
   // --- NAVIGATION FLOW ---
 
@@ -127,16 +146,10 @@ export default function App() {
   return (
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <NavigationContainer>
-        <Tab.Navigator
-          tabBar={(props) => <NavBar {...props} />}
-          screenOptions={{ headerShown: false }}
-        >
-          <Tab.Screen name="Home" component={PlaceholderScreen} />
-          <Tab.Screen name="Routines" component={PlaceholderScreen} />
-          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-          <Tab.Screen name="Performance" component={PlaceholderScreen} />
-          <Tab.Screen name="You" component={PlaceholderScreen} />
-        </Tab.Navigator>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
+        </Stack.Navigator>
       </NavigationContainer>
       <StatusBar style="light" />
     </View>

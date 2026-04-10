@@ -96,7 +96,14 @@ const SoloWorkoutScreen = ({ navigation }: any) => {
         { type: 'PULL', sub: 'Back, Biceps',              icon: require('../assets/pull.png') },
         { type: 'LEG',  sub: 'Lower Body',                icon: require('../assets/leg.png')  },
       ].map(({ type, sub, icon }) => (
-        <TouchableOpacity key={type} style={styles.routineItemWrapper}>
+        <TouchableOpacity 
+          key={type} 
+          style={styles.routineItemWrapper}
+          onPress={() => {
+            setModalVisible(false);
+            navigation.navigate('RoutineSelected', { routineType: type });
+          }}
+        >
          <LinearGradient
   colors={['#180020', '#000000']}
   start={{ x: 0, y: 0 }}
