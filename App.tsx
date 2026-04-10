@@ -126,6 +126,7 @@ export default function App() {
       <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
       <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
+      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
     </WorkoutStack.Navigator>
   );
 }
