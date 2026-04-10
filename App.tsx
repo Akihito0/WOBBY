@@ -45,6 +45,7 @@ import Height from './src/pages/Height';
 import PhysLvl from './src/pages/PhysLvl';
 import Begin from './src/pages/Begin';
 import WorkoutScreen from './src/pages/WorkoutScreen';
+import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
@@ -142,14 +143,20 @@ export default function App() {
 
   // --- NAVIGATION FLOW ---
 
-  if (currentScreen === 'workout') {
+  if (currentScreen === 'dashboard') {
   return (
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-          <Stack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
-        </Stack.Navigator>
+        <Tab.Navigator
+          tabBar={(props) => <NavBar {...props} />}
+          screenOptions={{ headerShown: false }}
+        >
+          <Tab.Screen name="Home" component={UserDashboard} />
+          <Tab.Screen name="Routines" component={PlaceholderScreen} />
+          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+          <Tab.Screen name="Performance" component={PlaceholderScreen} />
+          <Tab.Screen name="You" component={PlaceholderScreen} />
+        </Tab.Navigator>
       </NavigationContainer>
       <StatusBar style="light" />
     </View>
@@ -275,7 +282,7 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')} 
-          onSignIn={() => setCurrentScreen('workout')} 
+          onSignIn={() => setCurrentScreen('dashboard')} 
           />
       </View>
     );
