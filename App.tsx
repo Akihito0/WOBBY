@@ -49,9 +49,10 @@ import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
+import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
 import PushScreen from './src/pages/PushScreen';
-
 
 SplashScreen.preventAutoHideAsync();
 
@@ -124,6 +125,8 @@ export default function App() {
       <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
       <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
+      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
     </WorkoutStack.Navigator>
   );
 }
