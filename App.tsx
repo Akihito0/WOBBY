@@ -69,6 +69,7 @@ const { width, height } = Dimensions.get('window');
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [fontsLoaded] = useFonts({
     'Montserrat-Regular': Montserrat_400Regular,
@@ -81,6 +82,50 @@ export default function App() {
     'Barlow-SemiBold': Barlow_600SemiBold,
     'Barlow-Regular': Barlow_400Regular,
   });
+
+  // Check if user is already logged in when app starts
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        console.log('🔍 Checking for existing session...');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          // User is already logged in, go directly to dashboard
+          console.log('✅ Session found! User:', session.user?.email);
+          console.log('🚀 Navigating to dashboard...');
+          setCurrentScreen('dashboard');
+        } else {
+          // No session, show entry/login screen
+          console.log('❌ No session found. Showing login screen.');
+          setCurrentScreen('entry');
+        }
+      } catch (error) {
+        console.error('❌ Error checking auth status:', error);
+        // Default to entry on error
+        setCurrentScreen('entry');
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔔 Auth state changed:', event, 'Session:', session ? 'exists' : 'null');
+      
+      if (session) {
+        setCurrentScreen('dashboard');
+      } else {
+        setCurrentScreen('entry');
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, []);
 
   // Handle deep link after email confirmation
   useEffect(() => {

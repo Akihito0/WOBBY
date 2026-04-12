@@ -18,7 +18,7 @@ export default {
       supportsTablet: true
     },
     android: {
-      package: "com.cliff.wobby",
+      package: "com.noah.wobby",
       compileSdkVersion: 35,
       targetSdkVersion: 35,
       adaptiveIcon: {
