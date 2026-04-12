@@ -6,9 +6,12 @@ import {
   StyleSheet, 
   Dimensions, 
   FlatList, 
-  Image 
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import AssessBg from '../components/layout/AssessBg';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -19,9 +22,10 @@ const STEP = 10;
 const RULER_DATA = Array.from({ length: MAX_WEIGHT - MIN_WEIGHT + 1 }, (_, i) => i + MIN_WEIGHT);
 const CENTER_SPACING = width / 2;
 
-export default function Weight({ onBack, onNext }: { onBack: () => void, onNext: (weight: number, unit: string) => void }) {
+export default function Weight({ onBack, onNext }: { onBack: () => void, onNext: () => void }) {
   const [unit, setUnit] = useState<'KG' | 'LB'>('KG');
   const [weightKg, setWeightKg] = useState(75);
+  const [loading, setLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   // Conversion math
@@ -33,6 +37,26 @@ export default function Weight({ onBack, onNext }: { onBack: () => void, onNext:
     const index = Math.round(xOffset / STEP);
     if (RULER_DATA[index]) {
       setWeightKg(RULER_DATA[index]);
+    }
+  };
+
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ weight: weightKg, weight_unit: unit })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save weight.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -112,12 +136,19 @@ export default function Weight({ onBack, onNext }: { onBack: () => void, onNext:
 
         <TouchableOpacity
           style={styles.continueButtonActive}
-          onPress={() => onNext(weightKg, unit)}
+          onPress={handleContinue}
+          disabled={loading}
         >
           <View style={styles.neonBorder} />
           <View style={styles.buttonContent}>
-            <Text style={styles.buttonTextActive}>Continue</Text>
-            <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={styles.buttonTextActive}>Continue</Text>
+                <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </View>

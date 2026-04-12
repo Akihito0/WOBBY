@@ -6,9 +6,12 @@ import {
   StyleSheet, 
   Dimensions, 
   FlatList, 
-  Image 
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import AssessBg from '../components/layout/AssessBg';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -18,10 +21,11 @@ const STEP = 15;
 const RULER_DATA = Array.from({ length: MAX_HEIGHT - MIN_HEIGHT + 1 }, (_, i) => MAX_HEIGHT - i);
 const CENTER_OFFSET = 150;
 
-export default function Height({ onBack, onNext }: { onBack: () => void, onNext: (val: string, unit: string) => void }) {
+export default function Height({ onBack, onNext }: { onBack: () => void, onNext: () => void }) {
   const [unit, setUnit] = useState('cm');
   const [showDropdown, setShowDropdown] = useState(false);
   const [heightValue, setHeightValue] = useState(165);
+  const [loading, setLoading] = useState(false);
   
   const units = ['cm', 'm', 'ft', 'in'];
 
@@ -44,6 +48,26 @@ export default function Height({ onBack, onNext }: { onBack: () => void, onNext:
     const index = Math.round(yOffset / STEP);
     if (RULER_DATA[index]) {
       setHeightValue(RULER_DATA[index]);
+    }
+  };
+
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ height: heightValue, height_unit: unit })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save height.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -127,12 +151,19 @@ export default function Height({ onBack, onNext }: { onBack: () => void, onNext:
 
         <TouchableOpacity 
           style={styles.continueButtonActive} 
-          onPress={() => onNext(formatHeight(heightValue, unit), unit)}
+          onPress={handleContinue}
+          disabled={loading}
         >
           <View style={styles.neonBorder} />
           <View style={styles.buttonContent}>
-            <Text style={styles.buttonTextActive}>Continue</Text>
-            <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={styles.buttonTextActive}>Continue</Text>
+                <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </View>

@@ -48,8 +48,9 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
       console.log('💾 Session being saved to AsyncStorage...');
       // Wait a moment for Supabase to save the session
       await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('🚀 Navigating to dashboard...');
-      onSignIn();
+      console.log('🚀 Auth state listener will handle routing based on profile completeness...');
+      // Don't call onSignIn directly - let onAuthStateChange listener handle routing
+      // It will check profile completeness and route appropriately
     }
     setLoading(false);
   };

@@ -7,9 +7,12 @@ import {
   Dimensions, 
   Image, 
   PanResponder,
-  Animated
+  Animated,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import AssessBg from '../components/layout/AssessBg';
+import { supabase } from '../supabase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -19,8 +22,9 @@ const LEVELS = [
   { id: '03', title: 'Advanced', subtitle: 'Highly Active', angle: 90 },
 ];
 
-export default function PhysLvl({ onBack, onNext }: { onBack: () => void, onNext: (level: string) => void }) {
+export default function PhysLvl({ onBack, onNext }: { onBack: () => void, onNext: () => void }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
   const animatedAngle = useRef(new Animated.Value(0)).current;
 
   const updateLevelFromAngle = (angle: number) => {
@@ -36,6 +40,26 @@ export default function PhysLvl({ onBack, onNext }: { onBack: () => void, onNext
       useNativeDriver: true,
       friction: 8,
     }).start();
+  };
+
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ physical_level: LEVELS[activeIndex].title })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save physical level.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const panResponder = useRef(
@@ -120,12 +144,19 @@ export default function PhysLvl({ onBack, onNext }: { onBack: () => void, onNext
 
         <TouchableOpacity
           style={styles.continueButtonActive}
-          onPress={() => onNext(current.title)}
+          onPress={handleContinue}
+          disabled={loading}
         >
           <View style={styles.neonBorder} />
           <View style={styles.buttonContent}>
-            <Text style={styles.buttonTextActive}>Continue</Text>
-            <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={styles.buttonTextActive}>Continue</Text>
+                <Image source={require('../assets/arrow0.png')} style={styles.arrow} />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </View>

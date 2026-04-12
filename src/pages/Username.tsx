@@ -6,22 +6,97 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Image, 
-  Dimensions 
+  Dimensions,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
 
 const { width, height } = Dimensions.get('window');
 
-export default function Username({ onNavigateNext }: { onNavigateNext: () => void }) {
+export default function Username({ onNavigateNext, onLogout }: { onNavigateNext: () => void; onLogout?: () => void }) {
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const hasInput = name.trim().length > 0;
+
+  const handleLogout = async () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await supabase.auth.signOut();
+            onLogout?.();
+          } catch (error: any) {
+            Alert.alert('Error', error.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleContinue = async () => {
+    if (!hasInput) return;
+
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("No user logged in");
+      }
+
+      // Check if username is already taken
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', name.trim())
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: "exact-one" violation (0 rows)
+        throw fetchError;
+      }
+
+      if (existingUser) {
+        Alert.alert('Username Taken', 'This username is already in use. Please choose another one.');
+        setLoading(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ username: name.trim() })
+        .eq('id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      onNavigateNext();
+
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <LinearGradient
       colors={['#F8F9FA', '#939394']}
       style={styles.container}
     >
+      <TouchableOpacity
+        style={styles.logoutButton}
+        onPress={handleLogout}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.logoutText}>Sign Out</Text>
+      </TouchableOpacity>
+
       <View style={styles.content}>
         
         <Image 
@@ -44,22 +119,27 @@ export default function Username({ onNavigateNext }: { onNavigateNext: () => voi
 <TouchableOpacity
   style={[styles.continueButton, hasInput && styles.continueButtonActive]}
   activeOpacity={0.8}
-  disabled={!hasInput}
-
-  onPress={onNavigateNext} 
+  disabled={!hasInput || loading}
+  onPress={handleContinue} 
 >
   {hasInput && (
     <View style={styles.neonBorder} />
   )}
   <View style={styles.buttonContent}>
-    <Text style={[styles.buttonText, hasInput && styles.buttonTextActive]}>
-      Continue
-    </Text>
-    <Image 
-      source={hasInput ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
-      style={styles.arrow}
-      resizeMode="contain"
-    />
+    {loading ? (
+      <ActivityIndicator color="#CCFF00" />
+    ) : (
+      <>
+        <Text style={[styles.buttonText, hasInput && styles.buttonTextActive]}>
+          Continue
+        </Text>
+        <Image 
+          source={hasInput ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
+          style={styles.arrow}
+          resizeMode="contain"
+        />
+      </>
+    )}
   </View>
 </TouchableOpacity>
 
@@ -157,5 +237,22 @@ const styles = StyleSheet.create({
   arrow: {
     width: 20,
     height: 20,
+  },
+  logoutButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#000',
+    zIndex: 100,
+  },
+  logoutText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+    color: '#000',
   },
 });

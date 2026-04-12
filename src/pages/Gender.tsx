@@ -5,16 +5,42 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Image, 
-  Dimensions 
+  Dimensions,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import AssessBg from '../components/layout/AssessBg';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
-export default function Gender({ onBack, onNext }: { onBack: () => void, onNext: (gender: string) => void }) {
+export default function Gender({ onBack, onNext }: { onBack: () => void, onNext: () => void }) {
   const [selectedGender, setSelectedGender] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const canContinue = selectedGender !== null;
+
+  const handleContinue = async () => {
+    if (!canContinue) return;
+    setLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ gender: selectedGender })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save gender.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <AssessBg onBack={onBack}>
@@ -61,19 +87,25 @@ export default function Gender({ onBack, onNext }: { onBack: () => void, onNext:
         <TouchableOpacity
           style={[styles.continueButton, canContinue && styles.continueButtonActive]}
           activeOpacity={0.8}
-          disabled={!canContinue}
-          onPress={() => onNext(selectedGender!)}
+          disabled={!canContinue || loading}
+          onPress={handleContinue}
         >
           {canContinue && <View style={styles.neonBorder} />}
           <View style={styles.buttonContent}>
-            <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
-              Continue
-            </Text>
-            <Image 
-              source={canContinue ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
-              style={styles.arrow}
-              resizeMode="contain"
-            />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
+                  Continue
+                </Text>
+                <Image 
+                  source={canContinue ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
+                  style={styles.arrow}
+                  resizeMode="contain"
+                />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </View>

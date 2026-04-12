@@ -67,8 +67,29 @@ const Tab = createBottomTabNavigator();
 
 const { width, height } = Dimensions.get('window');
 
+// Define a type for the screens
+type ScreenName = 
+  | 'splash'
+  | 'entry'
+  | 'login'
+  | 'register'
+  | 'username'
+  | 'avatarSelect'
+  | 'welcome'
+  | 'welcome1'
+  | 'welcome2'
+  | 'welcome3'
+  | 'goal'
+  | 'age'
+  | 'gender'
+  | 'weight'
+  | 'height'
+  | 'physLvl'
+  | 'begin'
+  | 'dashboard';
+
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('splash');
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>('splash');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [fontsLoaded] = useFonts({
@@ -91,13 +112,68 @@ export default function App() {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          // User is already logged in, go directly to dashboard
+          // User is already logged in, check their profile completeness
           console.log('✅ Session found! User:', session.user?.email);
-          console.log('🚀 Navigating to dashboard...');
-          setCurrentScreen('dashboard');
+          
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('username, avatar_url, goal, age, gender, weight, height, physical_level')
+            .eq('id', session.user.id)
+            .single();
+
+          if (error && error.code !== 'PGRST116') {
+            throw error;
+          }
+
+          // Check if onboarding is complete (all fields filled)
+          const isOnboardingComplete = 
+            profile &&
+            profile.username &&
+            profile.avatar_url &&
+            profile.goal &&
+            profile.age &&
+            profile.gender &&
+            profile.weight &&
+            profile.height &&
+            profile.physical_level;
+
+          if (!isOnboardingComplete) {
+            console.log('👤 Incomplete profile detected, resuming onboarding...');
+            
+            // Route to appropriate onboarding page
+            // Start from Username if avatar_url is missing (fresh registration)
+            if (!profile || !profile.avatar_url) {
+              console.log('→ Starting from Username (fresh registration)');
+              setCurrentScreen('username');
+            } else if (!profile.goal) {
+              console.log('→ Resuming from Goal');
+              setCurrentScreen('goal');
+            } else if (!profile.age) {
+              console.log('→ Resuming from Age');
+              setCurrentScreen('age');
+            } else if (!profile.gender) {
+              console.log('→ Resuming from Gender');
+              setCurrentScreen('gender');
+            } else if (!profile.weight) {
+              console.log('→ Resuming from Weight');
+              setCurrentScreen('weight');
+            } else if (!profile.height) {
+              console.log('→ Resuming from Height');
+              setCurrentScreen('height');
+            } else if (!profile.physical_level) {
+              console.log('→ Resuming from PhysLvl');
+              setCurrentScreen('physLvl');
+            } else {
+              setCurrentScreen('username');
+            }
+          } else {
+            // Profile complete, go to dashboard
+            console.log('🚀 Complete profile found, navigating to dashboard...');
+            setCurrentScreen('dashboard');
+          }
         } else {
           // No session, show entry/login screen
-          console.log('❌ No session found. Showing login screen.');
+          console.log('❌ No session found. Showing entry screen.');
           setCurrentScreen('entry');
         }
       } catch (error) {
@@ -117,9 +193,75 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('🔔 Auth state changed:', event, 'Session:', session ? 'exists' : 'null');
       
-      if (session) {
-        setCurrentScreen('dashboard');
-      } else {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
+        // Sign-in event OR email confirmation detected while app is open
+        console.log('📝 User signed in or updated, checking profile completeness...');
+        const checkProfile = async () => {
+          try {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('username, avatar_url, goal, age, gender, weight, height, physical_level')
+              .eq('id', session.user.id)
+              .single();
+
+            if (error && error.code !== 'PGRST116') {
+              // PGRST116 = no rows returned (expected for new users)
+              throw error;
+            }
+
+            // Check if onboarding is complete ( all fields filled)
+            const isOnboardingComplete = 
+              profile &&
+              profile.username &&
+              profile.avatar_url &&
+              profile.goal &&
+              profile.age &&
+              profile.gender &&
+              profile.weight &&
+              profile.height &&
+              profile.physical_level;
+
+            if (!isOnboardingComplete) {
+              console.log('👤 Incomplete profile detected, starting/continuing onboarding...');
+              
+              // Route to appropriate onboarding page based on what's been filled
+              // Start from Username if avatar_url is missing (fresh registration)
+              if (!profile || !profile.avatar_url) {
+                console.log('→ Starting from Username (fresh registration)');
+                setCurrentScreen('username');
+              } else if (!profile.goal) {
+                console.log('→ Resuming from Goal');
+                setCurrentScreen('goal');
+              } else if (!profile.age) {
+                console.log('→ Resuming from Age');
+                setCurrentScreen('age');
+              } else if (!profile.gender) {
+                console.log('→ Resuming from Gender');
+                setCurrentScreen('gender');
+              } else if (!profile.weight) {
+                console.log('→ Resuming from Weight');
+                setCurrentScreen('weight');
+              } else if (!profile.height) {
+                console.log('→ Resuming from Height');
+                setCurrentScreen('height');
+              } else if (!profile.physical_level) {
+                console.log('→ Resuming from PhysLvl');
+                setCurrentScreen('physLvl');
+              } else {
+                setCurrentScreen('username');
+              }
+            } else {
+              console.log('✅ Onboarding complete! User profile fully filled.');
+              setCurrentScreen('dashboard');
+            }
+          } catch (error) {
+            console.error('❌ Error checking profile:', error);
+            setCurrentScreen('username'); // Default to onboarding on error
+          }
+        };
+        checkProfile();
+      } else if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out, going to entry screen...');
         setCurrentScreen('entry');
       }
     });
@@ -308,7 +450,10 @@ function RoutinesStackScreen() {
   if (currentScreen === 'username') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <Username onNavigateNext={() => setCurrentScreen('avatarSelect')} />
+        <Username 
+          onNavigateNext={() => setCurrentScreen('avatarSelect')}
+          onLogout={() => setCurrentScreen('entry')}
+        />
       </View>
     );
   }
@@ -318,6 +463,10 @@ function RoutinesStackScreen() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Register 
           onNavigateToLogin={() => setCurrentScreen('login')} 
+          onRegisterSuccess={() => {
+            // onAuthStateChange will handle navigation, so we can just log it.
+            console.log('Registration successful, waiting for auth state change...');
+          }}
         />
       </View>
     );
@@ -327,9 +476,9 @@ function RoutinesStackScreen() {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
-          onNavigateToRegister={() => setCurrentScreen('register')} 
-          onSignIn={() => setCurrentScreen('dashboard')} 
-          />
+          onNavigateToRegister={() => setCurrentScreen('register')}
+          onSignIn={() => {}} // Auth listener handles routing
+        />
       </View>
     );
   }
