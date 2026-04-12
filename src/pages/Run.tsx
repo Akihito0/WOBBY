@@ -11,10 +11,13 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
+import { supabase } from '../supabase';
 
 // ─── Set your Mapbox public token here ───────────────────────────────────────
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
@@ -28,6 +31,7 @@ type RunState = 'idle' | 'running' | 'paused' | 'finished';
 interface Coordinate {
   latitude: number;
   longitude: number;
+  altitude?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -61,6 +65,35 @@ const calcPace = (distanceKm: number, seconds: number): string => {
   const pm = Math.floor(paceSeconds / 60);
   const ps = Math.round(paceSeconds % 60);
   return `${pm}'${String(ps).padStart(2, '0')}"`;
+};
+
+// Calculate elevation metrics
+const calcElevationMetrics = (coords: Coordinate[]): { gain: number; loss: number; min: number; max: number } => {
+  if (coords.length < 2) return { gain: 0, loss: 0, min: 0, max: 0 };
+
+  let elevationGain = 0;
+  let elevationLoss = 0;
+  const validElevations = coords.filter(c => c.altitude !== undefined).map(c => c.altitude!);
+  
+  if (validElevations.length === 0) {
+    return { gain: 0, loss: 0, min: 0, max: 0 };
+  }
+
+  for (let i = 1; i < validElevations.length; i++) {
+    const diff = validElevations[i] - validElevations[i - 1];
+    if (diff > 0) {
+      elevationGain += diff;
+    } else {
+      elevationLoss += Math.abs(diff);
+    }
+  }
+
+  return {
+    gain: Math.round(elevationGain),
+    loss: Math.round(elevationLoss),
+    min: Math.round(Math.min(...validElevations)),
+    max: Math.round(Math.max(...validElevations)),
+  };
 };
 
 // ─── GpsDot animated component ───────────────────────────────────────────────
@@ -105,6 +138,8 @@ const RunScreen = ({ navigation }: any) => {
   const [currentLocation, setCurrentLocation] = useState<Coordinate | null>(null);
   const [gpsReady, setGpsReady] = useState(false);
   const [workoutType, setWorkoutType] = useState('Run');
+  const [elevationMetrics, setElevationMetrics] = useState({ gain: 0, loss: 0, min: 0, max: 0 });
+  const [isSaving, setIsSaving] = useState(false);
   
   // Finish Modal States
   const [workoutTitle, setWorkoutTitle] = useState('');
@@ -117,19 +152,31 @@ const RunScreen = ({ navigation }: any) => {
   // ── Location Permissions and Updates ────────────────────────────────────────
   useEffect(() => {
     const startLocationUpdates = async () => {
+      // Request foreground location permissions
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.error('Permission to access location was denied');
-        // Optionally, show an alert to the user
+        Alert.alert('Permission Required', 'Location access is needed to track your run.');
         return;
+      }
+
+      // Request background location permissions (for screen-off tracking)
+      if (Platform.OS === 'ios') {
+        const bgStatus = await Location.requestBackgroundPermissionsAsync();
+        if (bgStatus.status === 'granted') {
+          console.log('✅ Background location permissions granted');
+        }
       }
 
       // Get initial location to center the map
       try {
-        const location = await Location.getCurrentPositionAsync({});
-        const coord = {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.BestForNavigation,
+        });
+        const coord: Coordinate = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
+          altitude: location.coords.altitude ?? undefined,
         };
         setCurrentLocation(coord);
         if (!gpsReady) setGpsReady(true);
@@ -141,8 +188,7 @@ const RunScreen = ({ navigation }: any) => {
         console.error("Could not get initial position", error);
       }
 
-
-      // Start watching for location changes
+      // Start watching for location changes with high accuracy
       locationSubscription.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
@@ -153,6 +199,7 @@ const RunScreen = ({ navigation }: any) => {
           const coord: Coordinate = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
+            altitude: location.coords.altitude ?? undefined,
           };
           setCurrentLocation(coord);
           if (!gpsReady) setGpsReady(true);
@@ -161,6 +208,9 @@ const RunScreen = ({ navigation }: any) => {
             setRouteCoords(prev => {
               const updated = [...prev, coord];
               setDistance(calcDistance(updated));
+              // Update elevation metrics
+              const metrics = calcElevationMetrics(updated);
+              setElevationMetrics(metrics);
               return updated;
             });
             cameraRef.current?.setCamera({
@@ -216,6 +266,7 @@ const RunScreen = ({ navigation }: any) => {
   };
   */
   
+  
   // ── Route GeoJSON ───────────────────────────────────────────────────────────
   const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> | null =
     routeCoords.length >= 2
@@ -229,12 +280,87 @@ const RunScreen = ({ navigation }: any) => {
         }
       : null;
 
+  // ── Save Run to Database ─────────────────────────────────────────────────────
+  const saveRunToDatabase = async () => {
+    if (!workoutTitle.trim()) {
+      Alert.alert('Title Required', 'Please enter a title for your workout.');
+      return;
+    }
+
+    if (distance === 0) {
+      Alert.alert('Invalid Run', 'No distance recorded. Please complete a run first.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Get current user session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.user?.id) {
+        Alert.alert('Error', 'Could not authenticate user. Please try again.');
+        setIsSaving(false);
+        return;
+      }
+
+      const userId = session.user.id;
+      const now = new Date();
+
+      // Prepare run data
+      const runData = {
+        user_id: userId,
+        title: workoutTitle,
+        description: workoutDesc,
+        distance: distance, // in km
+        duration: elapsed, // in seconds
+        pace: calcPace(distance, elapsed),
+        elevation_gain: elevationMetrics.gain,
+        elevation_loss: elevationMetrics.loss,
+        min_elevation: elevationMetrics.min,
+        max_elevation: elevationMetrics.max,
+        average_elevation: elevationMetrics.min && elevationMetrics.max 
+          ? Math.round((elevationMetrics.min + elevationMetrics.max) / 2)
+          : 0,
+        route_coordinates: routeCoords, // Store as JSONB array
+        workout_type: workoutType,
+        started_at: new Date(now.getTime() - elapsed * 1000).toISOString(),
+        completed_at: now.toISOString(),
+        created_at: now.toISOString(),
+      };
+
+      // Insert into 'runs' table
+      const { data, error } = await supabase
+        .from('runs')
+        .insert([runData])
+        .select();
+
+      if (error) {
+        console.error('Error saving run:', error);
+        Alert.alert('Error', `Failed to save run: ${error.message}`);
+        setIsSaving(false);
+        return;
+      }
+
+      console.log('✅ Run saved successfully:', data);
+      Alert.alert('Success! 🏃', 'Your workout has been saved to your profile.');
+
+      // Reset and go back
+      handleDiscardOrSave();
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error in saveRunToDatabase:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      setIsSaving(false);
+    }
+  };
+
   // ── Controls ────────────────────────────────────────────────────────────────
   const handleStart = () => {
     setRunState('running');
     if (elapsed === 0) {
       setDistance(0);
       setRouteCoords([]);
+      setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
     }
   };
 
@@ -247,6 +373,7 @@ const RunScreen = ({ navigation }: any) => {
     setElapsed(0);
     setDistance(0);
     setRouteCoords([]);
+    setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
     setWorkoutTitle('');
     setWorkoutDesc('');
   };
@@ -337,7 +464,7 @@ const RunScreen = ({ navigation }: any) => {
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{pace}</Text>
-              <Text style={styles.statLabel}>Split Ave. (/km)</Text>
+              <Text style={styles.statLabel}>Pace (/km)</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
@@ -345,6 +472,29 @@ const RunScreen = ({ navigation }: any) => {
               <Text style={styles.statLabel}>Distance (km)</Text>
             </View>
           </View>
+          
+          {/* Elevation Row (shown when running or has data) */}
+          {(runState === 'running' || elevationMetrics.gain > 0) && (
+            <>
+              <View style={styles.statDivider2} />
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{elevationMetrics.gain}</Text>
+                  <Text style={styles.statLabel}>Elev. Gain (m)</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{elevationMetrics.min}</Text>
+                  <Text style={styles.statLabel}>Min Elev. (m)</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{elevationMetrics.max}</Text>
+                  <Text style={styles.statLabel}>Max Elev. (m)</Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Dynamic Controls Bar */}
@@ -443,11 +593,23 @@ const RunScreen = ({ navigation }: any) => {
 
           {/* Modal Bottom Buttons */}
           <View style={styles.modalBottomBar}>
-            <TouchableOpacity style={styles.discardBtn} onPress={handleDiscardOrSave}>
+            <TouchableOpacity 
+              style={styles.discardBtn} 
+              onPress={handleDiscardOrSave}
+              disabled={isSaving}
+            >
               <Text style={styles.discardText}>Discard</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveWorkoutBtn} onPress={handleDiscardOrSave}>
-              <Text style={styles.saveWorkoutText}>Save Workout</Text>
+            <TouchableOpacity 
+              style={[styles.saveWorkoutBtn, isSaving && styles.savingBtn]} 
+              onPress={saveRunToDatabase}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <Text style={styles.saveWorkoutText}>Save Workout</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -520,6 +682,7 @@ const styles = StyleSheet.create({
   statValue: { color: '#FFFFFF', fontSize: 22, fontFamily: 'Montserrat-Bold', letterSpacing: 0.5 },
   statLabel: { color: '#AAAAAA', fontSize: 10, fontFamily: 'Montserrat-Medium', marginTop: 4, textAlign: 'center' },
   statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.2)' },
+  statDivider2: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 12 },
 
   // Bottom Controls Background
   bottomControlsBg: {
@@ -608,6 +771,7 @@ const styles = StyleSheet.create({
     flex: 2, paddingVertical: 16, borderRadius: 12, backgroundColor: '#C8FF00',
     alignItems: 'center', justifyContent: 'center'
   },
+  savingBtn: { opacity: 0.7 },
   saveWorkoutText: { color: '#000', fontSize: 14, fontFamily: 'Montserrat-Bold' },
 });
 

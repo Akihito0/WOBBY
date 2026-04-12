@@ -53,6 +53,15 @@ const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeT
     { key: 'you', name: 'You' },
   ];
 
+  // Check if RunScreen is active in the nested Workout stack
+  const workoutRoute = state?.routes.find((r: any) => r.name === 'Workout');
+  const isRunScreenActive = workoutRoute?.state?.routes?.some((r: any) => r.name === 'RunScreen');
+
+  // Hide NavBar if RunScreen is active
+  if (isRunScreenActive) {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       {routes.map((route, index) => {
