@@ -42,7 +42,13 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
     });
     if (error) {
       Alert.alert('Sign In Error', error.message);
+      console.error('❌ Sign in failed:', error.message);
     } else {
+      console.log('✅ Sign in successful! User:', data.user?.email);
+      console.log('💾 Session being saved to AsyncStorage...');
+      // Wait a moment for Supabase to save the session
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('🚀 Navigating to dashboard...');
       onSignIn();
     }
     setLoading(false);
