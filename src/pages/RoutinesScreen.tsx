@@ -19,6 +19,8 @@ const RoutinesScreen = ({ navigation }: any) => {
         <Text style={styles.headerTitle}>ROUTINES</Text>
       </View>
 
+      <Text style={styles.sectionTitle}>MANAGE YOUR WORKOUT SPLITS</Text>
+
       {/* Routine Cards */}
       <View style={styles.cardsContainer}>
         {routines.map(({ type, sub, icon, screen }) => (
@@ -70,19 +72,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Black',
     letterSpacing: 2,
   },
+  sectionTitle: {
+    fontSize: 20,
+    color: '#FFFFFF',
+    fontFamily: 'Montserrat-SemiBold',
+    marginTop: 15,
+    marginBottom: -10,
+    textTransform: 'uppercase',
+  },
 
   // Cards
   cardsContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 20,
+    gap: 30,
     paddingBottom: 40,
   },
   cardWrapper: {
     width: 340,
     height: 136,
     borderRadius: 15,
+    borderColor: '#CDE474',
+    borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },

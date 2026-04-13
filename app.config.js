@@ -18,7 +18,7 @@ export default {
       supportsTablet: true
     },
     android: {
-      package: "com.noah.wobby",
+      package: "com.tweetie.wobby",
       compileSdkVersion: 35,
       targetSdkVersion: 35,
       adaptiveIcon: {
