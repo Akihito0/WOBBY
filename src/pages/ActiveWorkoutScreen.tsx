@@ -1,12 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, PanResponder, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+
+const { height: screenHeight } = Dimensions.get('window');
+
+const COLLAPSED_HEIGHT = 140;
+const EXPANDED_HEIGHT = 190;
 
 export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('back');
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Animated values
+  const animatedHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
+  const weightOpacity = useRef(new Animated.Value(0)).current;
+  const weightTranslateY = useRef(new Animated.Value(12)).current;
+
+  const isExpandedRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -14,6 +28,90 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       setHasPermission(status === 'granted');
     })();
   }, []);
+
+  // Lower tab bar opacity when this screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      const parent = navigation.getParent();
+      parent?.setOptions({
+        tabBarStyle: {
+          opacity: 0,
+          pointerEvents: 'none',
+        },
+      });
+      return () => {
+        parent?.setOptions({
+          tabBarStyle: {
+            opacity: 1,
+            pointerEvents: 'auto',
+          },
+        });
+      };
+    }, [navigation])
+  );
+
+  const expandContainer = () => {
+    if (isExpandedRef.current) return;
+    isExpandedRef.current = true;
+    setIsExpanded(true);
+    Animated.parallel([
+      Animated.spring(animatedHeight, {
+        toValue: EXPANDED_HEIGHT,
+        useNativeDriver: false,
+        damping: 18,
+        stiffness: 180,
+      }),
+      Animated.timing(weightOpacity, {
+        toValue: 1,
+        duration: 200,
+        delay: 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(weightTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 16,
+        stiffness: 200,
+      }),
+    ]).start();
+  };
+
+  const collapseContainer = () => {
+    if (!isExpandedRef.current) return;
+    isExpandedRef.current = false;
+    Animated.parallel([
+      Animated.spring(animatedHeight, {
+        toValue: COLLAPSED_HEIGHT,
+        useNativeDriver: false,
+        damping: 18,
+        stiffness: 180,
+      }),
+      Animated.timing(weightOpacity, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(weightTranslateY, {
+        toValue: 12,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setIsExpanded(false));
+  };
+
+  const panResponderRef = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy < -30) {
+          expandContainer();
+        } else if (gestureState.dy > 30) {
+          collapseContainer();
+        }
+      },
+    })
+  );
 
   const exerciseName = route.params?.exerciseName || 'PUSH-UP';
 
@@ -23,7 +121,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Background Camera Layer */}
       {hasPermission ? (
         <CameraView style={StyleSheet.absoluteFillObject} facing={cameraFacing} />
       ) : (
@@ -33,15 +130,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         />
       )}
 
-      <View style={styles.bottomOverlay}>
-        {/* Grabber indicator acting as a back button */}
-        <TouchableOpacity 
-          style={styles.grabberTarget} 
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
+      <Animated.View
+        style={[styles.bottomOverlay, { height: animatedHeight }]}
+        {...panResponderRef.current.panHandlers}
+      >
+        {/* Grabber */}
+        <View style={styles.grabberTarget}>
           <View style={styles.grabber} />
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.controlsRow}>
           {/* Left: Workout */}
@@ -71,14 +167,22 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           </View>
         </View>
 
-        {/* Bottom Counters */}
-        <View style={styles.weightContainer}>
+        {/* Weight — always mounted, animated in/out */}
+        <Animated.View
+          style={[
+            styles.weightContainer,
+            {
+              opacity: weightOpacity,
+              transform: [{ translateY: weightTranslateY }],
+            },
+          ]}
+        >
           <View style={styles.zeroBackdrop}>
-             <Text style={styles.zeroText}>0</Text>
+            <Text style={styles.zeroText}>0</Text>
           </View>
           <Text style={styles.weightText}>Weight (kg)</Text>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
     </View>
   );
 }
@@ -90,20 +194,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   bottomOverlay: {
-    backgroundColor: 'rgba(34,34,29,0.7)',
-    height: 285,
+    backgroundColor: 'rgba(34,34,29,0.85)',
     width: '100%',
     borderTopLeftRadius: 21,
     borderTopRightRadius: 21,
-    overflow: 'hidden',
+
     position: 'absolute',
     bottom: 0,
+    paddingBottom: 52,
   },
   grabberTarget: {
     width: '100%',
-    height: 30,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 5,
   },
   grabber: {
     width: 55,
@@ -114,13 +219,13 @@ const styles = StyleSheet.create({
   controlsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 25, // Increased slightly to pull buttons down
+    marginTop: 8,
     paddingHorizontal: 20,
   },
   sideColumn: {
     alignItems: 'center',
     width: 100,
-    marginTop: 15, // Pushes the side elements down slightly compared to the center
+    marginTop: 8,
   },
   centerColumn: {
     alignItems: 'center',
@@ -128,11 +233,11 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   topLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: 'Barlow-SemiBold',
     color: '#FFFFFF',
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   circleWhite: {
     width: 58,
@@ -174,25 +279,26 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderBottomColor: 'transparent',
     borderTopColor: 'transparent',
-    marginLeft: 6, // centers the triangle visually inside the circle
+    marginLeft: 6,
   },
   bottomLabelGreen: {
-    fontSize: 12,
+    fontSize: 10,
     fontFamily: 'Barlow-SemiBold',
     color: '#CCFF00',
     textTransform: 'uppercase',
-    marginTop: 5,
+    marginTop: 3,
   },
   bottomLabelWhite: {
-    fontSize: 12,
+    fontSize: 10,
     fontFamily: 'Barlow-SemiBold',
     color: '#FFFFFF',
     textTransform: 'uppercase',
-    marginTop: 5,
+    marginTop: 3,
   },
   weightContainer: {
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 10,
+    marginBottom: 3,
   },
   zeroBackdrop: {
     backgroundColor: 'rgba(217,217,217,0.12)',
@@ -204,14 +310,14 @@ const styles = StyleSheet.create({
   },
   zeroText: {
     color: '#FFFFFF',
-    fontSize: 32,
+    fontSize: 28,
     fontFamily: 'Montserrat-Bold',
-    lineHeight: 36,
+    lineHeight: 32,
   },
   weightText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 10,
     fontFamily: 'Barlow-SemiBold',
-    marginTop: 6,
+    marginTop: 3,
   },
 });
