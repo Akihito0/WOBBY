@@ -6,9 +6,12 @@ import {
   StyleSheet, 
   Dimensions, 
   FlatList, 
-  Image 
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
-import AssessBg from '../components/layout/AssessBg'; 
+import AssessBg from '../components/layout/AssessBg';
+import { supabase } from '../supabase'; 
 
 const { width } = Dimensions.get('window');
 
@@ -16,8 +19,9 @@ const { width } = Dimensions.get('window');
 const AGES = Array.from({ length: 87 }, (_, i) => i + 13);
 const ITEM_HEIGHT = 95; // Height of each age number row
 
-export default function Age({ onBack, onNext }: { onBack: () => void, onNext: (age: number) => void }) {
+export default function Age({ onBack, onNext }: { onBack: () => void, onNext: () => void }) {
   const [selectedAge, setSelectedAge] = useState(19);
+  const [loading, setLoading] = useState(false);
   
   // scroll logic to find the center item
   const onScroll = (event: any) => {
@@ -25,6 +29,26 @@ export default function Age({ onBack, onNext }: { onBack: () => void, onNext: (a
     const index = Math.round(yOffset / ITEM_HEIGHT);
     if (AGES[index]) {
       setSelectedAge(AGES[index]);
+    }
+  };
+
+  const handleContinue = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ age: selectedAge })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save age.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -81,16 +105,23 @@ export default function Age({ onBack, onNext }: { onBack: () => void, onNext: (a
         <TouchableOpacity
           style={styles.continueButtonActive}
           activeOpacity={0.8}
-          onPress={() => onNext(selectedAge)}
+          disabled={loading}
+          onPress={handleContinue}
         >
           <View style={styles.neonBorder} />
           <View style={styles.buttonContent}>
-            <Text style={styles.buttonTextActive}>Continue</Text>
-            <Image 
-              source={require('../assets/arrow0.png')} 
-              style={styles.arrow}
-              resizeMode="contain"
-            />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={styles.buttonTextActive}>Continue</Text>
+                <Image 
+                  source={require('../assets/arrow0.png')} 
+                  style={styles.arrow}
+                  resizeMode="contain"
+                />
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </View>

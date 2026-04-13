@@ -21,8 +21,9 @@ import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
 
-export default function Register({ onNavigateToLogin }: { 
+export default function Register({ onNavigateToLogin, onRegisterSuccess }: { 
   onNavigateToLogin: () => void; 
+  onRegisterSuccess: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +31,57 @@ export default function Register({ onNavigateToLogin }: {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+
+  const handleCheckConfirmation = async () => {
+    setLoading(true);
+    try {
+      // Try to sign in to check if email is confirmed
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: registeredEmail,
+        password: password,
+      });
+
+      if (error) {
+        // Email not confirmed yet or wrong password
+        if (error.message.includes('Email not confirmed')) {
+          Alert.alert('Pending', 'Email not confirmed yet. Check your inbox!');
+        } else {
+          Alert.alert('Error', error.message);
+        }
+      } else {
+        // Email is confirmed! Session is now active
+        console.log('✅ Email confirmed! Session created:', data.user?.email);
+        Alert.alert('✅ Confirmed!', 'Email verified! Starting onboarding...');
+        onRegisterSuccess();
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: registeredEmail,
+      });
+
+      if (error) {
+        Alert.alert('Error', error.message);
+      } else {
+        Alert.alert('Success', 'Confirmation email sent! Check your inbox.');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!email || !password || !confirmPassword) {
@@ -60,7 +112,11 @@ export default function Register({ onNavigateToLogin }: {
           Alert.alert('Sign Up Error', error.message);
         }
       } else {
-        Alert.alert('Success', 'Check your email for the confirmation link!');
+        // Signup successful, now waiting for email confirmation
+        console.log('📧 Signup successful, awaiting email confirmation...');
+        setRegisteredEmail(email);
+        setIsAwaitingConfirmation(true);
+        Alert.alert('Success', 'Check your email to confirm your account!');
       }
     } catch (catchError: any) {
       Alert.alert('Unexpected Error', catchError.message);
@@ -134,9 +190,78 @@ export default function Register({ onNavigateToLogin }: {
           bounces={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.heroSection} />
+          {isAwaitingConfirmation ? (
+            // Confirmation Awaiting Screen
+            <>
+              <View style={styles.heroSection} />
+              <View style={styles.whiteSheet}>
+                <Image
+                  source={require('../assets/dumbell.png')}
+                  style={styles.smallIcon}
+                  resizeMode="contain"
+                />
+                <Text style={styles.title}>Check Your Email</Text>
+                <Text style={styles.subtitle}>Confirm your quest begins.</Text>
 
-          <View style={styles.whiteSheet}>
+                {/* Added consistency with the main forms */}
+                <View style={styles.titleDivider} />
+
+                <View style={styles.confirmationContent}>
+                  <Text style={styles.confirmationSubtitle}>
+                    We sent a confirmation link to{'\n'}
+                    <Text style={styles.confirmationEmailHighlight}>{registeredEmail}</Text>
+                  </Text>
+
+                  <Text style={styles.confirmationMessage}>
+                    Click the link in your inbox to verify your email and start your journey.
+                  </Text>
+
+                  <TouchableOpacity
+                    style={[styles.signInButton, loading && { opacity: 0.8 }]}
+                    activeOpacity={0.8}
+                    onPress={handleCheckConfirmation}
+                    disabled={loading}
+                  >
+                    <LinearGradient
+                      colors={['#CCFF00', '#7A9900']}
+                      locations={[0.3, 1]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    {loading ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.signInText}>Verified My Email</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleResendConfirmation}
+                    disabled={loading}
+                    style={styles.resendButton}
+                  >
+                    <Text style={styles.resendText}>Didn't get the email? <Text style={{fontWeight: '700'}}>Resend</Text></Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsAwaitingConfirmation(false);
+                      setRegisteredEmail('');
+                    }}
+                    style={styles.backButton}
+                  >
+                    <Text style={styles.backText}>← Back to Sign Up</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          ) : (
+            // Sign Up Form
+            <>
+              <View style={styles.heroSection} />
+
+              <View style={styles.whiteSheet}>
             <Image
               source={require('../assets/dumbell.png')}
               style={styles.smallIcon}
@@ -279,7 +404,9 @@ export default function Register({ onNavigateToLogin }: {
               </Text>
             </TouchableOpacity>
 
-          </View>
+              </View>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </AuthBackground>
@@ -442,5 +569,50 @@ const styles = StyleSheet.create({
   signUpLink: {
     fontFamily: 'Montserrat-Bold',
     color: '#000',
+  },
+  // Confirmation Screen Styles
+  confirmationContent: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  confirmationSubtitle: {
+    fontFamily: 'Montserrat-SemiBold',
+    fontSize: 16,
+    color: '#000',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 10,
+  },
+  confirmationEmailHighlight: {
+    fontFamily: 'Montserrat-Black',
+    color: '#7A9900',
+    fontSize: 17,
+  },
+  confirmationMessage: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 30,
+    paddingHorizontal: 10,
+  },
+  resendButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  resendText: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: '#000',
+  },
+  backButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+  },
+  backText: {
+    fontFamily: 'Montserrat-Medium',
+    fontSize: 13,
+    color: '#999',
   },
 });
