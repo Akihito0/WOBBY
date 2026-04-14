@@ -42,6 +42,13 @@ const icons: { [key: string]: { inactive: any; active: any } } = {
 };
 
 const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeTab, onTabPress }) => {
+  // Don't show navbar when on ActiveWorkoutScreen
+  if (state?.routes[state.index]?.state?.routes) {
+    const innerRoute = state.routes[state.index].state.routes[state.routes[state.index].state.index];
+    if (innerRoute?.name === 'ActiveWorkoutScreen') {
+      return null;
+    }
+  }
   
   // 2. We define the routes. If the library 'state' exists, we use it. 
   // Otherwise, we use a manual list for your WorkoutScreen test.
