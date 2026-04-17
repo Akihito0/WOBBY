@@ -42,10 +42,12 @@ const icons: { [key: string]: { inactive: any; active: any } } = {
 };
 
 const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeTab, onTabPress }) => {
-  // Don't show navbar when on ActiveWorkoutScreen
+  // Don't show navbar when on ActiveWorkoutScreen, AchievementsScreen, or LeaderboardsScreen
   if (state?.routes[state.index]?.state?.routes) {
-    const innerRoute = state.routes[state.index].state.routes[state.routes[state.index].state.index];
-    if (innerRoute?.name === 'ActiveWorkoutScreen') {
+    const innerState = state.routes[state.index].state;
+    const innerIndex = innerState?.index ?? 0;
+    const innerRoute = innerState?.routes[innerIndex];
+    if (innerRoute?.name === 'ActiveWorkoutScreen' || innerRoute?.name === 'AchievementsScreen' || innerRoute?.name === 'LeaderboardsScreen') {
       return null;
     }
   }

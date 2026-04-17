@@ -53,11 +53,15 @@ import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
 import PushScreen from './src/pages/PushScreen';
+import PerformanceScreen from './src/pages/PerformanceScreen';
+import LeaderboardsScreen from './src/pages/Leaderboards';
+import AchievementsScreen from './src/pages/Achievements';
 
 SplashScreen.preventAutoHideAsync();
 
 const RoutinesStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
+const PerformanceStack = createNativeStackNavigator();
 
 const Stack = createNativeStackNavigator();
 
@@ -305,7 +309,17 @@ export default function App() {
     return null;
   }
 
-  function WorkoutStackScreen() {
+function PerformanceStackScreen() {
+  return (
+    <PerformanceStack.Navigator screenOptions={{ headerShown: false }}>
+      <PerformanceStack.Screen name="PerformanceScreen" component={PerformanceScreen} />
+      <PerformanceStack.Screen name="LeaderboardsScreen" component={LeaderboardsScreen} />
+      <PerformanceStack.Screen name="AchievementsScreen" component={AchievementsScreen} />
+    </PerformanceStack.Navigator>
+  );
+}
+
+function WorkoutStackScreen() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
       <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
@@ -342,7 +356,7 @@ function RoutinesStackScreen() {
           <Tab.Screen name="Home" component={UserDashboard} />
           <Tab.Screen name="Routines" component={RoutinesStackScreen} />
           <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-          <Tab.Screen name="Performance" component={PlaceholderScreen} />
+          <Tab.Screen name="Performance" component={PerformanceStackScreen} />
           <Tab.Screen name="You" component={PlaceholderScreen} />
         </Tab.Navigator>
       </NavigationContainer>
