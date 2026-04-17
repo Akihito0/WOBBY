@@ -17,7 +17,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '../supabase';
+import { uploadRunMedia, uploadMapSnapshot } from '../services/runUpload';
 
 // ─── Set your Mapbox public token here ───────────────────────────────────────
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
@@ -306,6 +308,15 @@ const RunScreen = ({ navigation }: any) => {
       const userId = session.user.id;
       const now = new Date();
 
+      // Optional: Upload map snapshot (requires custom implementation)
+      // For now, we'll skip automatic map capture and let users add photos manually
+      let mapUrl = '';
+      let otherUrls: string[] = [];
+      
+      // To add map snapshot capture later, you can:
+      // 1. Use MapboxGL.snapshotManager().takeSnapshot() for the entire map view
+      // 2. Or let users manually upload photos/maps via image picker
+
       // Prepare run data
       const runData = {
         user_id: userId,
@@ -322,6 +333,8 @@ const RunScreen = ({ navigation }: any) => {
           ? Math.round((elevationMetrics.min + elevationMetrics.max) / 2)
           : 0,
         route_coordinates: routeCoords, // Store as JSONB array
+        route_map_url: mapUrl || null,
+        media_urls: otherUrls,
         workout_type: workoutType,
         started_at: new Date(now.getTime() - elapsed * 1000).toISOString(),
         completed_at: now.toISOString(),
