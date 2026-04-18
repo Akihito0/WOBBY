@@ -78,7 +78,6 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_800ExtraBold",
     fontSize: 16,
     color: "#fff",
-    letterSpacing: 1.5,
     textTransform: "uppercase", 
     marginBottom: 5,
     marginTop: -4  

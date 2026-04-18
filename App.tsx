@@ -49,6 +49,7 @@ import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import NotificationsScreen from './src/pages/NotificationsScreen';
 import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
@@ -78,7 +79,7 @@ const YouStack = createNativeStackNavigator<YouStackParamList>();
 const Stack = createNativeStackNavigator();
 
 const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
-
+const MainStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const { width, height } = Dimensions.get('window');
@@ -356,6 +357,37 @@ function RoutinesStackScreen() {
   );
 }
 
+ if (currentScreen === 'dashboard') {
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationContainer>
+        <MainStack.Navigator screenOptions={{ headerShown: false }}>
+          {/* 1. This handles the bottom tabs and main app flow */}
+          <MainStack.Screen name="AppTabs">
+            {() => (
+              <Tab.Navigator
+                tabBar={(props) => <NavBar {...props} />}
+                screenOptions={{ headerShown: false }}
+              >
+                <Tab.Screen name="Home" component={UserDashboard} />
+                <Tab.Screen name="Routines" component={PlaceholderScreen} />
+                <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+                <Tab.Screen name="Performance" component={PlaceholderScreen} />
+                <Tab.Screen name="You" component={PlaceholderScreen} />
+              </Tab.Navigator>
+            )}
+          </MainStack.Screen>
+
+          {/* 2. This screen will slide in from the right over the dashboard */}
+          <MainStack.Screen 
+            name="Notifications" 
+            component={NotificationsScreen} 
+            options={{ animation: 'slide_from_right' }}
+          />
+        </MainStack.Navigator>
+      </NavigationContainer>
+      <StatusBar style="light" />
+    </View>
 function YouStackScreen() {
   return (
     <YouStack.Navigator screenOptions={{ headerShown: false }}>
