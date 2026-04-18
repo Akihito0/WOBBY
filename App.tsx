@@ -56,12 +56,24 @@ import PushScreen from './src/pages/PushScreen';
 import PerformanceScreen from './src/pages/PerformanceScreen';
 import LeaderboardsScreen from './src/pages/Leaderboards';
 import AchievementsScreen from './src/pages/Achievements';
+import YouPage from './src/pages/YouPage';
+import YouSettings from './src/pages/YouSettings';
+import PersonalInformation from './src/pages/PersonalInformation';
+import LinkedDevices from './src/pages/LinkedDevices';
 
 SplashScreen.preventAutoHideAsync();
+
+type YouStackParamList = {
+  YouMain: undefined;
+  YouSettings: undefined;
+  PersonalInformation: undefined;
+  LinkedDevices: undefined;
+};
 
 const RoutinesStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
 const PerformanceStack = createNativeStackNavigator();
+const YouStack = createNativeStackNavigator<YouStackParamList>();
 
 const Stack = createNativeStackNavigator();
 
@@ -319,6 +331,7 @@ function PerformanceStackScreen() {
   );
 }
 
+
 function WorkoutStackScreen() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
@@ -343,27 +356,38 @@ function RoutinesStackScreen() {
   );
 }
 
+function YouStackScreen() {
+  return (
+    <YouStack.Navigator screenOptions={{ headerShown: false }}>
+      <YouStack.Screen name="YouMain" component={YouPage} />
+      <YouStack.Screen name="YouSettings" component={YouSettings} />
+      <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
+      <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
+    </YouStack.Navigator>
+  );
+}
+
   // --- NAVIGATION FLOW ---
 
   if (currentScreen === 'dashboard') {
-  return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <NavigationContainer>
-        <Tab.Navigator
-          tabBar={(props) => <NavBar {...props} />}
-          screenOptions={{ headerShown: false }}
-        >
-          <Tab.Screen name="Home" component={UserDashboard} />
-          <Tab.Screen name="Routines" component={RoutinesStackScreen} />
-          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-          <Tab.Screen name="Performance" component={PerformanceStackScreen} />
-          <Tab.Screen name="You" component={PlaceholderScreen} />
-        </Tab.Navigator>
-      </NavigationContainer>
-      <StatusBar style="light" />
-    </View>
-  );
-}
+    return (
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <NavigationContainer>
+          <Tab.Navigator
+            tabBar={(props) => <NavBar {...props} />}
+            screenOptions={{ headerShown: false }}
+          >
+            <Tab.Screen name="Home" component={UserDashboard} />
+            <Tab.Screen name="Routines" component={RoutinesStackScreen} />
+            <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+            <Tab.Screen name="Performance" component={PerformanceStackScreen} />
+            <Tab.Screen name="You" component={YouStackScreen} />
+          </Tab.Navigator>
+        </NavigationContainer>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
 
   if (currentScreen === 'begin') {
     return (
