@@ -53,6 +53,9 @@ import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
 import PushScreen from './src/pages/PushScreen';
+import PerformanceScreen from './src/pages/PerformanceScreen';
+import LeaderboardsScreen from './src/pages/Leaderboards';
+import AchievementsScreen from './src/pages/Achievements';
 
 // Imported your YouPage here
 import YouPage from './src/pages/YouPage';
@@ -67,6 +70,7 @@ SplashScreen.preventAutoHideAsync();
 
 const RoutinesStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
+const PerformanceStack = createNativeStackNavigator();
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -324,18 +328,28 @@ export default function App() {
     return null;
   }
 
-  function WorkoutStackScreen() {
-    return (
-      <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
-        <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
-        <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
-        <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
-        <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
-        <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
-        <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
-      </WorkoutStack.Navigator>
-    );
-  }
+function PerformanceStackScreen() {
+  return (
+    <PerformanceStack.Navigator screenOptions={{ headerShown: false }}>
+      <PerformanceStack.Screen name="PerformanceScreen" component={PerformanceScreen} />
+      <PerformanceStack.Screen name="LeaderboardsScreen" component={LeaderboardsScreen} />
+      <PerformanceStack.Screen name="AchievementsScreen" component={AchievementsScreen} />
+    </PerformanceStack.Navigator>
+  );
+}
+
+function WorkoutStackScreen() {
+  return (
+    <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
+      <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
+      <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
+      <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
+      <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
+      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
+    </WorkoutStack.Navigator>
+  );
+}
 
   function RoutinesStackScreen() {
     return (
@@ -384,6 +398,24 @@ export default function App() {
       </View>
     );
   }
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationContainer>
+        <Tab.Navigator
+          tabBar={(props) => <NavBar {...props} />}
+          screenOptions={{ headerShown: false }}
+        >
+          <Tab.Screen name="Home" component={UserDashboard} />
+          <Tab.Screen name="Routines" component={RoutinesStackScreen} />
+          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+          <Tab.Screen name="Performance" component={PerformanceStackScreen} />
+          <Tab.Screen name="You" component={PlaceholderScreen} />
+        </Tab.Navigator>
+      </NavigationContainer>
+      <StatusBar style="light" />
+    </View>
+  );
+}
 
   if (currentScreen === 'begin') {
     return (
