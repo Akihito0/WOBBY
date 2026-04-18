@@ -15,7 +15,23 @@ export default {
       backgroundColor: "#ffffff"
     },
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      bundleIdentifier: "com.tweetie.wobby",
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false
+      },
+
+      entitlements: {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      },
+      
+      infoPlist: {
+        NSHealthShareUsageDescription: "Wobby needs to read your Apple Watch data to sync your workout history.",
+        NSHealthUpdateUsageDescription: "Wobby needs to save your computer vision workouts to Apple Health."
+      }
+    }
+
     },
     android: {
       package: "com.tweetie.wobby",
@@ -39,6 +55,10 @@ export default {
           RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN
         }
       ]
-    ]
-  }
-};
+    ],
+    extra: {
+      eas: {
+        projectId: "6dd78270-0e8a-408f-83a3-a5a0c21d009c"
+      }
+    }
+  };
