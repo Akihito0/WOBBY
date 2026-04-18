@@ -61,6 +61,8 @@ import YouPage from './src/pages/YouPage';
 import YouSettings from './src/pages/YouSettings';
 import PersonalInformation from './src/pages/PersonalInformation';
 import LinkedDevices from './src/pages/LinkedDevices';
+import PullScreen from './src/pages/PullScreen';
+import LegScreen from './src/pages/LegScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -351,8 +353,8 @@ function RoutinesStackScreen() {
     <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
       <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
       <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
-      <RoutinesStack.Screen name="PullScreen" component={PlaceholderScreen} />
-      <RoutinesStack.Screen name="LegScreen" component={PlaceholderScreen} />
+      <RoutinesStack.Screen name="PullScreen" component={PullScreen} />
+      <RoutinesStack.Screen name="LegScreen" component={LegScreen} />
     </RoutinesStack.Navigator>
   );
 }
