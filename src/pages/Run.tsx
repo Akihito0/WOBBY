@@ -19,55 +19,33 @@ import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../supabase';
-import { uploadRunMedia, uploadMapSnapshot } from '../services/runUpload';
+import { uploadRunMedia, uploadMapSnapshot, snapRouteToRoads } from '../services/runUpload';
 
 // ─── Helper: Convert file URI to base64 ───────────────────────────────────────
 const uriToBase64 = async (uri: string): Promise<string | null> => {
   try {
-    console.log('🔄 Converting URI to base64:', uri);
-    
     // Use XMLHttpRequest instead of fetch for file:// URIs on Android
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
       xhr.onload = () => {
-        if (xhr.status === 200) {
-          try {
-            // xhr.response is the blob/binary data
-            const reader = new FileReader();
-            reader.onload = () => {
-              const base64String = reader.result as string;
-              const base64Data = base64String.split(',')[1] || base64String;
-              console.log('✅ Converted to base64, size:', base64Data.length, 'bytes');
-              resolve(base64Data);
-            };
-            reader.onerror = () => {
-              console.error('❌ FileReader error');
-              reject(new Error('FileReader failed'));
-            };
-            reader.readAsDataURL(xhr.response);
-          } catch (error) {
-            console.error('❌ Error processing response:', error);
-            reject(error);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error("Failed to read blob as data URL"));
           }
-        } else {
-          console.error('❌ XHR failed with status:', xhr.status);
-          reject(new Error(`XHR status ${xhr.status}`));
-        }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(xhr.response);
       };
-      
-      xhr.onerror = () => {
-        console.error('❌ XHR error occurred');
-        reject(new Error('XHR request failed'));
-      };
-      
+      xhr.onerror = reject;
       xhr.responseType = 'blob';
-      xhr.open('GET', uri);
-      xhr.send();
+      xhr.open('GET', uri, true);
+      xhr.send(null);
     });
-    
   } catch (error) {
-    console.error('❌ Error in uriToBase64:', error);
+    console.error('Error in uriToBase64:', error);
     return null;
   }
 };
@@ -193,6 +171,7 @@ const RunScreen = ({ navigation }: any) => {
   const [workoutType, setWorkoutType] = useState('Run');
   const [elevationMetrics, setElevationMetrics] = useState({ gain: 0, loss: 0, min: 0, max: 0 });
   const [isSaving, setIsSaving] = useState(false);
+  const [snappedRoute, setSnappedRoute] = useState<any>(null);
   
   // Finish Modal States
   const [workoutTitle, setWorkoutTitle] = useState('');
@@ -591,10 +570,36 @@ const RunScreen = ({ navigation }: any) => {
 
   const handlePause = () => setRunState('paused');
   
-  const handleTriggerFinish = () => {
-    console.log('🏁 Run finished, triggering snapshot capture...');
+  const handleTriggerFinish = async () => {
     setRunState('finished');
-    // Capture map snapshot when modal opens
+    
+    // Only attempt snapping if we have enough meaningful coordinates
+    if (routeCoords.length >= 2) {
+      try {
+        // Mapbox Map Matching requires coords to be at least ~10m apart
+        // and works best with 2–100 waypoints. Downsample if needed.
+        const MAX_WAYPOINTS = 100;
+        let coordsToSnap = routeCoords;
+        
+        if (routeCoords.length > MAX_WAYPOINTS) {
+          const step = Math.ceil(routeCoords.length / MAX_WAYPOINTS);
+          coordsToSnap = routeCoords.filter((_, i) => i % step === 0);
+          // Always include the last coordinate
+          if (coordsToSnap[coordsToSnap.length - 1] !== routeCoords[routeCoords.length - 1]) {
+            coordsToSnap.push(routeCoords[routeCoords.length - 1]);
+          }
+        }
+  
+        const snapped = await snapRouteToRoads(coordsToSnap);
+        setSnappedRoute(snapped);
+      } catch (error) {
+        // Snapping failed (no road data, too few points, etc.) — silently fall back
+        console.warn('Route snapping unavailable, using raw GPS data');
+        setSnappedRoute(null);
+      }
+    }
+  
+    // Run snapshot capture independently, not dependent on snapping
     captureAndStoreMapSnapshot();
   };
 
@@ -602,42 +607,48 @@ const RunScreen = ({ navigation }: any) => {
   const captureAndStoreMapSnapshot = async () => {
     try {
       console.log('📸 Starting map snapshot capture...');
-      
-      // Delay slightly to allow map to fully render with route
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+  
       if (!mapViewRef.current) {
         console.warn('❌ Map view ref not available');
         setMapSnapshot(null);
         return;
       }
+  
+      let snapshotUri: string | null = null;
       
-      console.log('📸 Calling takeSnap()...');
-      const snapshotUri = await mapViewRef.current.takeSnap();
-      
-      if (!snapshotUri) {
-        console.warn('❌ takeSnap returned null or empty string');
+      try {
+        snapshotUri = await mapViewRef.current.takeSnap(true); // pass `true` for writeToDisk on Android
+      } catch (snapError) {
+        // takeSnap can throw a synthetic event on Android — log it safely
+        console.warn('⚠️ takeSnap() failed:', 
+          snapError instanceof Error ? snapError.message : JSON.stringify(snapError)
+        );
         setMapSnapshot(null);
         return;
       }
-
+  
+      if (!snapshotUri || typeof snapshotUri !== 'string') {
+        console.warn('❌ takeSnap returned invalid value:', snapshotUri);
+        setMapSnapshot(null);
+        return;
+      }
+  
       console.log('✅ Snapshot URI obtained:', snapshotUri);
-      
-      // **IMPORTANT**: Convert to base64 IMMEDIATELY while the file is still available
-      console.log('🔄 Converting snapshot to base64 immediately...');
+  
       const base64Data = await uriToBase64(snapshotUri);
-      
+  
       if (base64Data && base64Data.length > 0) {
-        console.log('✅ Snapshot converted to base64, size:', base64Data.length, 'bytes');
-        // Store base64directly instead of URI
+        console.log('✅ Snapshot converted to base64, size:', base64Data.length);
         setMapSnapshot(base64Data);
-        console.log('💾 Stored base64 snapshot in state');
       } else {
         console.warn('⚠️ Failed to convert snapshot to base64');
         setMapSnapshot(null);
       }
     } catch (error) {
-      console.error('❌ Error in captureAndStoreMapSnapshot:', error);
+      console.error('❌ Error in captureAndStoreMapSnapshot:', 
+        error instanceof Error ? error.message : JSON.stringify(error)
+      );
       setMapSnapshot(null);
     }
   };
@@ -652,14 +663,53 @@ const RunScreen = ({ navigation }: any) => {
     setWorkoutDesc('');
     setSelectedMedia([]);
     setMapSnapshot(null);
+    setSnappedRoute(null);
   };
 
   const pace = calcPace(distance, elapsed);
   const distanceDisplay = distance.toFixed(2);
 
+  // ── SIMULATE RUN (FOR DEV ONLY) ───────────────────────────────────────────
+  const handleSimulateRun = () => {
+    console.log('🚀 SIMULATING 1KM RUN...');
+    const mockRoute: Coordinate[] = [];
+    // Coordinates for a ~1km loop around a park in Santa Monica
+    const startLat = 34.015;
+    const startLon = -118.49;
+    const numPoints = 50;
+
+    // Create a simple square path
+    for (let i = 0; i < numPoints; i++) {
+      let lat = startLat;
+      let lon = startLon;
+      const segment = Math.floor(i / (numPoints / 4));
+      const progress = (i % (numPoints / 4)) / (numPoints / 4);
+
+      if (segment === 0) lon += progress * 0.005; // East
+      else if (segment === 1) { lon = startLon + 0.005; lat += progress * 0.002; } // North
+      else if (segment === 2) { lat = startLat + 0.002; lon = startLon + 0.005 * (1 - progress); } // West
+      else { lon = startLon; lat = startLat + 0.002 * (1 - progress); } // South
+      
+      mockRoute.push({
+        latitude: lat,
+        longitude: lon,
+        altitude: 50 + Math.sin(i / 5) * 5, // Simulate some elevation change
+      });
+    }
+    
+    setRouteCoords(mockRoute);
+    const simulatedDistance = calcDistance(mockRoute);
+    setDistance(simulatedDistance);
+    setElapsed(360); // 6 minutes
+    setElevationMetrics(calcElevationMetrics(mockRoute));
+    setCurrentLocation(mockRoute[mockRoute.length - 1]);
+    setRunState('paused'); // Go to paused screen to allow finishing
+    setGpsReady(true);
+    console.log(`✅ Simulation complete: ${simulatedDistance.toFixed(2)}km, 360s`);
+  };
+
   return (
     <View style={styles.container}>
-      {/* ── Map (Now Full Screen) ────────────────────────────────────────── */}
       <MapboxGL.MapView
         ref={mapViewRef}
         style={styles.map}
@@ -689,12 +739,25 @@ const RunScreen = ({ navigation }: any) => {
           </MapboxGL.PointAnnotation>
         )}
 
-        {routeGeoJSON && (
+        {routeGeoJSON && !snappedRoute && (
           <MapboxGL.ShapeSource id="routeSource" shape={routeGeoJSON}>
             <MapboxGL.LineLayer
               id="routeLine"
               style={{
-                lineColor: '#34D399', // A nice green color
+                lineColor: '#34D399',
+                lineWidth: 4,
+                lineOpacity: 0.8,
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        )}
+
+        {snappedRoute && (
+          <MapboxGL.ShapeSource id="snappedRouteSource" shape={snappedRoute}>
+            <MapboxGL.LineLayer
+              id="snappedRouteLine"
+              style={{
+                lineColor: '#34D399',
                 lineWidth: 4,
                 lineOpacity: 0.8,
               }}
@@ -706,7 +769,6 @@ const RunScreen = ({ navigation }: any) => {
       {/* ── Floating Top Header ────────────────────────────────────────── */}
       <View style={styles.floatingHeader}>
         <TouchableOpacity style={styles.backBtnWrap} onPress={() => navigation.goBack()}>
-          {/* Fallback back arrow if image fails */}
           <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>{'<'}</Text>
         </TouchableOpacity>
       </View>
@@ -730,7 +792,6 @@ const RunScreen = ({ navigation }: any) => {
       {/* ── Bottom Interface Overlay ────────────────────────────────────── */}
       <View style={styles.bottomOverlayContainer}>
         
-        {/* Floating Stats Panel */}
         <View style={styles.statsPanel}>
           <GpsDot gpsReady={gpsReady} runState={runState} />
           <View style={styles.statsRow}>
@@ -750,7 +811,6 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           </View>
           
-          {/* Elevation Row (shown when running or has data) */}
           {(runState === 'running' || elevationMetrics.gain > 0) && (
             <>
               <View style={styles.statDivider2} />
@@ -774,10 +834,8 @@ const RunScreen = ({ navigation }: any) => {
           )}
         </View>
 
-        {/* Dynamic Controls Bar */}
         <View style={styles.bottomControlsBg}>
           
-          {/* IDLE STATE */}
           {runState === 'idle' && (
             <View style={styles.idleControlsRow}>
               <TouchableOpacity style={styles.sideControl}>
@@ -799,7 +857,6 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* RUNNING STATE */}
           {runState === 'running' && (
             <View style={styles.activeControlsRow}>
               <TouchableOpacity style={styles.restBtn} onPress={handlePause} activeOpacity={0.85}>
@@ -809,7 +866,6 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* PAUSED STATE */}
           {runState === 'paused' && (
             <View style={styles.pausedControlsRow}>
               <TouchableOpacity style={styles.resumeBtn} onPress={handleStart} activeOpacity={0.85}>
@@ -823,23 +879,26 @@ const RunScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             </View>
           )}
+
+          {__DEV__ && runState === 'idle' && (
+            <TouchableOpacity style={styles.simulateBtn} onPress={handleSimulateRun}>
+              <Text style={styles.simulateBtnText}>Simulate 1km Run</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* ── FINISH WORKOUT MODAL ────────────────────────────────────────── */}
       <Modal visible={runState === 'finished'} animationType="slide" transparent={false}>
         <View style={styles.modalContainer}>
           <ScrollView contentContainerStyle={styles.modalScroll}>
-            {/* Modal Header */}
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setRunState('paused')}>
                 <Text style={styles.modalBackIcon}>{'<'}</Text>
               </TouchableOpacity>
               <Text style={styles.modalTitle}>FINISH WORKOUT</Text>
-              <View style={{ width: 24 }} /> {/* Balance spacer */}
+              <View style={{ width: 24 }} />
             </View>
 
-            {/* Inputs */}
             <TextInput
               style={styles.inputField}
               placeholder="Title of your run"
@@ -856,9 +915,7 @@ const RunScreen = ({ navigation }: any) => {
               onChangeText={setWorkoutDesc}
             />
 
-            {/* Media Grid */}
             <View style={styles.mediaGrid}>
-              {/* Map Snapshot */}
               <View style={styles.mapSnapshotContainer}>
                 {mapSnapshot ? (
                   <Image 
@@ -878,7 +935,6 @@ const RunScreen = ({ navigation }: any) => {
                 <Text style={styles.addPhotosText}>Add Photos / Videos</Text>
               </TouchableOpacity>
               
-              {/* Selected Media Previews */}
               {selectedMedia.map((media, index) => (
                 <View key={index} style={styles.mediaPreviewContainer}>
                   <Image 
@@ -896,7 +952,6 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           </ScrollView>
 
-          {/* Modal Bottom Buttons */}
           <View style={styles.modalBottomBar}>
             <TouchableOpacity 
               style={styles.discardBtn} 
@@ -1034,6 +1089,19 @@ const styles = StyleSheet.create({
   },
   finishSquareIcon: { width: 14, height: 14, backgroundColor: '#000', borderRadius: 2, marginRight: 8 },
   finishSplitLabel: { color: '#000', fontSize: 14, fontFamily: 'Montserrat-Bold', letterSpacing: 1 },
+
+  // Simulate Button (DEV only)
+  simulateBtn: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#FF6347',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  simulateBtnText: {
+    color: 'white',
+    fontFamily: 'Montserrat-Bold',
+  },
 
   // Finish Modal Styles
   modalContainer: { flex: 1, backgroundColor: '#121212' },

@@ -67,34 +67,46 @@ export const uploadMapSnapshot = async (
   contentType: string = 'image/png'
 ): Promise<string> => {
   try {
-    console.log(`📸 Starting map snapshot upload: ${fileName} (${contentType})`);
-    console.log(`👤 User ID: ${userId}, File size: ${file.length} bytes`);
-    
     const filePath = `${userId}/${new Date().getTime()}-${fileName}`;
-    console.log(`📁 File path: ${filePath}`);
-
     const decodedFile = decode(file);
-    console.log(`✅ Base64 decoded successfully: ${decodedFile.byteLength} bytes`);
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('map-snapshots')
       .upload(filePath, decodedFile, { contentType });
 
     if (error) {
-      console.error(`❌ Upload error for ${fileName}:`, error);
       throw new Error(`Upload failed: ${error.message}`);
     }
-
-    console.log(`✅ Map snapshot uploaded successfully: ${filePath}`);
 
     const { data: { publicUrl } } = supabase.storage
       .from('map-snapshots')
       .getPublicUrl(filePath);
 
-    console.log(`🔗 Public URL: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error('❌ Error uploading map snapshot:', error);
+    console.error('Error uploading map snapshot:', error);
+    throw error;
+  }
+};
+
+export const snapRouteToRoads = async (coords: { latitude: number; longitude: number }[]): Promise<any> => {
+  const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+  if (!MAPBOX_TOKEN) {
+    throw new Error('Mapbox token is not configured');
+  }
+
+  const coordinates = coords.map(c => `${c.longitude},${c.latitude}`).join(';');
+  const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinates}?access_token=${MAPBOX_TOKEN}&geometries=geojson`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.code !== 'Ok') {
+      throw new Error(`Mapbox Matching API error: ${data.message}`);
+    }
+    return data.matchings[0].geometry;
+  } catch (error) {
+    console.error('Error snapping route to roads:', error);
     throw error;
   }
 };
