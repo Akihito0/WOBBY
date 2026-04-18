@@ -18,23 +18,34 @@ export const uploadRunMedia = async (
   contentType: string = 'image/png'
 ): Promise<string> => {
   try {
+    console.log(`📤 Starting media upload: ${fileName} (${contentType})`);
+    console.log(`👤 User ID: ${userId}, File size: ${file.length} bytes`);
+    
     const filePath = `${userId}/${new Date().getTime()}-${fileName}`;
+    console.log(`📁 File path: ${filePath}`);
+
+    const decodedFile = decode(file);
+    console.log(`✅ Base64 decoded successfully: ${decodedFile.byteLength} bytes`);
 
     const { data, error } = await supabase.storage
       .from('workout-media')
-      .upload(filePath, decode(file), { contentType });
+      .upload(filePath, decodedFile, { contentType });
 
     if (error) {
+      console.error(`❌ Upload error for ${fileName}:`, error);
       throw new Error(`Upload failed: ${error.message}`);
     }
+
+    console.log(`✅ File uploaded successfully: ${filePath}`);
 
     const { data: { publicUrl } } = supabase.storage
       .from('workout-media')
       .getPublicUrl(filePath);
 
+    console.log(`🔗 Public URL: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error('Error uploading run media:', error);
+    console.error('❌ Error uploading run media:', error);
     throw error;
   }
 };
@@ -56,23 +67,34 @@ export const uploadMapSnapshot = async (
   contentType: string = 'image/png'
 ): Promise<string> => {
   try {
+    console.log(`📸 Starting map snapshot upload: ${fileName} (${contentType})`);
+    console.log(`👤 User ID: ${userId}, File size: ${file.length} bytes`);
+    
     const filePath = `${userId}/${new Date().getTime()}-${fileName}`;
+    console.log(`📁 File path: ${filePath}`);
+
+    const decodedFile = decode(file);
+    console.log(`✅ Base64 decoded successfully: ${decodedFile.byteLength} bytes`);
 
     const { data, error } = await supabase.storage
       .from('map-snapshots')
-      .upload(filePath, decode(file), { contentType });
+      .upload(filePath, decodedFile, { contentType });
 
     if (error) {
+      console.error(`❌ Upload error for ${fileName}:`, error);
       throw new Error(`Upload failed: ${error.message}`);
     }
+
+    console.log(`✅ Map snapshot uploaded successfully: ${filePath}`);
 
     const { data: { publicUrl } } = supabase.storage
       .from('map-snapshots')
       .getPublicUrl(filePath);
 
+    console.log(`🔗 Public URL: ${publicUrl}`);
     return publicUrl;
   } catch (error) {
-    console.error('Error uploading map snapshot:', error);
+    console.error('❌ Error uploading map snapshot:', error);
     throw error;
   }
 };
