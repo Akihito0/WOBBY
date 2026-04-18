@@ -9,9 +9,13 @@ import {
   FlatList,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../supabase';
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,6 +34,7 @@ const ITEM_SPACING = (width - ITEM_SIZE) / 2;
 export default function AvatarSelect({ onNavigateNext }: { onNavigateNext: () => void }) {
   const [activeIndex, setActiveIndex] = useState(0); 
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const isOnUploadSlot = activeIndex === 0;
@@ -60,6 +65,73 @@ export default function AvatarSelect({ onNavigateNext }: { onNavigateNext: () =>
 
     if (!result.canceled && result.assets.length > 0) {
       setUploadedImage(result.assets[0].uri);
+    }
+  };
+
+  const handleContinue = async () => {
+    if (!canContinue) return;
+    setLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      let avatarUrl = '';
+      
+      // Get Supabase project URL for constructing storage links
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+
+      // Option 1: User selected a pre-made avatar
+      if (activeIndex > 0) {
+        const selectedAvatar = AVATARS[activeIndex];
+        // Generate proper Supabase bucket URL for premade avatar
+        // Format: https://[project-id].supabase.co/storage/v1/object/public/avatars/premade/[avatar-id].png
+        avatarUrl = `${supabaseUrl}/storage/v1/object/public/avatars/premade/${selectedAvatar.id}.png`;
+      }
+      // Option 2: User uploaded a custom image
+      else if (uploadedImage) {
+        const base64 = await FileSystem.readAsStringAsync(uploadedImage, {
+          encoding: 'base64',
+        });
+        
+        const filePath = `${user.id}/${new Date().getTime()}.png`;
+        const contentType = 'image/png';
+
+        const { data, error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, decode(base64), { contentType });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+
+        avatarUrl = publicUrl;
+      }
+
+      if (!avatarUrl) {
+        throw new Error("No avatar selected or uploaded.");
+      }
+
+      // Update the user's profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', user.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      onNavigateNext();
+
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update avatar.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -147,21 +219,27 @@ export default function AvatarSelect({ onNavigateNext }: { onNavigateNext: () =>
           canContinue && styles.continueButtonActive,
         ]}
         activeOpacity={0.8}
-        disabled={!canContinue}
-        onPress={onNavigateNext}
+        disabled={!canContinue || loading}
+        onPress={handleContinue}
       >
         {canContinue && <View style={styles.neonBorder} />}
         <View style={styles.buttonContent}>
-          <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
-            Continue
-          </Text>
-          <Image
-            source={canContinue
-              ? require('../assets/arrow0.png')
-              : require('../assets/arrow.png')}
-            style={styles.arrow}
-            resizeMode="contain"
-          />
+          {loading ? (
+            <ActivityIndicator color="#CCFF00" />
+          ) : (
+            <>
+              <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
+                Continue
+              </Text>
+              <Image
+                source={canContinue
+                  ? require('../assets/arrow0.png')
+                  : require('../assets/arrow.png')}
+                style={styles.arrow}
+                resizeMode="contain"
+              />
+            </>
+          )}
         </View>
       </TouchableOpacity>
     </LinearGradient>

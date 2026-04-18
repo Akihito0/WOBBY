@@ -5,9 +5,12 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Dimensions, 
-  Image 
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -21,8 +24,31 @@ const GOALS = [
 
 export default function Goal({ onNext }: { onNext: () => void }) {
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const canContinue = selectedGoal !== null;
+
+  const handleContinue = async () => {
+    if (!canContinue) return;
+    setLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user logged in");
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ goal: selectedGoal })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      onNext();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save goal.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <LinearGradient
@@ -62,19 +88,25 @@ export default function Goal({ onNext }: { onNext: () => void }) {
         <TouchableOpacity
           style={[styles.continueButton, canContinue && styles.continueButtonActive]}
           activeOpacity={0.8}
-          disabled={!canContinue}
-          onPress={onNext}
+          disabled={!canContinue || loading}
+          onPress={handleContinue}
         >
           {canContinue && <View style={styles.neonBorder} />}
           <View style={styles.buttonContent}>
-            <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
-              Continue
-            </Text>
-            <Image 
-              source={canContinue ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
-              style={styles.arrow}
-              resizeMode="contain"
-            />
+            {loading ? (
+              <ActivityIndicator color="#CCFF00" />
+            ) : (
+              <>
+                <Text style={[styles.buttonText, canContinue && styles.buttonTextActive]}>
+                  Continue
+                </Text>
+                <Image 
+                  source={canContinue ? require('../assets/arrow0.png') : require('../assets/arrow.png')} 
+                  style={styles.arrow}
+                  resizeMode="contain"
+                />
+              </>
+            )}
           </View>
         </TouchableOpacity>
 

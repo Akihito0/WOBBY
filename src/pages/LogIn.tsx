@@ -42,8 +42,15 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
     });
     if (error) {
       Alert.alert('Sign In Error', error.message);
+      console.error('❌ Sign in failed:', error.message);
     } else {
-      onSignIn();
+      console.log('✅ Sign in successful! User:', data.user?.email);
+      console.log('💾 Session being saved to AsyncStorage...');
+      // Wait a moment for Supabase to save the session
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('🚀 Auth state listener will handle routing based on profile completeness...');
+      // Don't call onSignIn directly - let onAuthStateChange listener handle routing
+      // It will check profile completeness and route appropriately
     }
     setLoading(false);
   };

@@ -50,9 +50,32 @@ import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
 import NotificationsScreen from './src/pages/NotificationsScreen';
+import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
+import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
+import RoutinesScreen from './src/pages/RoutinesScreen';
+import PushScreen from './src/pages/PushScreen';
+import PerformanceScreen from './src/pages/PerformanceScreen';
+import LeaderboardsScreen from './src/pages/Leaderboards';
+import AchievementsScreen from './src/pages/Achievements';
+import YouPage from './src/pages/YouPage';
+import YouSettings from './src/pages/YouSettings';
+import PersonalInformation from './src/pages/PersonalInformation';
+import LinkedDevices from './src/pages/LinkedDevices';
 
 SplashScreen.preventAutoHideAsync();
+
+type YouStackParamList = {
+  YouMain: undefined;
+  YouSettings: undefined;
+  PersonalInformation: undefined;
+  LinkedDevices: undefined;
+};
+
+const RoutinesStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
+const PerformanceStack = createNativeStackNavigator();
+const YouStack = createNativeStackNavigator<YouStackParamList>();
+
 const Stack = createNativeStackNavigator();
 
 const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
@@ -61,8 +84,30 @@ const Tab = createBottomTabNavigator();
 
 const { width, height } = Dimensions.get('window');
 
+// Define a type for the screens
+type ScreenName = 
+  | 'splash'
+  | 'entry'
+  | 'login'
+  | 'register'
+  | 'username'
+  | 'avatarSelect'
+  | 'welcome'
+  | 'welcome1'
+  | 'welcome2'
+  | 'welcome3'
+  | 'goal'
+  | 'age'
+  | 'gender'
+  | 'weight'
+  | 'height'
+  | 'physLvl'
+  | 'begin'
+  | 'dashboard';
+
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('splash');
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>('splash');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [fontsLoaded] = useFonts({
     'Montserrat-Regular': Montserrat_400Regular,
@@ -75,6 +120,171 @@ export default function App() {
     'Barlow-SemiBold': Barlow_600SemiBold,
     'Barlow-Regular': Barlow_400Regular,
   });
+
+  // Check if user is already logged in when app starts
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        console.log('🔍 Checking for existing session...');
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          // User is already logged in, check their profile completeness
+          console.log('✅ Session found! User:', session.user?.email);
+          
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('username, avatar_url, goal, age, gender, weight, height, physical_level')
+            .eq('id', session.user.id)
+            .single();
+
+          if (error && error.code !== 'PGRST116') {
+            throw error;
+          }
+
+          // Check if onboarding is complete (all fields filled)
+          const isOnboardingComplete = 
+            profile &&
+            profile.username &&
+            profile.avatar_url &&
+            profile.goal &&
+            profile.age &&
+            profile.gender &&
+            profile.weight &&
+            profile.height &&
+            profile.physical_level;
+
+          if (!isOnboardingComplete) {
+            console.log('👤 Incomplete profile detected, resuming onboarding...');
+            
+            // Route to appropriate onboarding page
+            // Start from Username if avatar_url is missing (fresh registration)
+            if (!profile || !profile.avatar_url) {
+              console.log('→ Starting from Username (fresh registration)');
+              setCurrentScreen('username');
+            } else if (!profile.goal) {
+              console.log('→ Resuming from Goal');
+              setCurrentScreen('goal');
+            } else if (!profile.age) {
+              console.log('→ Resuming from Age');
+              setCurrentScreen('age');
+            } else if (!profile.gender) {
+              console.log('→ Resuming from Gender');
+              setCurrentScreen('gender');
+            } else if (!profile.weight) {
+              console.log('→ Resuming from Weight');
+              setCurrentScreen('weight');
+            } else if (!profile.height) {
+              console.log('→ Resuming from Height');
+              setCurrentScreen('height');
+            } else if (!profile.physical_level) {
+              console.log('→ Resuming from PhysLvl');
+              setCurrentScreen('physLvl');
+            } else {
+              setCurrentScreen('username');
+            }
+          } else {
+            // Profile complete, go to dashboard
+            console.log('🚀 Complete profile found, navigating to dashboard...');
+            setCurrentScreen('dashboard');
+          }
+        } else {
+          // No session, show entry/login screen
+          console.log('❌ No session found. Showing entry screen.');
+          setCurrentScreen('entry');
+        }
+      } catch (error) {
+        console.error('❌ Error checking auth status:', error);
+        // Default to entry on error
+        setCurrentScreen('entry');
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔔 Auth state changed:', event, 'Session:', session ? 'exists' : 'null');
+      
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
+        // Sign-in event OR email confirmation detected while app is open
+        console.log('📝 User signed in or updated, checking profile completeness...');
+        const checkProfile = async () => {
+          try {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('username, avatar_url, goal, age, gender, weight, height, physical_level')
+              .eq('id', session.user.id)
+              .single();
+
+            if (error && error.code !== 'PGRST116') {
+              // PGRST116 = no rows returned (expected for new users)
+              throw error;
+            }
+
+            // Check if onboarding is complete ( all fields filled)
+            const isOnboardingComplete = 
+              profile &&
+              profile.username &&
+              profile.avatar_url &&
+              profile.goal &&
+              profile.age &&
+              profile.gender &&
+              profile.weight &&
+              profile.height &&
+              profile.physical_level;
+
+            if (!isOnboardingComplete) {
+              console.log('👤 Incomplete profile detected, starting/continuing onboarding...');
+              
+              // Route to appropriate onboarding page based on what's been filled
+              // Start from Username if avatar_url is missing (fresh registration)
+              if (!profile || !profile.avatar_url) {
+                console.log('→ Starting from Username (fresh registration)');
+                setCurrentScreen('username');
+              } else if (!profile.goal) {
+                console.log('→ Resuming from Goal');
+                setCurrentScreen('goal');
+              } else if (!profile.age) {
+                console.log('→ Resuming from Age');
+                setCurrentScreen('age');
+              } else if (!profile.gender) {
+                console.log('→ Resuming from Gender');
+                setCurrentScreen('gender');
+              } else if (!profile.weight) {
+                console.log('→ Resuming from Weight');
+                setCurrentScreen('weight');
+              } else if (!profile.height) {
+                console.log('→ Resuming from Height');
+                setCurrentScreen('height');
+              } else if (!profile.physical_level) {
+                console.log('→ Resuming from PhysLvl');
+                setCurrentScreen('physLvl');
+              } else {
+                setCurrentScreen('username');
+              }
+            } else {
+              console.log('✅ Onboarding complete! User profile fully filled.');
+              setCurrentScreen('dashboard');
+            }
+          } catch (error) {
+            console.error('❌ Error checking profile:', error);
+            setCurrentScreen('username'); // Default to onboarding on error
+          }
+        };
+        checkProfile();
+      } else if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out, going to entry screen...');
+        setCurrentScreen('entry');
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, []);
 
   // Handle deep link after email confirmation
   useEffect(() => {
@@ -112,18 +322,40 @@ export default function App() {
     return null;
   }
 
-  function WorkoutStackScreen() {
+function PerformanceStackScreen() {
+  return (
+    <PerformanceStack.Navigator screenOptions={{ headerShown: false }}>
+      <PerformanceStack.Screen name="PerformanceScreen" component={PerformanceScreen} />
+      <PerformanceStack.Screen name="LeaderboardsScreen" component={LeaderboardsScreen} />
+      <PerformanceStack.Screen name="AchievementsScreen" component={AchievementsScreen} />
+    </PerformanceStack.Navigator>
+  );
+}
+
+
+function WorkoutStackScreen() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
       <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
       <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
       <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
+      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
     </WorkoutStack.Navigator>
   );
 }
 
-  // --- NAVIGATION FLOW ---
+function RoutinesStackScreen() {
+  return (
+    <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
+      <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
+      <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
+      <RoutinesStack.Screen name="PullScreen" component={PlaceholderScreen} />
+      <RoutinesStack.Screen name="LegScreen" component={PlaceholderScreen} />
+    </RoutinesStack.Navigator>
+  );
+}
 
  if (currentScreen === 'dashboard') {
   return (
@@ -156,8 +388,38 @@ export default function App() {
       </NavigationContainer>
       <StatusBar style="light" />
     </View>
+function YouStackScreen() {
+  return (
+    <YouStack.Navigator screenOptions={{ headerShown: false }}>
+      <YouStack.Screen name="YouMain" component={YouPage} />
+      <YouStack.Screen name="YouSettings" component={YouSettings} />
+      <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
+      <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
+    </YouStack.Navigator>
   );
 }
+
+  // --- NAVIGATION FLOW ---
+
+  if (currentScreen === 'dashboard') {
+    return (
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <NavigationContainer>
+          <Tab.Navigator
+            tabBar={(props) => <NavBar {...props} />}
+            screenOptions={{ headerShown: false }}
+          >
+            <Tab.Screen name="Home" component={UserDashboard} />
+            <Tab.Screen name="Routines" component={RoutinesStackScreen} />
+            <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+            <Tab.Screen name="Performance" component={PerformanceStackScreen} />
+            <Tab.Screen name="You" component={YouStackScreen} />
+          </Tab.Navigator>
+        </NavigationContainer>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
 
   if (currentScreen === 'begin') {
     return (
@@ -258,7 +520,10 @@ export default function App() {
   if (currentScreen === 'username') {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <Username onNavigateNext={() => setCurrentScreen('avatarSelect')} />
+        <Username 
+          onNavigateNext={() => setCurrentScreen('avatarSelect')}
+          onLogout={() => setCurrentScreen('entry')}
+        />
       </View>
     );
   }
@@ -268,6 +533,10 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Register 
           onNavigateToLogin={() => setCurrentScreen('login')} 
+          onRegisterSuccess={() => {
+            // onAuthStateChange will handle navigation, so we can just log it.
+            console.log('Registration successful, waiting for auth state change...');
+          }}
         />
       </View>
     );
@@ -277,9 +546,9 @@ export default function App() {
     return (
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
-          onNavigateToRegister={() => setCurrentScreen('register')} 
-          onSignIn={() => setCurrentScreen('dashboard')} 
-          />
+          onNavigateToRegister={() => setCurrentScreen('register')}
+          onSignIn={() => {}} // Auth listener handles routing
+        />
       </View>
     );
   }
