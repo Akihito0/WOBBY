@@ -15,11 +15,31 @@ const PushScreen = ({ navigation }: any) => {
   const [exercises, setExercises] = useState<Exercise[]>([
     {
       id: 1,
+      name: 'Push Ups',
+      sets: [
+        { id: 1, weight: 'Body Weight', reps: '8' },
+        { id: 2, weight: 'Body Weight', reps: '8' },
+        { id: 3, weight: 'Body Weight', reps: '8' },
+      ],
+      expanded: false,
+    },
+    {
+      id: 2,
       name: 'Bench Press',
       sets: [
-        { id: 1, weight: 'Body Weight', reps: '12' },
-        { id: 2, weight: 'Body Weight', reps: '12' },
-        { id: 3, weight: 'Body Weight', reps: '12' },
+        { id: 1, weight: 'Weighted', reps: '8' },
+        { id: 2, weight: 'Weighted', reps: '8' },
+        { id: 3, weight: 'Weighted', reps: '8' },
+      ],
+      expanded: false,
+    },
+    {
+      id: 3,
+      name: 'Tricep Dips',
+      sets: [
+        { id: 1, weight: 'Body Weight', reps: '8' },
+        { id: 2, weight: 'Body Weight', reps: '8' },
+        { id: 3, weight: 'Body Weight', reps: '8' },
       ],
       expanded: false,
     },
