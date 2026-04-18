@@ -10,22 +10,22 @@ import { View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// ─── DATA ──────────────────────────────────────────────────────────────────
+// DATA 
 const sessionCards = [
   { 
     label: "PUSH", 
     sub: "Chest, Shoulders, Triceps", 
-    image: require("../assets/push_icon.png") 
+    image: require("../assets/push.png") 
   },
   { 
     label: "PULL", 
     sub: "Back, Biceps", 
-    image: require("../assets/pull_icon.png") 
+    image: require("../assets/pull.png") 
   },
   { 
     label: "LEG", 
     sub: "Lower Body", 
-    image: require("../assets/leg_icon.png") 
+    image: require("../assets/leg.png") 
   },
 ];
 
@@ -71,7 +71,6 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_800ExtraBold",
     fontSize: 16,
     color: "#fff",
-    letterSpacing: 1.5,
     textTransform: "uppercase",
     marginLeft: 16,
     marginBottom: 15,
@@ -110,7 +109,6 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_900Black",
     fontSize: 16,
     color: "#FFFFFF",
-    letterSpacing: 0.5,
     marginTop: 5,
   },
   subLabel: {

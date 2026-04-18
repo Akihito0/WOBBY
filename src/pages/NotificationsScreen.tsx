@@ -1,0 +1,144 @@
+import React from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  StatusBar,
+  Image,
+  Platform,
+  FlatList
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import NotificationCard from '../components/NotificationCard';
+
+const notifications = [
+  {
+    id: '1',
+    title: 'You have a new challenger!',
+    message: '@tweetzie wants to challenge you.',
+    timestamp: '2 hrs ago',
+    avatar: require('../assets/1.png'),
+    isRead: false,
+  },
+  {
+    id: '2',
+    title: 'You have a new challenger!',
+    message: '@calrkGwapough wants to challenge you.',
+    timestamp: '2 hrs ago',
+    avatar: require('../assets/2.png'),
+    isRead: true,
+  },
+  // Adding duplicates to ensure the list is long enough to scroll
+  {
+    id: '3',
+    title: 'You have a new challenger!',
+    message: '@gym_rat_99 wants to challenge you.',
+    timestamp: '5 hrs ago',
+    avatar: require('../assets/3.png'),
+    isRead: true,
+  },
+  {
+    id: '4',
+    title: 'You have a new challenger!',
+    message: '@fitness_king wants to challenge you.',
+    timestamp: '1 day ago',
+    avatar: require('../assets/4.png'),
+    isRead: true,
+  },
+];
+
+const NotificationsScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      
+      {/* ── FIXED HEADER ── */}
+      {/* Being outside the FlatList ensures it never moves */}
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
+            <Image 
+              source={require('../assets/back0.png')} 
+              style={styles.backIcon}
+            />
+          </TouchableOpacity>
+
+          <Text style={styles.headerTitle}>NOTIFICATIONS</Text>
+        </View>
+      </View>
+
+      {/* ── SCROLLABLE BODY ── */}
+      <View style={styles.content}>
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <NotificationCard
+              title={item.title}
+              message={item.message}
+              timestamp={item.timestamp}
+              avatar={item.avatar}
+              isRead={item.isRead}
+              onPress={() => console.log(`Pressed notification ${item.id}`)}
+            />
+          )}
+        />
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  root: { 
+    flex: 1, 
+    backgroundColor: "#13140E",
+  },
+  header: {
+    backgroundColor: "#000000",
+    paddingTop: Platform.OS === "ios" ? 52 : 32,
+    paddingBottom: 22,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1, 
+    borderBottomColor: "#1a1a1a",
+    zIndex: 10, // Ensures header stays on top of content
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 40,
+  },
+  backButton: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 30,
+    marginLeft: 10, 
+  },
+  backIcon: {
+    width: 30, 
+    height: 30,
+    resizeMode: 'contain',
+  },
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 25,
+    fontFamily: 'Montserrat_900Black', 
+    marginTop: 13,
+    marginLeft: 120,
+    textAlign: 'left',
+  },
+  content: {
+    flex: 1,
+    backgroundColor: '#121310',
+  },
+});
+
+export default NotificationsScreen;
