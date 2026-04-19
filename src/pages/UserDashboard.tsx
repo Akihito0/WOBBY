@@ -70,7 +70,7 @@ export default function UserDashboard() {
         showsVerticalScrollIndicator={false}
       >
         {/* ════════ STREAK ════════ */}
-        <StreakCalendar/>
+        <StreakCalendar navigation={navigation}/>
 
         {/* ════════ STATS CARDS ════════ */}
         <View style={styles.separator}>

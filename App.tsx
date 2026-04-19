@@ -67,7 +67,7 @@ import LegScreen from './src/pages/LegScreen';
 SplashScreen.preventAutoHideAsync();
 
 type YouStackParamList = {
-  YouMain: undefined;
+  YouMain: { scrollTo?: string };
   YouSettings: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
