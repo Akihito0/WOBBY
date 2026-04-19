@@ -12,9 +12,11 @@ import {
   Dimensions,
   StatusBar,
   SafeAreaView,
+  FlatList,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ACHIEVEMENT_DATA } from './Achievements';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +30,9 @@ const PerformanceScreen = () => {
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
   const [showDailyGains, setShowDailyGains] = useState(false);
   const [showLifetimeArchive, setShowLifetimeArchive] = useState(false);
+
+  // Achievements data - show 5-6 achievements, but only 3 visible initially
+  const achievements = ACHIEVEMENT_DATA.slice(0, 6);
 
   // Animated flowing bar
   const flowAnim = useRef(new Animated.Value(-width)).current;
@@ -52,20 +57,20 @@ const PerformanceScreen = () => {
         {/* ── HEADER ── */}
         <ImageBackground
           source={require('../assets/perfBG.png')}
-          style={styles.header}
+          style={[styles.header, showInfoDropdown && styles.headerExpanded]}
           resizeMode="cover"
         >
           {/* Username */}
-          <View style={styles.usernameRow}>
-            <Image source={require('../assets/1.png')} style={styles.avatar} />
-            <Text style={styles.username}>cashew_12345</Text>
-          </View>
+          {/*<View style={styles.usernameRow}>*/}
+          {/*<Image source={require('../assets/1.png')} style={styles.avatar} />*/}
+          {/*<Text style={styles.username}>cashew_12345</Text>*/}
+          {/*</View>*/}
 
           {/* XP Card */}
-          <View style={styles.xpCard}>
+          <View style={[styles.xpCard, showInfoDropdown && styles.xpCardExpanded]}>
             {/* Label row */}
             <View style={styles.xpLabelRow}>
-              <Text style={styles.xpLabel}>YOUR CUMULATIVE XP</Text>
+              <Text style={styles.xpLabel}>   YOUR CUMULATIVE XP</Text>
               <TouchableOpacity
                 onPress={() => setShowInfoDropdown(!showInfoDropdown)}
                 activeOpacity={0.7}
@@ -76,7 +81,7 @@ const PerformanceScreen = () => {
 
             {/* Info tooltip */}
             {showInfoDropdown && (
-              <View style={styles.infoTooltip}>
+              <View>
                 <Text style={styles.infoTooltipText}>
                   Your XP grows with every move. Earn points for every successful rep and
                   completed session to climb the leaderboards!
@@ -111,7 +116,7 @@ const PerformanceScreen = () => {
               activeOpacity={0.8}
             >
               <Text style={styles.dailyGainsTxt}>Daily Gains</Text>
-              <Image source={require('../assets/droppp.png')} style={styles.dropIcon} />
+              <Image source={showDailyGains ? require('../assets/dropup.png') : require('../assets/droppp.png')} style={styles.dropIcon} />
             </TouchableOpacity>
 
             {/* Lifetime Archive */}
@@ -158,10 +163,27 @@ const PerformanceScreen = () => {
           </View>
 
           {/* Achievements expandable area */}
-          <View style={styles.achievementsBody}>
-            <Text style={styles.awaitingText}>Awaiting your first breakthrough</Text>
-            {/* When achievements exist, map medal items here */}
-          </View>
+          <ScrollView
+            style={styles.achievementsBody}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.achievementsContent}
+          >
+            {achievements.length > 0 ? (
+              achievements.map((achievement) => (
+                <View 
+                  key={achievement.id} 
+                  style={styles.achievementItem}
+                >
+                  <Image source={achievement.image} style={styles.medalIcon} />
+                  <Text style={styles.achievementName}>{achievement.name}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.awaitingText}>Awaiting your first breakthrough</Text>
+            )}
+          </ScrollView>
 
           {/* Challenge Logs */}
           <Text style={styles.challengeLogsTitle}>Challenge Logs</Text>
@@ -202,7 +224,7 @@ export default PerformanceScreen;
 
 const styles = StyleSheet.create({
   safeArea: {
-    marginTop: StatusBar.currentHeight || 0,
+    //marginTop: StatusBar.currentHeight || 0,
     flex: 1,
     backgroundColor: '#121310',
     marginBottom: -10, // To counteract extra space from ScrollView
@@ -215,9 +237,14 @@ const styles = StyleSheet.create({
   // ── HEADER ──
   header: {
     width: '106%',
+    height: 242,
     paddingTop: 16,
     paddingBottom: 32,
     paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  headerExpanded: {
+    height: 312,
   },
   usernameRow: {
     flexDirection: 'row',
@@ -225,14 +252,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 8,
   },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
+  //avatar: {
+  //  //width: 20,
+  //  //height: 20,
+  // // borderRadius: 16,
+  //},
   username: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 10,
     fontFamily: 'Montserrat-SemiBold',
     fontWeight: '600',
     marginBottom: -2,
@@ -243,15 +270,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#081007',
     width: 322,
+    height: 130,
     padding: 20,
     // iOS shadow
-    shadowColor: '#40FF00',
+    shadowColor: '#00FF00',
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
+    shadowRadius: 40,
+    shadowOpacity: 1,
     // Android shadow
-    elevation: 10,
+    elevation: 20,
    right: -80, // To compensate for header's 106% width and align with edges
-   marginTop: 15, // To pull the card up closer to the username row
+   marginTop: 40, // To pull the card up closer to the username row
+  },
+  xpCardExpanded: {
+    height: 200,
   },
   xpLabelRow: {
     flexDirection: 'row',
@@ -260,35 +292,30 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   xpLabel: {
-    color: '#AAAAAA',
+    color: '#fff',
     fontSize: 12,
-    fontFamily: 'Barlow-Medium',
+    fontFamily: 'Barlow-SemiBold',
   },
   infoIcon: {
     width: 18,
     height: 18,
-    tintColor: '#AAAAAA',
+    tintColor: '#fff',
     right: 20,
   },
-  infoTooltip: {
-    backgroundColor: '#1A2A18',
-    borderRadius: 8, 
-    padding: 10,
-    marginBottom: 8,
-    borderWidth: 0.5,
-    borderColor: '#71E948',
-  },
   infoTooltipText: {
-    color: '#CCFFAA',
-    fontSize: 12,
+    color: '#71E948',
+    fontSize: 10,
     fontFamily: 'Montserrat-SemiBold',
     lineHeight: 18,
+    textAlign: 'right',
+    width: 255,
+    marginTop: 10,
   },
   xpNumber: {
     color: '#CCFF00',
     fontFamily: 'Montserrat-Black',
     fontSize: 40,
-    marginVertical: 10,
+    marginVertical: 5,
     alignSelf: 'center',
   },
 
@@ -325,7 +352,7 @@ const styles = StyleSheet.create({
   topButtonsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 20,
     height: 40,
   },
   dailyGainsBtn: {
@@ -406,7 +433,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden', // Ensures gradient doesn't bleed past corners
     alignSelf: 'center',
     borderWidth: 1,
-    marginBottom: 28,
+    borderColor: '#FFF5BC',
+    marginBottom: 40,
+    // iOS shadow
+    shadowColor: '#CCFF00',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 25,
+    shadowOpacity: 0.8,
+    // Android elevation
+    elevation: 10,
   },
   leaderboardsGradient: {
     flex: 1,
@@ -436,26 +471,49 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   achievementsTitle: {
-    color: '#CCFF00',
+    color: '#e4f4a6',
     fontFamily: 'Montserrat-Bold',
-    fontWeight: '900',
     fontSize: 20,
   },
   seeAll: {
     color: '#ccff00',
     fontFamily: 'Montserrat-ExtraBold',
-    fontWeight: '700',
-    fontSize: 13,
+    fontSize: 15,
   },
   achievementsBody: {
     backgroundColor: '#1F2118',
-    width: '100%',
-    borderRadius: 10,
-    padding: 20,
-    minHeight: 60,
-    marginBottom: 28,
+    width: '120%',
+    marginLeft: -20,
+    marginRight: -20,
+    marginBottom: 40,
+    borderRadius: 0,
+  },
+  achievementsContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    minHeight: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  achievementItem: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 15,
+    width: 100,
+    flexShrink: 0,
+  },
+  medalIcon: {
+    width: 81,
+    height: 94,
+    marginBottom: 8,
+    resizeMode: 'contain',
+  },
+  achievementName: {
+    color: '#f0d158',
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 14,
   },
   awaitingText: {
     color: '#666',
@@ -466,9 +524,8 @@ const styles = StyleSheet.create({
 
   // Challenge Logs
   challengeLogsTitle: {
-    color: '#CCFF00',
+    color: '#e4f4a6',
     fontFamily: 'Montserrat',
-    fontWeight: '700',
     fontSize: 15,
     marginBottom: 12,
   },
