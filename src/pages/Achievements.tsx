@@ -24,7 +24,7 @@ interface Achievement {
 }
 
 // 1. Keep the DATA outside (this is fine)
-const ACHIEVEMENT_DATA: Achievement[] = [
+export const ACHIEVEMENT_DATA: Achievement[] = [
   {
     id: '1',
     name: 'Perfect Form',
@@ -43,7 +43,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
   },
   {
     id: '3',
-    name: 'Pushup  Prodigy',
+    name: 'Pushup Prodigy',
     subtext: 'Reaching a cumulative total of 1,000 tracked pushups.',
     xp: 1000,
     category: '   Bodyweight Mastery',
@@ -73,16 +73,8 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Bodyweight Mastery',
     image: require('../assets/lunge_legend.png'),
   },
-   {
-    id: '7',
-    name: 'Explosive Quads',
-    subtext: 'Completing a set of 20 tracked jump squats.',
-    xp: 1000,
-    category: '   Bodyweight Mastery',
-    image: require('../assets/explosive_quads.png'),
-  },
   {
-    id: '8',
+    id: '7',
     name: 'The Strider I',
     subtext: 'Completing a total of 5 km.',
     xp: 1000,
@@ -90,7 +82,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/striderI.png'),
   },
   {
-    id: '9',
+    id: '8',
     name: 'The Climber I ',
     subtext: 'Achieving a total elevation gain of 50 m.',
     xp: 1000,
@@ -98,7 +90,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/climberI.png'),
   },
   {
-    id: '10',
+    id: '9',
     name: 'The Pacer I ',
     subtext: 'Maintaining your target pace for 10 minutes.',
     xp: 1000,
@@ -106,7 +98,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/pacerI.png'),
   },
   {
-    id: '11',
+    id: '10',
     name: 'The Strider II',
     subtext: 'Completing a total of 10 km.',
     xp: 1000,
@@ -114,7 +106,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/striderII.png'),
   },
   {
-    id: '12',
+    id: '11',
     name: 'The Climber II ',
     subtext: 'Achieving a total elevation gain of 250 m.',
     xp: 1000,
@@ -122,7 +114,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/climberII.png'),
   },
    {
-    id: '13',
+    id: '12',
     name: 'The Pacer II ',
     subtext: 'Maintaining your target pace for 20 minutes.',
     xp: 1000,
@@ -130,7 +122,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/pacerII.png'),
   },
   {
-    id: '14',
+    id: '13',
     name: 'The Strider III',
     subtext: 'Completing a total of 21km (Half-Marathon distance).',
     xp: 1000,
@@ -138,7 +130,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/striderIII.png'),
   },
   {
-    id: '15',
+    id: '14',
     name: 'The Climber III ',
     subtext: 'Achieving a total elevation gain of 500 m.',
     xp: 1000,
@@ -146,7 +138,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/climberIII.png'),
   },
    {
-    id: '16',
+    id: '15',
     name: 'The Pacer III ',
     subtext: 'Maintaining your target pace for 30+ minutes.',
     xp: 1000,
@@ -154,7 +146,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/pacerIII.png'),
   },
   {
-    id: '17',
+    id: '16',
     name: 'The Strider IV',
     subtext: 'Completing a total of 42km (Full Marathon distance).',
     xp: 1000,
@@ -162,7 +154,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/striderIV.png'),
   },
   {
-    id: '18',
+    id: '17',
     name: 'Sync Specialist',
     subtext: 'Successfully syncing heart rate data from an external wearable (Apple Watch, Garmin, or WearOS).',
     xp: 1000,
@@ -170,7 +162,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/sync_specialist.png'),
   },
   {
-    id: '19',
+    id: '18',
     name: 'BMI Voyager',
     subtext: 'Recording height and weight data to track Body Mass Index (BMI) changes over 30 days.',
     xp: 1000,
@@ -178,7 +170,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/bmi_voyager.png'),
   },
   {
-    id: '20',
+    id: '19',
     name: 'Heart Rate Hero',
     subtext: 'Maintaining a target heart rate zone (tracked via API) for the duration of a session.',
     xp: 1000,
@@ -186,7 +178,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/heart_rate_hero.png'),
   },
   {
-    id: '21',
+    id: '20',
     name: '7 - Day Streak',
     subtext: 'Maintaining consistency by completing at least one tracked workout for seven consecutive days.',
     xp: 1000,
@@ -194,7 +186,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/7_day_streak.png'),
   },
    {
-    id: '22',
+    id: '21',
     name: 'Habit Builder',
     subtext: 'Completing 21 days of workouts within a single month to reinforce long-term retention.',
     xp: 1000,
@@ -202,7 +194,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/habit_builder.png'),
   },
   {
-    id: '23',
+    id: '22',
     name: 'Early Bird',
     subtext: 'Completing a full workout session before 8:00 AM.',
     xp: 1000,
@@ -210,7 +202,7 @@ const ACHIEVEMENT_DATA: Achievement[] = [
     image: require('../assets/early_bird.png'),
   },
   {
-    id: '24',
+    id: '23',
     name: 'Night Owl',
     subtext: 'Finishing a tracked workout session after 9:00 PM.',
     xp: 1000,
@@ -359,7 +351,7 @@ const styles = StyleSheet.create({
     marginTop: -40,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 70,
   },
   toggleSection: {
     width: '100%',
