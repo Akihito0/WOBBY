@@ -42,7 +42,7 @@ const getCurrentWeek = (): WeekDay[] => {
   });
 };
 
-const StreakCalendar: React.FC = () => {
+const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
   const weekDays = getCurrentWeek();
   const fireIcon: ImageSourcePropType = require("../../assets/streak.png");
 
@@ -58,7 +58,7 @@ const StreakCalendar: React.FC = () => {
         >
           <View style={styles.streakHeader}>
             <Text style={styles.streakTitle}>STREAK</Text>
-            <TouchableOpacity activeOpacity={0.7}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('You', { screen: 'YouMain', params: { scrollTo: 'calendar' } })}>
               <Text style={styles.seeAllText}>View Calendar</Text>
             </TouchableOpacity>
           </View>
