@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
-  ScrollView, Animated, PanResponder, Alert, Modal,
-  TextInput, Dimensions, KeyboardAvoidingView, Platform,
+  ScrollView, Animated, PanResponder, Alert,
+  TextInput, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AddExerciseModal from '../components/AddExerciseModal';
 
 const { width } = Dimensions.get('window');
 
@@ -382,50 +383,14 @@ const PushScreen = ({ navigation }: any) => {
 
       </ScrollView>
 
-      {/* ── Name Exercise Modal ── */}
-      <Modal
+      {/* ── Add Exercise Modal ── */}
+      <AddExerciseModal
         visible={nameModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setNameModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.nameModalCard}>
-            <Text style={styles.nameModalTitle}>Name Your Exercise</Text>
-
-            <TextInput
-              style={styles.nameInput}
-              placeholder="e.g. Bench Press"
-              placeholderTextColor="#555"
-              value={newExerciseName}
-              onChangeText={setNewExerciseName}
-              autoFocus
-              onSubmitEditing={confirmAddExercise}
-            />
-
-            <View style={styles.nameModalButtons}>
-              <TouchableOpacity
-                style={styles.nameModalCancelBtn}
-                onPress={() => setNameModalVisible(false)}
-              >
-                <Text style={styles.nameModalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={confirmAddExercise} style={styles.nameModalConfirmWrapper}>
-                <LinearGradient
-                  colors={['#CCFF00', '#8AAB00']}
-                  style={styles.nameModalConfirmBtn}
-                >
-                  <Text style={styles.nameModalConfirmText}>Add</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        onClose={() => setNameModalVisible(false)}
+        onConfirm={confirmAddExercise}
+        value={newExerciseName}
+        onChangeText={setNewExerciseName}
+      />
 
     </View>
   );
@@ -666,73 +631,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1, 
     flex: 1, 
     textAlign: 'center' 
-},
-
-  // Name Exercise Modal
-  modalOverlay: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.8)', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-},
-  nameModalCard: {
-    width: '85%', 
-    backgroundColor: '#1A1A1A',
-    borderRadius: 20, 
-    padding: 24,
-    borderWidth: 1.5, 
-    borderColor: '#42752E',
-  },
-  nameModalTitle: { 
-    color: '#FFFFFF', 
-    fontSize: 20, 
-    fontFamily: 'Montserrat-Bold', 
-    marginBottom: 20, 
-    textAlign: 'center' 
-},
-  nameInput: {
-    backgroundColor: '#0D0D0D', 
-    borderRadius: 10,
-    borderWidth: 1, 
-    borderColor: '#42752E',
-    color: '#FFFFFF', 
-    fontSize: 16, 
-    fontFamily: 'Montserrat-Regular',
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    marginBottom: 20,
-  },
-  nameModalButtons: { 
-    flexDirection: 'row', 
-    gap: 12 
-},
-  nameModalCancelBtn: {
-    flex: 1, 
-    borderRadius: 15, 
-    borderWidth: 1.5,
-    borderColor: '#555', 
-    paddingVertical: 12, 
-    alignItems: 'center',
-  },
-  nameModalCancelText: { 
-    color: '#888', 
-    fontSize: 15, 
-    fontFamily: 'Montserrat-Bold' 
-},
-  nameModalConfirmWrapper: { 
-    flex: 1, 
-    borderRadius: 15, 
-    overflow: 'hidden' 
-},
-  nameModalConfirmBtn: { 
-    paddingVertical: 12, 
-    alignItems: 'center',
-    borderRadius: 15 
-},
-  nameModalConfirmText: { 
-    color: '#000000', 
-    fontSize: 15, 
-    fontFamily: 'Montserrat-ExtraBold' 
 },
 });
 
