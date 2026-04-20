@@ -49,6 +49,7 @@ import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import NotificationsScreen from './src/pages/NotificationsScreen';
 import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
@@ -60,11 +61,13 @@ import YouPage from './src/pages/YouPage';
 import YouSettings from './src/pages/YouSettings';
 import PersonalInformation from './src/pages/PersonalInformation';
 import LinkedDevices from './src/pages/LinkedDevices';
+import PullScreen from './src/pages/PullScreen';
+import LegScreen from './src/pages/LegScreen';
 
 SplashScreen.preventAutoHideAsync();
 
 type YouStackParamList = {
-  YouMain: undefined;
+  YouMain: { scrollTo?: string };
   YouSettings: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
@@ -78,7 +81,7 @@ const YouStack = createNativeStackNavigator<YouStackParamList>();
 const Stack = createNativeStackNavigator();
 
 const PlaceholderScreen = () => <View style={{ flex: 1, backgroundColor: '#121310' }} />;
-
+const MainStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const { width, height } = Dimensions.get('window');
@@ -350,12 +353,13 @@ function RoutinesStackScreen() {
     <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
       <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
       <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
-      <RoutinesStack.Screen name="PullScreen" component={PlaceholderScreen} />
-      <RoutinesStack.Screen name="LegScreen" component={PlaceholderScreen} />
+      <RoutinesStack.Screen name="PullScreen" component={PullScreen} />
+      <RoutinesStack.Screen name="LegScreen" component={LegScreen} />
     </RoutinesStack.Navigator>
   );
 }
 
+ 
 function YouStackScreen() {
   return (
     <YouStack.Navigator screenOptions={{ headerShown: false }}>
@@ -367,27 +371,37 @@ function YouStackScreen() {
   );
 }
 
-  // --- NAVIGATION FLOW ---
-
+  // --- NAVIGATION FLOW ---  
   if (currentScreen === 'dashboard') {
-    return (
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <NavigationContainer>
-          <Tab.Navigator
-            tabBar={(props) => <NavBar {...props} />}
-            screenOptions={{ headerShown: false }}
-          >
-            <Tab.Screen name="Home" component={UserDashboard} />
-            <Tab.Screen name="Routines" component={RoutinesStackScreen} />
-            <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-            <Tab.Screen name="Performance" component={PerformanceStackScreen} />
-            <Tab.Screen name="You" component={YouStackScreen} />
-          </Tab.Navigator>
-        </NavigationContainer>
-        <StatusBar style="light" />
-      </View>
-    );
-  }
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationContainer>
+        <MainStack.Navigator screenOptions={{ headerShown: false }}>
+          <MainStack.Screen name="AppTabs">
+            {() => (
+              <Tab.Navigator
+                tabBar={(props) => <NavBar {...props} />}
+                screenOptions={{ headerShown: false }}
+              >
+                <Tab.Screen name="Home" component={UserDashboard} />
+                <Tab.Screen name="Routines" component={RoutinesStackScreen} />
+                <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+                <Tab.Screen name="Performance" component={PerformanceStackScreen} />
+                <Tab.Screen name="You" component={YouStackScreen} />
+              </Tab.Navigator>
+            )}
+          </MainStack.Screen>
+          <MainStack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+        </MainStack.Navigator>
+      </NavigationContainer>
+      <StatusBar style="light" />
+    </View>
+  );
+}
 
   if (currentScreen === 'begin') {
     return (

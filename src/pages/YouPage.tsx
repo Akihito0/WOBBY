@@ -1,297 +1,319 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Image, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import CustomCalendar from '../components/CustomCalendar';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import CustomCalendar from '../components/CustomCalendar'; 
+import ActivityFeed from '../components/ActivityFeed';
+
+const { width } = Dimensions.get('window');
+
+const avatarImage = require('../assets/5.png');
+const calendarIcon = require('../assets/calendar.png'); 
+const speedometerIcon = require('../assets/bmi.png');
 
 type YouStackParamList = {
-  YouMain: undefined;
+  YouMain: { scrollTo?: string };
   YouSettings: undefined;
 };
 
 type Props = NativeStackScreenProps<YouStackParamList, 'YouMain'>;
 
 export default function YouPage({ navigation }: Props) {
+  const route = useRoute<RouteProp<YouStackParamList, 'YouMain'>>();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [scrollToCalendar, setScrollToCalendar] = useState(false);
+
+  useEffect(() => {
+    if (route.params?.scrollTo === 'calendar') {
+      setScrollToCalendar(true);
+    }
+  }, [route.params]);
   const user = {
     username: 'cashew_123',
     age: 21,
     bmi: 25.0,
     weight: 75,
     height: 165,
-    avatarUrl: 'https://i.pravatar.cc/300',
   };
 
   const handleDateSelect = (date: Date) => {
-    console.log('Selected date on YouPage:', date.toISOString());
+    console.log('Selected date:', date.toISOString());
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.topRow}>
-          <Text style={styles.sectionTitle}>YOU</Text>
-          <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('YouSettings')}>
-            <Ionicons name="settings-sharp" size={20} color="#F8FAFC" />
-          </TouchableOpacity>
-        </View>
-
-        <LinearGradient colors={["#14161F", "#10121A"]} style={styles.profileCard}>
-          <View style={styles.avatarRow}>
-            <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-            <View style={styles.profileTextGroup}>
-              <Text style={styles.username}>{user.username}</Text>
-              <Text style={styles.profileSubtitle}>Personal overview</Text>
-            </View>
+    <View style={styles.root}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        
+        <LinearGradient
+          colors={['#001E20', '#000000']}
+          style={styles.backgroundGradientCard}   
+        >
+          
+          {/* Settings button top-right */}
+          <View style={styles.topRow}>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate('YouSettings')}
+               activeOpacity={0.7}
+            >
+              <Ionicons name="settings" size={20} color="#94A3B8" />
+            </TouchableOpacity>
           </View>
         </LinearGradient>
 
-        <View style={styles.cardsRow}>
-          <View style={styles.cardItem}>
-            <View style={styles.cardIconRow}>
-              <Ionicons name="calendar" size={28} color="#FBBF24" />
-              <Text style={styles.cardLabel}>Age</Text>
+          {/* Avatar and Username are contained within the gradient card area */}
+          <View 
+          style={styles.avatarSection}
+          pointerEvents="box-none"
+          >
+            <View style={styles.avatarWrapper}>
+              <Image source={avatarImage} style={styles.avatar} resizeMode="cover" />
             </View>
-            <Text style={styles.cardValue}>{user.age}</Text>
-            <Text style={styles.cardNote}>Current age</Text>
+            <Text style={styles.username}>{user.username}</Text>
           </View>
 
-          <View style={styles.cardItemLarge}>
-            <View style={styles.cardIconRow}>
-              <Ionicons name="speedometer-outline" size={28} color="#60A5FA" />
-              <Text style={styles.cardLabel}>Body Mass Index</Text>
+        <View style={styles.cardsRow}>
+          {/* AGE CARD WITH SPECIFIC GRADIENT */}
+          <LinearGradient 
+            colors={['#261A00', '#000000']} 
+            style={styles.ageCard}
+          >
+            <View style={styles.iconAlignRight}>
+              <Image source={calendarIcon} style={styles.cardIconLarge} resizeMode="contain" />
             </View>
-            <Text style={styles.cardValue}>{user.bmi.toFixed(2)}</Text>
-            <View style={styles.miniStatsRow}>
-              <View style={styles.miniStatBox}>
-                <Text style={styles.miniStatLabel}>Weight</Text>
-                <Text style={styles.miniStatValue}>{user.weight}kg</Text>
+            <View style={styles.cardBottom}>
+              <View style={styles.ageValueRow}>
+                <Text style={styles.statValue}>{user.age}</Text>
+                <Text style={styles.ageUnit}> yrs</Text>
               </View>
-              <View style={styles.miniStatBox}>
-                <Text style={styles.miniStatLabel}>Height</Text>
-                <Text style={styles.miniStatValue}>{user.height}cm</Text>
+              <Text style={styles.cardSubNote}>Current age</Text>
+            </View>
+          </LinearGradient>
+
+          {/* BMI CARD */}
+          <LinearGradient colors={['#000328', '#000000']} style={styles.bmiCard}>
+            <View style={styles.bmiContent}>
+              <View style={styles.bmiLeftSection}>
+                <Image source={speedometerIcon} style={styles.speedometerIcon} resizeMode="contain" />
+                <Text style={styles.statValueBMI}>{user.bmi.toFixed(2)}</Text>
+                <Text style={styles.cardSubNote}>Body Mass Index</Text>
+              </View>
+
+              <View style={styles.verticalDivider} />
+
+              <View style={styles.bmiRightSection}>
+                <View style={styles.miniStatBox}>
+                   <Text style={styles.miniLabel}>Weight</Text>
+                   <Text style={styles.miniValue}>{user.weight} <Text style={styles.miniUnit}>kg</Text></Text>
+                </View>
+                <View style={styles.miniStatBox}>
+                   <Text style={styles.miniLabel}>Height</Text>
+                   <Text style={styles.miniValue}>{user.height} <Text style={styles.miniUnit}>cm</Text></Text>
+                </View>
               </View>
             </View>
-          </View>
+          </LinearGradient>
         </View>
 
-        <View style={styles.calendarSection}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionHeading}>Activity calendar</Text>
-              <Text style={styles.sectionSubheading}>Tap any date to review session details.</Text>
-            </View>
-            <TouchableOpacity style={styles.viewAllButton}>
-              <Text style={styles.viewAllText}>See details</Text>
-            </TouchableOpacity>
-          </View>
-
+        {/* Activity Calendar section - Olive background from image */}
+        <View style={styles.calendarContainer} onLayout={(event) => {
+          if (scrollToCalendar) {
+            const { y } = event.nativeEvent.layout;
+            scrollViewRef.current?.scrollTo({ y, animated: true });
+            setScrollToCalendar(false); // Reset after scrolling
+          }
+        }}>
           <CustomCalendar
             onDateSelect={handleDateSelect}
             streakDates={['2026-04-14', '2026-04-15', '2026-04-16', '2026-04-19', '2026-04-20']}
           />
         </View>
+          {/* ════════ ACTIVITY FEED ════════ */}
+        <ActivityFeed />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
-    backgroundColor: '#0F1118',
+    backgroundColor: '#121310', 
   },
   scrollContainer: {
-    paddingHorizontal: 20,
     paddingBottom: 40,
-    paddingTop: 20,
+  },
+  backgroundGradientCard: {
+    paddingTop: 50,
+    paddingBottom: 50,        
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    color: '#F8FAFC',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 25,
   },
   settingsButton: {
-    backgroundColor: '#151828',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#222433',
+    backgroundColor: '#334155', 
+    padding: 10,
+    borderRadius: 11,
+    marginTop: 5,
   },
-  profileCard: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-  },
-  avatarRow: {
-    flexDirection: 'row',
+  avatarSection: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: -110,          
+    marginBottom: 20,        
+    zIndex: 10, 
+    elevation: 10, 
+  },
+  avatarWrapper: {
+    width: 130,
+    height: 130,
+    borderRadius: 10, 
+    overflow: 'hidden',
+    borderWidth: 0,
+    borderColor: '#1E293B', 
+    marginBottom: 15, 
+    marginTop: 35,
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#2F313C',
-    backgroundColor: '#222430',
-  },
-  profileTextGroup: {
-    marginLeft: 16,
+    width: '100%',
+    height: '100%',
   },
   username: {
     color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
-  },
-  profileSubtitle: {
-    color: '#A1A5B8',
-    marginTop: 6,
-    fontSize: 14,
-  },
-  profileStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  profileStatItem: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    marginRight: 10,
-  },
-  profileStatPrimary: {
-    backgroundColor: '#1E293B',
-  },
-  statValue: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  statLabel: {
-    color: '#94A3B8',
-    marginTop: 6,
-    fontSize: 12,
+    fontSize: 25,
+    fontFamily: "Montserrat_800ExtraBold",
   },
   cardsRow: {
     flexDirection: 'row',
-    marginBottom: 18,
-  },
-  cardItem: {
-    flex: 1,
-    backgroundColor: '#151828',
-    borderRadius: 24,
-    padding: 18,
-    marginRight: 12,
-  },
-  cardItemLarge: {
-    flex: 1.4,
-    backgroundColor: '#151828',
-    borderRadius: 24,
-    padding: 18,
-  },
-  cardIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  cardLabel: {
-    color: '#D1D5DB',
-    marginLeft: 10,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  cardValue: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  cardNote: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
-  miniStatsRow: {
-    flexDirection: 'row',
+    paddingHorizontal: 20,
     justifyContent: 'space-between',
-  },
-  miniStatBox: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 18,
-    padding: 12,
-    marginRight: 10,
-  },
-  miniStatLabel: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginBottom: 6,
-  },
-  miniStatValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: '#11131B',
-    borderRadius: 22,
-    padding: 18,
-    marginRight: 12,
-  },
-  summaryLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  summaryValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  calendarSection: {
     marginBottom: 10,
   },
-  sectionHeader: {
-    flexDirection: 'row',
+  ageCard: {
+    width: '30%', 
+    height: 110,
+    borderRadius: 20,
+    padding: 18,
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 14,
   },
-  sectionHeading: {
+  bmiCard: {
+   width: '65%', 
+    height: 110,
+    borderRadius: 20,
+    padding: 15,
+  },
+  iconAlignRight: {
+    alignItems: 'flex-end',
+  },
+  cardIconLarge: {
+    width: 55,
+    height: 55,
+    marginBottom: -10,
+    marginTop: -10,
+    marginRight: -10,
+  },
+  speedometerIcon: {
+    width: 90,
+    height: 70,
+    marginBottom: 10,
+    marginLeft: 15,
+    marginTop: -15,
+  },
+  bmiContent: {
+    flexDirection: 'row',
+    height: '100%',
+    //alignItems: 'center',
+  },
+  bmiLeftSection: {
+    flex: 1.2,
+    justifyContent: 'center',
+  },
+  verticalDivider: {
+    width: 1,
+    height: '105%',
+    backgroundColor: 'rgb(255, 255, 255)',
+    marginHorizontal: 10,
+  },
+  bmiRightSection: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 10,
+  },
+  cardBottom: {
+    marginTop: 'auto',
+  },
+  ageValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginLeft: -5
+  },
+  statValue: {
+    color: '#FFFFFF',
+    fontSize: 25,
+    fontFamily: "Montserrat_800ExtraBold",
+    marginBottom: -5,
+  },
+  statValueBMI: {
+    color: '#FFFFFF',
+    fontSize: 25,
+    fontFamily: "Montserrat_800ExtraBold",
+    marginTop: -25,
+    marginLeft: -5,
+    marginBottom: -5,
+  },
+  ageUnit: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontFamily: "Montserrat_400Regular",
+  },
+  cardSubNote: {
+    color: '#717171',
+    fontSize: 10,
+    fontFamily: "Barlow_400Regular",
+    marginLeft: -5,
+  },
+  miniStatBox: {
+    justifyContent: 'center',
+  },
+  miniLabel: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: "Montserrat_400Regular",
+    marginBottom: -3,
+  },
+  miniValue: {
     color: '#FFFFFF',
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: "Montserrat_800ExtraBold",
   },
-  sectionSubheading: {
-    color: '#94A3B8',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  viewAllButton: {
-    backgroundColor: '#1F2937',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
-  },
-  viewAllText: {
-    color: '#FFFFFF',
+  miniUnit: {
     fontSize: 12,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: "Montserrat_400Regular",
+  },
+  calendarContainer: {
+    marginHorizontal: 15,
+    backgroundColor: '#13150F', 
+    borderRadius: 32,
+    padding: 10,
+    paddingVertical: 20,
+    marginBottom: 20,
   },
 });

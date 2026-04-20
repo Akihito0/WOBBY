@@ -36,7 +36,7 @@ const MOCK_USERS: LeaderboardUser[] = [
   { rank: 10, username: 'GabGab_suan',xp: 300, avatar: null },
 ];
 
-const CURRENT_USER = { username: 'TWEETIE', percentile: '6.69' };
+const CURRENT_USER = { username: 'cashew_123', percentile: '12.07' };
 
 // ─── AVATAR COMPONENT ─────────────────────────────────────────────────────────
 const Avatar = ({ size = 40 }: { size?: number }) => (
@@ -88,21 +88,21 @@ const LeaderboardsScreen = () => {
           {/* ── PODIUM USERS SECTION ── */}
           <View style={styles.podiumWrapper}>
             {/* Rank 1 (Center - Highest) */}
-            <View style={[styles.podiumUser, { alignSelf: 'center', bottom: 120 }]}>
+            <View style={[styles.podiumUser, { alignSelf: 'center', bottom: 110 }]}>
               <Text style={[styles.podiumUsername, styles.rank1Text]}>cashew_123</Text>
               <View style={[styles.podiumAvatarBox, styles.rank1Avatar]} />
               <Text style={[styles.podiumXPLabel, styles.rank1Text]}>1001 XP</Text>
             </View>
 
             {/* Rank 2 (Left - Medium Height) */}
-            <View style={[styles.podiumUser, { left: '8%', bottom: 70 }]}>
+            <View style={[styles.podiumUser, { left: '13%', bottom: 70 }]}>
               <Text style={styles.podiumUsername}>6CLARK7</Text>
               <View style={styles.podiumAvatarBox} />
               <Text style={styles.podiumXPLabel}>1000 XP</Text>
             </View>
 
             {/* Rank 3 (Right - Lowest) */}
-            <View style={[styles.podiumUser, { right: '8%', bottom: 40 }]}>
+            <View style={[styles.podiumUser, { right: '13%', bottom: 40 }]}>
               <Text style={styles.podiumUsername}>NoWaHG</Text>
               <View style={styles.podiumAvatarBox} />
               <Text style={styles.podiumXPLabel}>999 XP</Text>
@@ -135,7 +135,7 @@ const LeaderboardsScreen = () => {
              {/* Placeholder for current user avatar */}
           </View>
           <Text style={styles.footerText}>
-            {CURRENT_USER.username} - TOP {CURRENT_USER.percentile}%
+              {CURRENT_USER.username}                          TOP {CURRENT_USER.percentile}%
           </Text>
         </View>
       </LinearGradient>
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   },
  podiumWrapper: {
   alignItems: 'center',
-    marginTop: -80,
+    marginTop: -100,
     marginBottom: -80,
     height: 380,         // 💡 CRITICAL: This gives the floating users a "box" to stay in
     width: width,
@@ -210,6 +210,7 @@ podiumImageContainer: {
     zIndex: 2,
 },
   podiumUsername: {
+    color: '#fff',
     fontFamily: 'Montserrat-Bold',
     fontSize: 12,
     marginBottom: 4,
@@ -305,7 +306,7 @@ listCard: {
   },
   footerText: {
     color: '#fff',
-    fontFamily: 'Barlow-Bold',
+    fontFamily: 'Montserrat-Bold',
     fontSize: 14,
     textTransform: 'uppercase',
   },

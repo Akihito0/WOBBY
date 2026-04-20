@@ -77,7 +77,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     alignSelf: 'flex-start',
     marginLeft: 16,
-    letterSpacing: 1.5,
     textTransform: "uppercase",
     marginBottom: 30,
   },
