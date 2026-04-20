@@ -127,6 +127,17 @@ const calcElevationMetrics = (coords: Coordinate[]): { gain: number; loss: numbe
   };
 };
 
+// ─── Helper: Get bounds of a route from its coordinates ─────────────────────
+const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] => {
+  const lats = coords.map(c => c.latitude);
+  const lngs = coords.map(c => c.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  return [[maxLng, maxLat], [minLng, minLat]];
+};
+
 // ─── GpsDot animated component ───────────────────────────────────────────────
 const GpsDot = ({ gpsReady, runState }: { gpsReady: boolean, runState: RunState }) => {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -575,6 +586,10 @@ const RunScreen = ({ navigation }: any) => {
     
     // Only attempt snapping if we have enough meaningful coordinates
     if (routeCoords.length >= 2) {
+      // Fit camera to the route bounds before taking a snapshot
+      const bounds = getBounds(routeCoords);
+      cameraRef.current?.fitBounds(bounds[0], bounds[1], 60, 500); // 60px padding, 500ms animation
+
       try {
         // Mapbox Map Matching requires coords to be at least ~10m apart
         // and works best with 2–100 waypoints. Downsample if needed.
