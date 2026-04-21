@@ -87,6 +87,25 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Handle workout finish callback from ActiveWorkoutScreen
+  React.useEffect(() => {
+    if (route.params?.finished && route.params?.exerciseId && route.params?.setId) {
+      // Update the set status to FINISHED
+      setExercises(exercises.map(ex => 
+        ex.id === route.params.exerciseId 
+          ? {
+              ...ex,
+              sets: ex.sets.map(s => 
+                s.id === route.params.setId ? { ...s, status: 'FINISHED' as const } : s
+              )
+            }
+          : ex
+      ));
+      // Clear the route params
+      navigation.setParams({ finished: false, exerciseId: null, setId: null });
+    }
+  }, [route.params?.finished]);
+
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -297,7 +316,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
               setSwipedRow(null);
               if (set.status === 'START') {
                 updateStatus(exercise.id, set.id);
-                navigation.navigate('ActiveWorkoutScreen', { exerciseName: exercise.name });
+                navigation.navigate('ActiveWorkoutScreen', { 
+                  exerciseName: exercise.name,
+                  exerciseId: exercise.id,
+                  setId: set.id,
+                });
               } else {
                 updateStatus(exercise.id, set.id);
               }

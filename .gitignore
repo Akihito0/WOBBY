@@ -35,7 +35,7 @@ yarn-error.*
 .env*.local
 
 # copilot instructions (personal preferences)
-copilot-instructions.md
+instructions.md
 
 # typescript
 *.tsbuildinfo
