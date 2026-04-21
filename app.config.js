@@ -34,8 +34,7 @@ export default {
 
     },
     android: {
-      package: "com.tweetie.wobby",
-      compileSdkVersion: 35,
+      package: "com.noah.wobby", // Can be any name as long as its different
       targetSdkVersion: 35,
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
@@ -49,6 +48,7 @@ export default {
     plugins: [
       "expo-font",
       "expo-web-browser",
+      "react-native-vision-camera",
       [
         "@rnmapbox/maps",
         {
