@@ -331,7 +331,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             onPress={() => {
               setSwipedRow(null);
               if (set.status === 'START') {
-                updateStatus(exercise.id, set.id);
+                // Do not update status here; let ActiveWorkoutScreen return the finished state
                 navigation.navigate('ActiveWorkoutScreen', { 
                   exerciseName: exercise.name,
                   exerciseId: exercise.id,
