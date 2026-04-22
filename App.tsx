@@ -49,6 +49,7 @@ import UserDashboard from './src/pages/UserDashboard';
 import SoloWorkoutScreen from './src/pages/SoloWorkout';
 import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
+import WorkoutSummaryScreen from './src/pages/WorkoutSummaryScreen';
 import NotificationsScreen from './src/pages/NotificationsScreen';
 import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
@@ -344,6 +345,7 @@ function WorkoutStackScreen() {
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
       <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
       <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
+      <WorkoutStack.Screen name="WorkoutSummaryScreen" component={WorkoutSummaryScreen} />
     </WorkoutStack.Navigator>
   );
 }
