@@ -94,6 +94,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         setIsConnected(true);
         pc.current = new RTCPeerConnection({ iceServers: [] }); 
         
+        if (!pc.current) return;
+        
         stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
 
         const offer = await pc.current.createOffer({});
