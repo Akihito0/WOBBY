@@ -43,11 +43,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const exercisesData: Exercise[] = [
     {
       id: '1',
-      name: 'Push-Up',
+      name: 'Bicep Curl',
       icon: require('../assets/push.png'),
       expanded: true,
       sets: [
-        { id: '1', set: 1, weight: 'Body Weight', reps: 12, status: 'START' },
+        { id: '1', set: 1, weight: 'Body Weight', reps: 8, status: 'START' },
         { id: '2', set: 2, weight: 'Body Weight', reps: 12, status: 'WAITING' },
         { id: '3', set: 3, weight: 'Body Weight', reps: 12, status: 'WAITING' },
       ],
@@ -90,17 +90,33 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   // Handle workout finish callback from ActiveWorkoutScreen
   React.useEffect(() => {
     if (route.params?.finished && route.params?.exerciseId && route.params?.setId) {
-      // Update the set status to FINISHED
-      setExercises(exercises.map(ex => 
-        ex.id === route.params.exerciseId 
-          ? {
-              ...ex,
-              sets: ex.sets.map(s => 
-                s.id === route.params.setId ? { ...s, status: 'FINISHED' as const } : s
-              )
+      setExercises(prevExercises => {
+        let foundCompleted = false;
+        let unlockedNext = false;
+        
+        const newExercises = [...prevExercises];
+        for (let i = 0; i < newExercises.length; i++) {
+          const ex = { ...newExercises[i] };
+          const sets = [...ex.sets];
+          for (let j = 0; j < sets.length; j++) {
+            // 1. Mark the completed set as FINISHED
+            if (sets[j].id === route.params.setId && ex.id === route.params.exerciseId) {
+              sets[j] = { ...sets[j], status: 'FINISHED' };
+              foundCompleted = true;
             }
-          : ex
-      ));
+            // 2. Unlock the immediate next WAITING set after the completed one
+            else if (foundCompleted && !unlockedNext && sets[j].status === 'WAITING') {
+              sets[j] = { ...sets[j], status: 'START' };
+              unlockedNext = true;
+              ex.expanded = true; // Auto-expand the exercise
+            }
+          }
+          ex.sets = sets;
+          newExercises[i] = ex;
+        }
+        return newExercises;
+      });
+
       // Clear the route params
       navigation.setParams({ finished: false, exerciseId: null, setId: null });
     }
@@ -388,6 +404,13 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     </View>
   );
 
+  // Dynamic computation of completed sets and reps
+  const completedSets = exercises.reduce((acc, ex) => 
+    acc + ex.sets.filter(s => s.status === 'FINISHED').length, 0);
+
+  const completedReps = exercises.reduce((acc, ex) => 
+    acc + ex.sets.filter(s => s.status === 'FINISHED').reduce((r, s) => r + s.reps, 0), 0);
+
   return (
     <View style={styles.container}>
       {/* Header with SOLO WORKOUT */}
@@ -427,11 +450,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         <View style={styles.statsInsideRow}>
           <View style={styles.statInside}>
             <Text style={styles.statInsideLabel}>Total Repetition</Text>
-            <Text style={styles.statInsideValue}>{totalReps}</Text>
+            <Text style={styles.statInsideValue}>{completedReps}</Text>
           </View>
           <View style={styles.statInside}>
             <Text style={styles.statInsideLabel}>Total Sets</Text>
-            <Text style={styles.statInsideValue}>{totalSets}</Text>
+            <Text style={styles.statInsideValue}>{completedSets}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -445,6 +468,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
       <TouchableOpacity
         style={styles.finishBtnWrapper}
         activeOpacity={0.8}
+        onPress={() => navigation.navigate('WorkoutSummaryScreen', { exercises, elapsedSeconds, completedSets, completedReps })}
       >
         <LinearGradient
           colors={['#B1DD01', '#678101']}
