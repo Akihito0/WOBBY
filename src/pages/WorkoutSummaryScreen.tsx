@@ -98,19 +98,27 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
               <View style={styles.exerciseStatsRow}>
                 <View style={styles.statCol}>
                   <Text style={styles.statLabel}>Duration:</Text>
-                  <Text style={styles.statValue}>{item.duration || '0 minutes'}</Text>
+                  <Text style={styles.statValue}>{item.duration || '-'}</Text>
                 </View>
                 <View style={styles.statCol}>
                   <Text style={styles.statLabel}>Reps:</Text>
-                  <Text style={styles.statValue}>{item.reps || 0}</Text>
+                  <Text style={styles.statValue}>
+                    {Array.isArray(item.sets) ? item.sets.reduce((acc: number, s: any) => acc + (Number(s.reps) || 0), 0) : (item.reps || 0)}
+                  </Text>
                 </View>
                 <View style={styles.statCol}>
                   <Text style={styles.statLabel}>Sets:</Text>
-                  <Text style={styles.statValue}>{item.sets || 0}</Text>
+                  <Text style={styles.statValue}>
+                    {Array.isArray(item.sets) ? item.sets.length : (item.sets || 0)}
+                  </Text>
                 </View>
                 <View style={styles.statCol}>
                   <Text style={styles.statLabel}>Avg. Weight</Text>
-                  <Text style={styles.statValue}>{item.avgWeight || 'None'}</Text>
+                  <Text style={styles.statValue}>
+                    {Array.isArray(item.sets) 
+                      ? (item.sets.reduce((sum: number, s: any) => sum + (parseFloat(s.weight) || 0), 0) / (item.sets.length || 1)).toFixed(1) 
+                      : (item.avgWeight || 'None')}
+                  </Text>
                 </View>
               </View>
             </View>
