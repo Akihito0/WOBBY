@@ -113,7 +113,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
             pc.current.onicegatheringstatechange = () => {
                 if (pc.current?.iceGatheringState === 'complete') sendSDP();
             };
-        }
+          }
       };
 
       ws.current.onmessage = async (e) => {
@@ -260,12 +260,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const handleFinish = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    navigation.navigate('RoutineSelected', {
-      exerciseId,
-      setId,
-      finished: true,
-    });
-  };
+      navigation.navigate({
+        name: 'RoutineSelected',
+        params: {
+          exerciseId,
+          setId,
+          finished: true,
+        },
+        merge: true,
 
   const handleRestToggle = () => {
     if (isResting) {
