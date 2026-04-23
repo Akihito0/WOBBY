@@ -259,17 +259,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     return `${m}:${sec}`;
   };
 
-  const handleFinish = () => {
+    const handleFinish = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-      navigation.navigate({
-        name: 'RoutineSelected',
-        params: {
-          exerciseId,
-          setId,
-          finished: true,
-        },
-        merge: true,
-      });
+    
+    navigation.navigate({
+      name: 'RoutineSelected',
+      params: { finished: true, exerciseId, setId },
+      merge: true,
+    });
   };
 
   const handleRestToggle = () => {
