@@ -1,3 +1,5 @@
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect } from 'react';
 import React, { useState, useRef } from 'react';
 import { 
   View, 
@@ -15,6 +17,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+let persistedExercises: Exercise[] | null = null;
 interface ExerciseSet {
   id: string;
   set: number;
@@ -72,7 +75,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     },
   ];
 
-  const [exercises, setExercises] = useState(exercisesData);
+  const [exercises, setExercises] = useState(() => persistedExercises || exercisesData);
+  const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -86,41 +90,49 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+// Sync cache on every state change
+  useEffect(() => {
+    persistedExercises = exercises;
+  }, [exercises]);
 
-  // Handle workout finish callback from ActiveWorkoutScreen
-  React.useEffect(() => {
-    if (route.params?.finished && route.params?.exerciseId && route.params?.setId) {
-      setExercises(prevExercises => {
-        let foundCompleted = false;
-        let unlockedNext = false;
-        
-        const newExercises = [...prevExercises];
-        for (let i = 0; i < newExercises.length; i++) {
-          const ex = { ...newExercises[i] };
-          const sets = [...ex.sets];
-          for (let j = 0; j < sets.length; j++) {
-            // 1. Mark the completed set as FINISHED
-            if (sets[j].id === route.params.setId && ex.id === route.params.exerciseId) {
-              sets[j] = { ...sets[j], status: 'FINISHED' };
-              foundCompleted = true;
-            }
-            // 2. Unlock the immediate next WAITING set after the completed one
-            else if (foundCompleted && !unlockedNext && sets[j].status === 'WAITING') {
-              sets[j] = { ...sets[j], status: 'START' };
-              unlockedNext = true;
-              ex.expanded = true; // Auto-expand the exercise
-            }
-          }
-          ex.sets = sets;
-          newExercises[i] = ex;
-        }
-        return newExercises;
-      });
+      /// Handle completion params reliably
+    useEffect(() => {
+      const { finished, exerciseId, setId } = route.params || {};
+      const paramKey = `${finished}-${exerciseId}-${setId}`;
 
-      // Clear the route params
-      navigation.setParams({ finished: false, exerciseId: null, setId: null });
-    }
-  }, [route.params?.finished]);
+      if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
+        lastProcessedKeyRef.current = paramKey;
+
+        setExercises(prev => {
+          return prev.map((ex: Exercise) => {
+            if (ex.id !== exerciseId) return ex;
+            
+            const setIdx = ex.sets.findIndex((s: ExerciseSet) => s.id === setId);
+            if (setIdx === -1) return ex;
+
+            const updatedSets = [...ex.sets];
+            updatedSets[setIdx] = { ...updatedSets[setIdx], status: 'FINISHED' };
+
+            const nextWaitIdx = updatedSets.findIndex(
+              (s: ExerciseSet, i: number) => i > setIdx && s.status === 'WAITING'
+            );
+
+            if (nextWaitIdx !== -1) {
+              updatedSets[nextWaitIdx] = { ...updatedSets[nextWaitIdx], status: 'START' };
+            }
+
+            return {
+              ...ex,
+              sets: updatedSets,
+              expanded: nextWaitIdx !== -1 ? true : ex.expanded,
+            };
+          });
+        });
+
+        // Clear params to prevent stale re-triggers
+        navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined });
+      }
+    }, [route.params]);
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -331,7 +343,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             onPress={() => {
               setSwipedRow(null);
               if (set.status === 'START') {
-                updateStatus(exercise.id, set.id);
+                // Do not update status here; let ActiveWorkoutScreen return the finished state
                 navigation.navigate('ActiveWorkoutScreen', { 
                   exerciseName: exercise.name,
                   exerciseId: exercise.id,

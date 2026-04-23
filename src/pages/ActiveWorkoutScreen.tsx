@@ -94,6 +94,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         setIsConnected(true);
         pc.current = new RTCPeerConnection({ iceServers: [] }); 
         
+        if (!pc.current) return;
+        
         stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
 
         const offer = await pc.current.createOffer({});
@@ -108,10 +110,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         if (pc.current.iceGatheringState === 'complete') {
             sendSDP();
         } else {
+            // @ts-ignore: React Native WebRTC types are missing onicegatheringstatechange
             pc.current.onicegatheringstatechange = () => {
                 if (pc.current?.iceGatheringState === 'complete') sendSDP();
             };
-        }
+          }
       };
 
       ws.current.onmessage = async (e) => {
@@ -256,12 +259,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     return `${m}:${sec}`;
   };
 
-  const handleFinish = () => {
+    const handleFinish = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    navigation.navigate('RoutineSelected', {
-      exerciseId,
-      setId,
-      finished: true,
+    
+    navigation.navigate({
+      name: 'RoutineSelected',
+      params: { finished: true, exerciseId, setId },
+      merge: true,
     });
   };
 
