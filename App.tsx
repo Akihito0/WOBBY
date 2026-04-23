@@ -108,6 +108,22 @@ type ScreenName =
   | 'begin'
   | 'dashboard';
 
+// Extracted AppTabs to prevent unmounting
+function AppTabs() {
+  return (
+    <Tab.Navigator
+      tabBar={(props) => <NavBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      <Tab.Screen name="Home" component={UserDashboard} />
+      <Tab.Screen name="Routines" component={RoutinesStackScreen} />
+      <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+      <Tab.Screen name="Performance" component={PerformanceStackScreen} />
+      <Tab.Screen name="You" component={YouStackScreen} />
+    </Tab.Navigator>
+  );
+}
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenName>('splash');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -379,20 +395,7 @@ function YouStackScreen() {
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <NavigationContainer>
         <MainStack.Navigator screenOptions={{ headerShown: false }}>
-          <MainStack.Screen name="AppTabs">
-            {() => (
-              <Tab.Navigator
-                tabBar={(props) => <NavBar {...props} />}
-                screenOptions={{ headerShown: false }}
-              >
-                <Tab.Screen name="Home" component={UserDashboard} />
-                <Tab.Screen name="Routines" component={RoutinesStackScreen} />
-                <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-                <Tab.Screen name="Performance" component={PerformanceStackScreen} />
-                <Tab.Screen name="You" component={YouStackScreen} />
-              </Tab.Navigator>
-            )}
-          </MainStack.Screen>
+          <MainStack.Screen name="AppTabs" component={AppTabs} />
           <MainStack.Screen
             name="Notifications"
             component={NotificationsScreen}

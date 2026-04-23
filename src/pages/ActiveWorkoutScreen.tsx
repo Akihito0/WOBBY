@@ -110,9 +110,9 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         if (pc.current.iceGatheringState === 'complete') {
             sendSDP();
         } else {
-            pc.current.onicegatheringstatechange = () => {
+            pc.current.addEventListener('icegatheringstatechange', () => {
                 if (pc.current?.iceGatheringState === 'complete') sendSDP();
-            };
+            });
           }
       };
 
@@ -268,6 +268,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           finished: true,
         },
         merge: true,
+      });
+  };
 
   const handleRestToggle = () => {
     if (isResting) {
