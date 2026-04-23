@@ -108,6 +108,54 @@ type ScreenName =
   | 'begin'
   | 'dashboard';
 
+function PerformanceStackScreen() {
+  return (
+    <PerformanceStack.Navigator screenOptions={{ headerShown: false }}>
+      <PerformanceStack.Screen name="PerformanceScreen" component={PerformanceScreen} />
+      <PerformanceStack.Screen name="LeaderboardsScreen" component={LeaderboardsScreen} />
+      <PerformanceStack.Screen name="AchievementsScreen" component={AchievementsScreen} />
+    </PerformanceStack.Navigator>
+  );
+}
+
+
+function WorkoutStackScreen() {
+  return (
+    <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
+      <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
+      <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
+      <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
+      <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
+      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
+      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
+      <WorkoutStack.Screen name="WorkoutSummaryScreen" component={WorkoutSummaryScreen} />
+    </WorkoutStack.Navigator>
+  );
+}
+
+function RoutinesStackScreen() {
+  return (
+    <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
+      <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
+      <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
+      <RoutinesStack.Screen name="PullScreen" component={PullScreen} />
+      <RoutinesStack.Screen name="LegScreen" component={LegScreen} />
+    </RoutinesStack.Navigator>
+  );
+}
+
+ 
+function YouStackScreen() {
+  return (
+    <YouStack.Navigator screenOptions={{ headerShown: false }}>
+      <YouStack.Screen name="YouMain" component={YouPage} />
+      <YouStack.Screen name="YouSettings" component={YouSettings} />
+      <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
+      <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
+    </YouStack.Navigator>
+  );
+}
+
 // Extracted AppTabs to prevent unmounting
 function AppTabs() {
   return (
@@ -340,54 +388,6 @@ export default function App() {
   if (!fontsLoaded) {
     return null;
   }
-
-function PerformanceStackScreen() {
-  return (
-    <PerformanceStack.Navigator screenOptions={{ headerShown: false }}>
-      <PerformanceStack.Screen name="PerformanceScreen" component={PerformanceScreen} />
-      <PerformanceStack.Screen name="LeaderboardsScreen" component={LeaderboardsScreen} />
-      <PerformanceStack.Screen name="AchievementsScreen" component={AchievementsScreen} />
-    </PerformanceStack.Navigator>
-  );
-}
-
-
-function WorkoutStackScreen() {
-  return (
-    <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
-      <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
-      <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
-      <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
-      <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
-      <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
-      <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
-      <WorkoutStack.Screen name="WorkoutSummaryScreen" component={WorkoutSummaryScreen} />
-    </WorkoutStack.Navigator>
-  );
-}
-
-function RoutinesStackScreen() {
-  return (
-    <RoutinesStack.Navigator screenOptions={{ headerShown: false }}>
-      <RoutinesStack.Screen name="RoutinesMain" component={RoutinesScreen} />
-      <RoutinesStack.Screen name="PushScreen" component={PushScreen} />
-      <RoutinesStack.Screen name="PullScreen" component={PullScreen} />
-      <RoutinesStack.Screen name="LegScreen" component={LegScreen} />
-    </RoutinesStack.Navigator>
-  );
-}
-
- 
-function YouStackScreen() {
-  return (
-    <YouStack.Navigator screenOptions={{ headerShown: false }}>
-      <YouStack.Screen name="YouMain" component={YouPage} />
-      <YouStack.Screen name="YouSettings" component={YouSettings} />
-      <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
-      <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
-    </YouStack.Navigator>
-  );
-}
 
   // --- NAVIGATION FLOW ---  
   if (currentScreen === 'dashboard') {

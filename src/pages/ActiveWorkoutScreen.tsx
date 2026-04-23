@@ -110,9 +110,10 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         if (pc.current.iceGatheringState === 'complete') {
             sendSDP();
         } else {
-            pc.current.addEventListener('icegatheringstatechange', () => {
+            // @ts-ignore: React Native WebRTC types are missing onicegatheringstatechange
+            pc.current.onicegatheringstatechange = () => {
                 if (pc.current?.iceGatheringState === 'complete') sendSDP();
-            });
+            };
           }
       };
 
