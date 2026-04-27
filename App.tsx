@@ -206,7 +206,7 @@ export default function App() {
             .single();
 
           if (error && error.code !== 'PGRST116') {
-            throw error;
+            console.error('Error fetching profile:', error);
           }
 
           // Check if onboarding is complete (all fields filled)
@@ -225,7 +225,6 @@ export default function App() {
             console.log('👤 Incomplete profile detected, resuming onboarding...');
             
             // Route to appropriate onboarding page
-            // Start from Username if avatar_url is missing (fresh registration)
             if (!profile || !profile.avatar_url) {
               console.log('→ Starting from Username (fresh registration)');
               setCurrentScreen('username');
@@ -274,26 +273,45 @@ export default function App() {
 
   // Listen for auth state changes
   useEffect(() => {
+    console.log('🔧 Setting up auth state listener...');
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔔 Auth state changed:', event, 'Session:', session ? 'exists' : 'null');
+      console.log('🔔 Auth state changed:', event);
+      console.log('📊 Session user:', session?.user?.email || 'no session');
+      console.log('📊 Session access token:', session?.access_token ? '✅ exists' : '❌ missing');
       
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
         // Sign-in event OR email confirmation detected while app is open
         console.log('📝 User signed in or updated, checking profile completeness...');
         const checkProfile = async () => {
           try {
+            console.log('🔍 Querying profile for user:', session.user.id);
             const { data: profile, error } = await supabase
               .from('profiles')
               .select('username, avatar_url, goal, age, gender, weight, height, physical_level')
               .eq('id', session.user.id)
               .single();
 
-            if (error && error.code !== 'PGRST116') {
-              // PGRST116 = no rows returned (expected for new users)
-              throw error;
+            if (error) {
+              if (error.code !== 'PGRST116') {
+                // PGRST116 = no rows returned (expected for new users)
+                console.error('❌ Profile query error:', error.code, error.message);
+              } else {
+                console.log('ℹ️ No profile found (PGRST116 - new user)');
+              }
+            } else {
+              console.log('✅ Profile found:', {
+                username: profile?.username || '❌ missing',
+                avatar_url: profile?.avatar_url ? '✅' : '❌',
+                goal: profile?.goal || '❌',
+                age: profile?.age || '❌',
+                gender: profile?.gender || '❌',
+                weight: profile?.weight || '❌',
+                height: profile?.height || '❌',
+                physical_level: profile?.physical_level || '❌',
+              });
             }
 
-            // Check if onboarding is complete ( all fields filled)
+            // Check if onboarding is complete (all fields filled)
             const isOnboardingComplete = 
               profile &&
               profile.username &&
@@ -309,7 +327,6 @@ export default function App() {
               console.log('👤 Incomplete profile detected, starting/continuing onboarding...');
               
               // Route to appropriate onboarding page based on what's been filled
-              // Start from Username if avatar_url is missing (fresh registration)
               if (!profile || !profile.avatar_url) {
                 console.log('→ Starting from Username (fresh registration)');
                 setCurrentScreen('username');
@@ -340,6 +357,7 @@ export default function App() {
             }
           } catch (error) {
             console.error('❌ Error checking profile:', error);
+            console.error('Error details:', error instanceof Error ? error.message : JSON.stringify(error));
             setCurrentScreen('username'); // Default to onboarding on error
           }
         };
@@ -353,25 +371,54 @@ export default function App() {
     return () => subscription?.unsubscribe();
   }, []);
 
-  // Handle deep link after email confirmation
+  // Handle deep link after OAuth callback or email confirmation
   useEffect(() => {
     const handleUrl = async (url: string) => {
-      if (url) {
-        // Give Supabase a moment to process the token from the URL
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-          setCurrentScreen('login');
+      try {
+        if (url) {
+          console.log('🔗 Deep link received:', url);
+          
+          // For OAuth, Supabase redirects with tokens in the hash/fragment
+          // We need to explicitly extract them since native apps work differently than web
+          try {
+            // Parse the redirect URL to extract OAuth tokens
+            const result = await supabase.auth.parseRedirectUrl(url);
+            console.log('📊 Parsed redirect URL:', {
+              access_token: result.data?.session?.access_token ? '✅ found' : '❌ missing',
+              refresh_token: result.data?.session?.refresh_token ? '✅ found' : '❌ missing',
+              user_email: result.data?.session?.user?.email,
+            });
+
+            if (result.data?.session) {
+              console.log('✅ Session found in redirect URL! Setting session...');
+              // Manually set the session from the OAuth callback
+              // This is critical for native apps since detectSessionInUrl doesn't work the same way
+              const { error: setSessionError } = await supabase.auth.setSession(result.data.session);
+              if (setSessionError) {
+                console.error('❌ Error setting session from OAuth:', setSessionError);
+              } else {
+                console.log('✅ Session set successfully from OAuth token!');
+                // Auth state listener should fire and handle routing
+              }
+            } else {
+              console.log('ℹ️ No session data in redirect URL - this might be an email confirmation link');
+            }
+          } catch (parseError) {
+            console.warn('⚠️ Error parsing redirect URL (might not be an OAuth redirect):', parseError);
+            // This is normal for non-OAuth deep links
+          }
         }
+      } catch (err) {
+        console.error('Error handling deep link:', err);
       }
     };
 
-    // App was already open when confirmation link was tapped
+    // App was already open when confirmation/OAuth link was tapped
     const subscription = Linking.addEventListener('url', ({ url }) => {
       handleUrl(url);
     });
 
-    // App was cold-started from the confirmation link
+    // App was cold-started from the confirmation/OAuth link
     Linking.getInitialURL().then((url) => {
       if (url) handleUrl(url);
     });

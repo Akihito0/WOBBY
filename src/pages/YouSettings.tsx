@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -16,9 +17,19 @@ type Props = NativeStackScreenProps<YouStackParamList, 'YouSettings'>;
 export default function YouSettings({ navigation }: Props) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  const handleSignOut = () => {
-    console.log('Sign out tapped');
-    navigation.goBack();
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        Alert.alert('Error', 'Failed to sign out: ' + error.message);
+        console.error('Sign out error:', error);
+      }
+      // The auth state listener in App.tsx will automatically handle navigation to entry screen
+    } catch (err) {
+      console.error('Sign out error:', err);
+      Alert.alert('Error', 'An unexpected error occurred during sign out.');
+    }
   };
 
   return (
