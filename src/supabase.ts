@@ -10,6 +10,6 @@ export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,  // ✅ CRITICAL: Enable to auto-detect OAuth tokens in deep links
   },
 });

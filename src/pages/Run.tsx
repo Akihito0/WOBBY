@@ -684,44 +684,7 @@ const RunScreen = ({ navigation }: any) => {
   const pace = calcPace(distance, elapsed);
   const distanceDisplay = distance.toFixed(2);
 
-  // ── SIMULATE RUN (FOR DEV ONLY) ───────────────────────────────────────────
-  const handleSimulateRun = () => {
-    console.log('🚀 SIMULATING 1KM RUN...');
-    const mockRoute: Coordinate[] = [];
-    // Coordinates for a ~1km loop around a park in Santa Monica
-    const startLat = 34.015;
-    const startLon = -118.49;
-    const numPoints = 50;
 
-    // Create a simple square path
-    for (let i = 0; i < numPoints; i++) {
-      let lat = startLat;
-      let lon = startLon;
-      const segment = Math.floor(i / (numPoints / 4));
-      const progress = (i % (numPoints / 4)) / (numPoints / 4);
-
-      if (segment === 0) lon += progress * 0.005; // East
-      else if (segment === 1) { lon = startLon + 0.005; lat += progress * 0.002; } // North
-      else if (segment === 2) { lat = startLat + 0.002; lon = startLon + 0.005 * (1 - progress); } // West
-      else { lon = startLon; lat = startLat + 0.002 * (1 - progress); } // South
-      
-      mockRoute.push({
-        latitude: lat,
-        longitude: lon,
-        altitude: 50 + Math.sin(i / 5) * 5, // Simulate some elevation change
-      });
-    }
-    
-    setRouteCoords(mockRoute);
-    const simulatedDistance = calcDistance(mockRoute);
-    setDistance(simulatedDistance);
-    setElapsed(360); // 6 minutes
-    setElevationMetrics(calcElevationMetrics(mockRoute));
-    setCurrentLocation(mockRoute[mockRoute.length - 1]);
-    setRunState('paused'); // Go to paused screen to allow finishing
-    setGpsReady(true);
-    console.log(`✅ Simulation complete: ${simulatedDistance.toFixed(2)}km, 360s`);
-  };
 
   return (
     <View style={styles.container}>
@@ -895,11 +858,7 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {__DEV__ && runState === 'idle' && (
-            <TouchableOpacity style={styles.simulateBtn} onPress={handleSimulateRun}>
-              <Text style={styles.simulateBtnText}>Simulate 1km Run</Text>
-            </TouchableOpacity>
-          )}
+
         </View>
       </View>
 
@@ -1105,18 +1064,6 @@ const styles = StyleSheet.create({
   finishSquareIcon: { width: 14, height: 14, backgroundColor: '#000', borderRadius: 2, marginRight: 8 },
   finishSplitLabel: { color: '#000', fontSize: 14, fontFamily: 'Montserrat-Bold', letterSpacing: 1 },
 
-  // Simulate Button (DEV only)
-  simulateBtn: {
-    marginTop: 15,
-    padding: 10,
-    backgroundColor: '#FF6347',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  simulateBtnText: {
-    color: 'white',
-    fontFamily: 'Montserrat-Bold',
-  },
 
   // Finish Modal Styles
   modalContainer: { flex: 1, backgroundColor: '#121212' },

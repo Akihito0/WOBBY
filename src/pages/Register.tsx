@@ -124,61 +124,103 @@ export default function Register({ onNavigateToLogin, onRegisterSuccess }: {
     setLoading(false);
   };
 
+  // Helper function to extract session from URL manually
+  const extractAndSetSession = async (url: string) => {
+    console.log('📍 Extracting session directly from URL:', url);
+    
+    // URL usually has #access_token=...&refresh_token=...
+    const paramString = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
+    
+    if (!paramString) {
+      console.warn('⚠️ No parameters found in URL hash/query');
+      return false;
+    }
+    
+    const params: Record<string, string> = {};
+    paramString.split('&').forEach(pair => {
+      const [key, value] = pair.split('=');
+      if (key && value) {
+        params[key] = decodeURIComponent(value);
+      }
+    });
+    
+    if (params.access_token && params.refresh_token) {
+      console.log('✅ Found access_token and refresh_token in URL!');
+      const { error: setError } = await supabase.auth.setSession({
+        access_token: params.access_token,
+        refresh_token: params.refresh_token,
+      });
+      
+      if (setError) {
+        throw setError;
+      }
+      return true;
+    } else if (params.error_description) {
+      throw new Error(params.error_description);
+    }
+    
+    return false;
+  };
+
   // ✅ Only one version of each — inside the component, with WebBrowser
   const handleGoogleSignUp = async () => {
-  // Use the exact string you found in your console log
-  const redirectUrl = Linking.createURL('/'); 
-  
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { 
-      redirectTo: redirectUrl,
-    },
-  });
+    try {
+      setLoading(true);
+      const redirectUrl = Linking.createURL('/');
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { 
+          redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account' // Forces the account selector to show every time
+          }
+        },
+      });
 
-  if (error) {
-    Alert.alert('Google Error', error.message);
-    return;
-  }
+      if (error) {
+        Alert.alert('Google Error', error.message);
+        setLoading(false);
+        return;
+      }
 
-  // Use openAuthSessionAsync instead of openBrowserAsync
-  // This helps the browser "redirect" back into your app automatically
-  if (data?.url) {
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-    
-    // Optional: Handle the result if you need to perform actions after login
-    if (result.type === 'success' && result.url) {
-       // Logic for successful return can go here
+      if (data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        
+        if (result.type === 'dismiss') {
+          console.log('User dismissed Google sign-up');
+          setLoading(false);
+        } else if (result.type === 'success') {
+          console.log('✅ OAuth browser closed, parsing returned redirect URL...');
+          
+          if (result.url) {
+            try {
+              const sessionSet = await extractAndSetSession(result.url);
+              
+              if (sessionSet) {
+                console.log('✅ Session set successfully! Auth listener will route you.');
+              } else {
+                console.warn('⚠️ No session in parsed redirect URL');
+                Alert.alert('Error', 'Sign-up failed. Please try again.');
+              }
+            } catch (err: any) {
+              console.error('❌ Error setting session from URL:', err);
+              Alert.alert('Error', err.message || 'An error occurred processing your sign-up.');
+            }
+          } else {
+            console.warn('⚠️ No redirect URL returned from browser');
+            Alert.alert('Error', 'Sign-up failed. Please try again.');
+          }
+          setLoading(false);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Google sign-up error:', err);
+      Alert.alert('Error', 'An error occurred during Google sign-up. Please try again.');
+      setLoading(false);
     }
-  }
-};
+  };
 
-  const handleFacebookSignUp = async () => {
-  // Use the exact Expo URL to match your Supabase Whitelist
-  const redirectUrl = Linking.createURL('/'); 
-  
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: { 
-      redirectTo: redirectUrl,
-    },
-  });
-
-  if (error) {
-    Alert.alert('Facebook Error', error.message);
-    return;
-  }
-
-  // openAuthSessionAsync handles the redirect back to Expo much better
-  if (data?.url) {
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-    
-    if (result.type === 'success' && result.url) {
-      // User is back in the app! 
-      // Supabase handles the session automatically in the background.
-    }
-  }
-};
   return (
     <AuthBackground>
       <KeyboardAvoidingView
@@ -377,19 +419,12 @@ export default function Register({ onNavigateToLogin, onRegisterSuccess }: {
             </View>
 
             <View style={styles.socialRow}>
-              <TouchableOpacity style={styles.socialBtn} onPress={handleGoogleSignUp}>
+              <TouchableOpacity style={[styles.socialBtn, { width: '100%' }]} onPress={handleGoogleSignUp}>
                 <Image
                   source={{ uri: 'https://www.google.com/favicon.ico' }}
                   style={styles.socialLogo}
                 />
                 <Text style={styles.socialText}>Google</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialBtn} onPress={handleFacebookSignUp}>
-                <Image
-                  source={{ uri: 'https://www.facebook.com/favicon.ico' }}
-                  style={styles.socialLogo}
-                />
-                <Text style={styles.socialText}>Facebook</Text>
               </TouchableOpacity>
             </View>
 
