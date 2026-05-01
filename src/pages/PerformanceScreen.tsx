@@ -185,9 +185,58 @@ const PerformanceScreen = () => {
             )}
           </ScrollView>
 
-          {/* Challenge Logs */}
-          <Text style={styles.challengeLogsTitle}>Challenge Logs</Text>
-          <View style={styles.challengeLogsPlaceholder} />
+          {/* Challenge History */}
+          <Text style={styles.challengeLogsTitle}>Challenge History</Text>
+
+        <View style={styles.challengeLogsContainer}>
+          {[
+            { id: '1', status: 'VICTORY', name: 'PUSH UPS', r: 8, s: 10 },
+            { id: '2', status: 'DEFEAT', name: 'SQUATS', r: 8, s: 10 },
+          ].map((item) => {
+            const isVictory = item.status === 'VICTORY';
+            
+    return (
+      <TouchableOpacity 
+        key={item.id} 
+        activeOpacity={0.85} 
+        style={styles.logWrapper}
+      >
+        <LinearGradient
+          colors={isVictory ? ['#000000', '#324727'] : ['#000000', '#3F1C1C']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.logCard}
+        >
+          {/* Profile Image - B&W/Tinted if Lose */}
+          <View style={styles.imageContainer}>
+            <Image 
+              source={require('../assets/5.png')} 
+              style={[
+                styles.logProfile, 
+                !isVictory && { tintColor: 'gray', opacity: 0.7 } 
+              ]} 
+            />
+          </View>
+
+          {/* Dynamic Info */}
+          <View style={styles.logInfo}>
+            <Text style={styles.logExerciseText}>{item.name}</Text>
+            <Text style={styles.logStatsText}>{item.r} reps</Text>
+            <Text style={styles.logStatsText}>{item.s} sets</Text>
+          </View>
+
+          {/* Slanted Result Banner */}
+          <View style={[
+            styles.slantedBanner, 
+            { backgroundColor: isVictory ? '#416F00' : '#740000' }
+          ]}>
+            <Text style={styles.resultText}>{item.status}</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
         </View>
       </ScrollView>
@@ -521,20 +570,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 13,
   },
-
-  // Challenge Logs
-  challengeLogsTitle: {
-    color: '#e4f4a6',
-    fontFamily: 'Montserrat',
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  challengeLogsPlaceholder: {
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: '#1F2118',
-  },
-
   // ── MODAL ──
   modalOverlay: {
     flex: 1,
@@ -581,5 +616,70 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat',
     fontWeight: '700',
     fontSize: 14,
+  },
+challengeLogsTitle: {
+     color: '#e4f4a6',
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 20,
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  challengeLogsContainer: {
+    paddingBottom: 20,
+  },
+  logWrapper: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    height: 105,
+    marginBottom: 15,
+  },
+  logCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+  },
+  imageContainer: {
+    borderRadius: 15,
+    overflow: 'hidden',
+    backgroundColor: '#222',
+  },
+  logProfile: {
+    width: 75,
+    height: 75,
+    resizeMode: 'cover',
+  },
+  logInfo: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  logExerciseText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontFamily: 'Montserrat-Bold', // Montserrat for title
+    textTransform: 'uppercase',
+  },
+  logStatsText: {
+    color: '#CCCCCC',
+    fontSize: 14,
+    fontFamily: 'Barlow-Medium', // Barlow for stats
+    marginTop: -2,
+  },
+  slantedBanner: {
+    position: 'absolute',
+    right: -17, // Overhang to hide the skew edge
+    top: 0,
+    bottom: 0,
+    width: '35%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resultText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontFamily: 'Barlow-SemiBold', // Barlow for the status
+    transform: [{ skewX: '20deg' }], // Counter-skew to keep text upright
+    textAlign: 'center',
+    marginRight: 15,
   },
 });
