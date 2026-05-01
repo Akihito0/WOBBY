@@ -541,7 +541,6 @@ const styles = StyleSheet.create({
   dailyGainsTxt: {
     color: '#000',
     fontFamily: 'Montserrat-Bold',
-    fontWeight: '700',
     fontSize: 14,
   },
   dropIcon: {
@@ -568,8 +567,7 @@ const styles = StyleSheet.create({
   lifetimeTxt: {
     color: '#EEFFAB',
     fontFamily: 'Montserrat-Bold',
-    fontWeight: '600',
-    fontSize: 13,
+    fontSize: 14,
   },
 
   // Daily Gains panel
@@ -709,14 +707,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: '#EEFFAB',
-    fontFamily: 'Montserrat',
-    fontWeight: '800',
-    fontSize: 18,
+    fontFamily: 'Montserrat-ExtraBold',
+    fontSize: 20,
     marginBottom: 12,
   },
   modalPlaceholder: {
     color: '#666',
-    fontFamily: 'Montserrat',
+    fontFamily: 'Barlow-Medium',
     fontSize: 13,
     textAlign: 'center',
     marginBottom: 24,
@@ -729,8 +726,7 @@ const styles = StyleSheet.create({
   },
   modalCloseTxt: {
     color: '#000',
-    fontFamily: 'Montserrat',
-    fontWeight: '700',
+    fontFamily: 'Barlow-Medium',
     fontSize: 14,
   },
 challengeLogsTitle: {
