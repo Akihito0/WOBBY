@@ -17,11 +17,34 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ACHIEVEMENT_DATA } from './Achievements';
+import ChallengeModal from '../components/ChallengeModal';
 
 const { width } = Dimensions.get('window');
 
 const PerformanceScreen = () => {
   const navigation = useNavigation();
+
+  const [challengeModalVisible, setChallengeModalVisible] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<{
+  status: 'VICTORY' | 'DEFEAT';
+  exerciseName: string;
+  reps: number;
+  sets: number;
+  date: string;
+  duration: string;
+  opponent: string;
+  xp: number;
+} | null>(null);
+  // Modal visibility state
+  const [modalVisible, setModalVisible] = useState(false);
+  // State to store which specific challenge was clicked
+  const [selectedChallenge, setSelectedChallenge] = useState(null);
+
+  // Function to trigger the modal
+  const handleCardPress = (item: any) => {
+  setSelectedChallenge(item);
+  setModalVisible(true);
+};
 
   // XP data (replace with real data)
   const xpPoints = 1000;
@@ -213,20 +236,52 @@ const PerformanceScreen = () => {
           </ScrollView>
 
           {/* Challenge History */}
-          <Text style={styles.challengeLogsTitle}>Challenge History</Text>
+<Text style={styles.challengeLogsTitle}>Challenge History</Text>
 
-        <View style={styles.challengeLogsContainer}>
-          {[
-            { id: '1', status: 'VICTORY', name: 'PUSH UPS', r: 8, s: 10 },
-            { id: '2', status: 'DEFEAT', name: 'SQUATS', r: 8, s: 10 },
-          ].map((item) => {
-            const isVictory = item.status === 'VICTORY';
+<View style={styles.challengeLogsContainer}>
+ {[
+  { 
+    id: '1', 
+    status: 'VICTORY' as const, // Added 'as const' to fix the type error
+    name: 'PUSH UPS', 
+    r: 8, s: 10, 
+    date: 'January 02, 2026', 
+    dur: '00:15:30', 
+    opp: 'Jordan A. Cabandon', 
+    xp: 500 
+  },
+  { 
+    id: '2', 
+    status: 'DEFEAT' as const, // Added 'as const' here too
+    name: 'SQUATS', 
+    r: 8, s: 10, 
+    date: 'January 01, 2026', 
+    dur: '00:12:10', 
+    opp: 'Jordan A. Cabandon', 
+    xp: 125 
+  },
+].map((item) => {
+  const isVictory = item.status === 'VICTORY';
             
     return (
       <TouchableOpacity 
         key={item.id} 
         activeOpacity={0.85} 
         style={styles.logWrapper}
+        onPress={() => {
+          // This ensures all properties are passed to the modal
+          setSelectedLog({
+            status: item.status, 
+            exerciseName: item.name,
+            reps: item.r,
+            sets: item.s,
+            date: item.date,
+            duration: item.dur,
+            opponent: item.opp,
+            xp: item.xp
+          });
+          setChallengeModalVisible(true);
+        }}
       >
         <LinearGradient
           colors={isVictory ? ['#000000', '#324727'] : ['#000000', '#3F1C1C']}
@@ -245,11 +300,10 @@ const PerformanceScreen = () => {
             />
           </View>
 
-          {/* Dynamic Info */}
+          {/* Info Section */}
           <View style={styles.logInfo}>
             <Text style={styles.logExerciseText}>{item.name}</Text>
-            <Text style={styles.logStatsText}>{item.r} reps</Text>
-            <Text style={styles.logStatsText}>{item.s} sets</Text>
+            <Text style={styles.logStatsText}>{item.r} reps | {item.s} sets</Text>
           </View>
 
           {/* Slanted Result Banner */}
@@ -267,6 +321,11 @@ const PerformanceScreen = () => {
 
         </View>
       </ScrollView>
+      <ChallengeModal 
+  visible={challengeModalVisible}
+  onClose={() => setChallengeModalVisible(false)}
+  data={selectedLog}
+/>
 
       {/* ── LIFETIME ARCHIVE MODAL ── */}
       <Modal
@@ -740,3 +799,4 @@ challengeLogsTitle: {
     marginRight: 15,
   },
 });
+
