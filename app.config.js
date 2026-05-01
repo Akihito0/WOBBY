@@ -17,24 +17,28 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.tweetie.wobby",
-      infoPlist: {
-        ITSAppUsesNonExemptEncryption: false
-      },
-
       entitlements: {
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.access": []
       },
-      
+      // 🔧 CHANGE: Merged your two separate `infoPlist` objects into one.
+      // In JS, duplicate keys cause the second to silently overwrite the first,
+      // which was dropping `ITSAppUsesNonExemptEncryption: false`.
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSHealthShareUsageDescription: "Wobby needs to read your Apple Watch data to sync your workout history.",
         NSHealthUpdateUsageDescription: "Wobby needs to save your computer vision workouts to Apple Health."
       }
-    }
-
-    },
+    }, 
+    // 🔧 CHANGE: Removed the extra `}` that was previously here.
+    // It prematurely closed the `expo` object, pushing `android`, `web`,
+    // `plugins`, and `extra` outside the config. This broke Expo's parser
+    // and triggered the "Cannot automatically write to dynamic config" error.
     android: {
-      package: "com.noah.wobby", // Can be any name as long as its different
+      // 🔧 CHANGE: Updated from "com.noah.wobby" → "com.tweetie.wobby"
+      // to match your iOS bundleIdentifier and satisfy Expo's CLI warning.
+      // Keeping both IDs identical is an Expo/EAS best practice.
+      package: "com.tweetie.wobby",
       targetSdkVersion: 35,
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
@@ -61,4 +65,5 @@ export default {
         projectId: "6dd78270-0e8a-408f-83a3-a5a0c21d009c"
       }
     }
-  };
+  }
+};
