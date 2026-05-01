@@ -66,6 +66,33 @@ const PerformanceScreen = () => {
           {/*<Text style={styles.username}>cashew_12345</Text>*/}
           {/*</View>*/}
 
+          <View style={styles.gemContainer}>
+  {/* The Large Glowing Gem */}
+  <Image 
+    source={require('../assets/xp_gem.png')} 
+    style={styles.headerGem} 
+  />
+
+  {/* 20 scattered particles for a "Many" effect */}
+  {[...Array(20)].map((_, i) => (
+    <View 
+      key={i}
+      style={[
+        styles.particle,
+        {
+          // Scatter range increased for the 100x100 gem
+          top: Math.random() * 140 - 20, 
+          left: Math.random() * 140 - 20,
+          width: Math.random() * 3 + 1,
+          height: Math.random() * 3 + 1,
+          opacity: Math.random() * 0.9 + 0.1,
+          // Mix of white and lime green particles
+          backgroundColor: i % 3 === 0 ? '#8DEA0B' : '#FFFFFF',
+        }
+      ]}
+    />
+  ))}
+</View>
           {/* XP Card */}
           <View style={[styles.xpCard, showInfoDropdown && styles.xpCardExpanded]}>
             {/* Label row */}
@@ -291,6 +318,36 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     paddingHorizontal: 20,
     marginBottom: 15,
+  },
+  gemContainer: {
+    position: 'absolute',
+    left: 24, // Your requested position
+    bottom: 12, // Adjusted because the 100x100 size is much taller
+    zIndex: 10,
+    elevation: 12,
+    width: 110,
+    height: 110,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerGem: {
+    width: 110,
+    height: 110,
+    resizeMode: 'contain',
+    zIndex: 15,
+    // Massive Aura Glow for 100x100 size
+    shadowColor: '#8DEA0B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 30, // Increased for larger gem
+  },
+  particle: {
+    position: 'absolute',
+    borderRadius: 1,
+    zIndex: 11,
+    shadowColor: '#8DEA0B',
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
   headerExpanded: {
     height: 312,
