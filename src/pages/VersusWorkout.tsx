@@ -1,14 +1,36 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Finding from '../components/Finding';
+import ExerciseModal from '../components/ExerciseModal';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
 
+  const [isFinding, setIsFinding] = useState(false);
+  const handleRunPress = () => {
+  setIsFinding(true);
+  // Logic to find opponent goes here
+  //setIsFinding(false); // Call this once the match is found
+};
+
+const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
+const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
+
+const handleRoutineSelect = (routine: any) => {
+  setSelectedRoutine({ type: routine.type, exercises: routine.exercises });
+  setExerciseModalVisible(true);
+};
+
+const handleConfirmExercises = () => {
+  setExerciseModalVisible(false);
+  setIsFinding(true); // This triggers the Finding.tsx modal
+};
+
   const routines = [
-    { type: 'PUSH', sub: 'Chest, Shoulders, Triceps', icon: require('../assets/push.png') },
-    { type: 'PULL', sub: 'Back, Biceps',              icon: require('../assets/pull.png') },
-    { type: 'LEG',  sub: 'Lower Body',                icon: require('../assets/leg.png')  },
+    { type: 'PUSH', sub: 'Chest, Shoulders, Triceps', icon: require('../assets/push.png'), exercises: ['Push Ups', 'Bench Press', 'Tricep Dips']},
+    { type: 'PULL', sub: 'Back, Biceps',              icon: require('../assets/pull.png'), exercises: ['Pull Ups', 'Seated Cable Row', 'Bicep Curls'] },
+    { type: 'LEG',  sub: 'Lower Body',                icon: require('../assets/leg.png'),  exercises: ['Squats', 'Lunges', 'Leg Extensions'] },
   ];
 
   return (
@@ -81,17 +103,21 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       <View style={styles.dropdownInner}>
         <Text style={styles.dropdownLabel}>Select your routine</Text>
         <View style={styles.routinesRow}>
-          {routines.map(({ type, sub, icon }) => (
-            <TouchableOpacity key={type} style={styles.routineCardWrapper}>
+          {routines.map((routine) => (
+  <TouchableOpacity 
+    key={routine.type} 
+    style={styles.routineCardWrapper}
+    onPress={() => handleRoutineSelect(routine)} // Click triggers ExerciseModal
+  >
               <LinearGradient
                 colors={['#180020', '#000000']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
                 style={styles.routineCard}
               >
-                <Image source={icon} style={styles.routineIcon} />
-                <Text style={styles.routineTitle}>{type}</Text>
-                <Text style={styles.routineSub}>{sub}</Text>
+                <Image source={routine.icon} style={styles.routineIcon} />
+                <Text style={styles.routineTitle}>{routine.type}</Text>
+                <Text style={styles.routineSub}>{routine.sub}</Text>
               </LinearGradient>
             </TouchableOpacity>
           ))}
@@ -103,10 +129,10 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
 {/* RUN Button */}
 <TouchableOpacity
-  activeOpacity={0.85}
-  onPress={() => navigation.navigate('RunPlaceholder')}
-  style={styles.modeButtonWrapper}
->
+    activeOpacity={0.85}
+    onPress={handleRunPress}
+    style={styles.modeButtonWrapper}
+  >
   <LinearGradient
     colors={['#000000', '#193845']}
     start={{ x: 0.8, y: 0.5 }}
@@ -115,11 +141,20 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   >
     <View style={styles.modeButtonTopRow}>
       <Text style={styles.modeButtonText}>RUN</Text>
+      <Finding visible={isFinding} />
       <Image source={require('../assets/gooo.png')} style={styles.modeButtonIcon} />
     </View>
   </LinearGradient>
 </TouchableOpacity>
 
+<ExerciseModal 
+  visible={exerciseModalVisible}
+  routineType={selectedRoutine.type}
+  exercises={selectedRoutine.exercises}
+  onClose={() => setExerciseModalVisible(false)} // Closes on Cancel
+  onConfirm={handleConfirmExercises} // Opens Finding.tsx on Confirm
+/>
+<Finding visible={isFinding} />
     </ScrollView>
   );
 };
