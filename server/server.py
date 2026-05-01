@@ -9,13 +9,13 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaRelay
 
 mp_pose = mp.solutions.pose
-# Changed model_complexity to 0 for much faster processing, 
-# and min_tracking_confidence to 0.5 to reduce jitter and excessive re-detection.
+# Initialize MediaPipe Pose with optimized settings
 pose = mp_pose.Pose(
-    model_complexity=0, 
+    model_complexity=0, # 0 = Lite (Fastest), 1 = Full, 2 = Heavy
     smooth_landmarks=True,
     min_detection_confidence=0.5, 
-    min_tracking_confidence=0.5
+    min_tracking_confidence=0.5,
+    static_image_mode=False # Ensure it treats as video stream for faster tracking
 )
 
 relay = MediaRelay()
@@ -37,22 +37,14 @@ class PoseVideoTrack(VideoStreamTrack):
         frame = await self.track.recv()
         
         # SKIP if still processing previous frame
+        # This is CRITICAL for hotspots to prevent "queue backup" (latency buildup)
         if self.processing:
-            # Send cached landmarks to keep UI responsive
-            if self.last_landmarks and getattr(self.websocket, "open", True):
-                try:
-                    await self.websocket.send(json.dumps({
-                        "type": "pose",
-                        "landmarks": self.last_landmarks,
-                        "timestamp": time.time()
-                    }))
-                except:
-                    pass
             return frame
         
         self.processing = True
         try:
-            # 2. Convert directly to RGB (Skips OpenCV CPU color conversion!)
+            # Drop frames if we are behind to ensure "real-time" feel
+            # This is a simple frame-skipping logic for high-latency environments
             img_rgb = frame.to_ndarray(format="rgb24")
             
             # 3. Offload MediaPipe processing to a background thread so the core Python async event loop 
@@ -90,41 +82,84 @@ class PoseVideoTrack(VideoStreamTrack):
 
 async def handler(websocket):
     print("New WebRTC Signaling Client Connected")
-    pc = RTCPeerConnection()
+    from aiortc import RTCConfiguration, RTCIceServer
+    config = RTCConfiguration(iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])])
+    pc = RTCPeerConnection(configuration=config)
     
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
         print(f"WebRTC Connection State changed to: {pc.connectionState}")
+        if pc.connectionState in ["failed", "closed"]:
+            await pc.close()
         
     @pc.on("track")
     def on_track(track):
         if track.kind == "video":
-            print("Video track received from phone!")
+            print(f"Video track received from phone: {track.id}")
             local_video = PoseVideoTrack(relay.subscribe(track), websocket)
             pc.addTrack(local_video)
 
     try:
         async for message in websocket:
-            data = json.loads(message)
-            
-            if data["type"] == "offer":
-                offer = RTCSessionDescription(sdp=data["sdp"], type=data["type"])
-                await pc.setRemoteDescription(offer)
+            try:
+                data = json.loads(message)
                 
-                answer = await pc.createAnswer()
-                await pc.setLocalDescription(answer)
-                
-                await websocket.send(json.dumps({
-                    "type": "answer",
-                    "sdp": pc.localDescription.sdp
-                }))
-                
-            elif data["type"] == "ice-candidate":
-                # Add ICE candidates if needed by your network
-                pass
+                if data["type"] == "offer":
+                    # Debug: Print offer details
+                    print(f"Received offer, state is: {pc.signalingState}")
+                    offer = RTCSessionDescription(sdp=data["sdp"], type=data["type"])
+                    await pc.setRemoteDescription(offer)
+                    
+                    answer = await pc.createAnswer()
+                    await pc.setLocalDescription(answer)
+                    
+                    await websocket.send(json.dumps({
+                        "type": "answer",
+                        "sdp": pc.localDescription.sdp
+                    }))
+                    print("Sent answer to client")
+                    
+                elif data["type"] == "ice-candidate":
+                    # Fixed: Properly handle ICE candidates
+                    candidate_data = data.get("candidate")
+                    if candidate_data and pc.remoteDescription is not None:
+                        try:
+                            from aiortc import RTCIceCandidate
+                            
+                            # Handle both object and flattened formats
+                            if isinstance(candidate_data, dict):
+                                cand = candidate_data.get("candidate")
+                                sdpMid = candidate_data.get("sdpMid")
+                                sdpMLineIndex = candidate_data.get("sdpMLineIndex")
+                            else:
+                                # Fallback if candidate is passed differently
+                                cand = candidate_data
+                                sdpMid = data.get("sdpMid")
+                                sdpMLineIndex = data.get("sdpMLineIndex")
+
+                            if cand:
+                                ice_candidate = RTCIceCandidate(
+                                    candidate=cand,
+                                    sdpMid=sdpMid,
+                                    sdpMLineIndex=sdpMLineIndex
+                                )
+                                await pc.addIceCandidate(ice_candidate)
+                                print("Added ICE candidate")
+                        except Exception as e:
+                            print(f"Error adding ICE candidate: {e}")
+                    else:
+                        # If remote description isn't set yet, we should ideally queue these,
+                        # but often skipping them initially is okay if enough follow.
+                        pass
+            except Exception as e:
+                import traceback
+                print(f"Error processing message: {e}")
+                traceback.print_exc()
                 
     except websockets.exceptions.ConnectionClosed:
         print("Client disconnected")
+    except Exception as e:
+        print(f"Unexpected handler error: {e}")
     finally:
         await pc.close()
 

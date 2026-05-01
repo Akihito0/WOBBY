@@ -14,7 +14,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SERVER_URL = 'ws://192.168.1.58:8765'; // Your backend network IP
+
+// List of potential server IPs to try
+// 10.124.14.51: Your current Wi-Fi IP
+// 192.168.137.1: Standard Windows Hotspot/Shared connection IP
+const SERVER_IPS = ['10.124.14.51', '192.168.137.1', '10.26.208.51', '192.168.1.58', 'localhost']; 
+const PORT = '8765';
 
 type Point = { x: number; y: number; conf: number };
 export type Pose = {
@@ -84,38 +89,91 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       const isFront = facing === 'front';
       const stream = await mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: isFront ? 'user' : 'environment', frameRate: 30, width: 640, height: 480 }
+        video: { 
+          facingMode: isFront ? 'user' : 'environment', 
+          frameRate: 20, // Lowered from 30 to reduce bandwidth on hotspot
+          width: 480,    // Lowered from 640 for less data processing
+          height: 360    // Lowered from 480
+        }
       });
       setLocalStream(stream);
 
-      ws.current = new WebSocket(SERVER_URL);
-      
-      ws.current.onopen = async () => {
-        setIsConnected(true);
-        pc.current = new RTCPeerConnection({ iceServers: [] }); 
+      // Attempt to connect to potential server IPs
+      let connected = false;
+      for (const ip of SERVER_IPS) {
+        if (connected) break;
         
-        if (!pc.current) return;
+        console.log(`Connecting to ${ip}...`);
+        const socket = new WebSocket(`ws://${ip}:${PORT}`);
         
-        stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
-
-        const offer = await pc.current.createOffer({});
-        await pc.current.setLocalDescription(offer);
-        
-        const sendSDP = () => {
-            if(ws.current?.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-            }
-        };
-
-        if (pc.current.iceGatheringState === 'complete') {
-            sendSDP();
-        } else {
-            // @ts-ignore: React Native WebRTC types are missing onicegatheringstatechange
-            pc.current.onicegatheringstatechange = () => {
-                if (pc.current?.iceGatheringState === 'complete') sendSDP();
-            };
+        const connectionTimeout = setTimeout(() => {
+          if (socket.readyState !== WebSocket.OPEN) {
+            socket.close();
           }
-      };
+        }, 3000);
+
+        await new Promise<void>((resolve) => {
+          socket.onopen = async () => {
+            clearTimeout(connectionTimeout);
+            ws.current = socket;
+            connected = true;
+            setIsConnected(true);
+            
+            pc.current = new RTCPeerConnection({ iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              ]
+            }); 
+            
+            if (!pc.current) return;
+            
+            pc.current.onicecandidate = (event: any) => {
+              if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({
+                  type: 'ice-candidate',
+                  candidate: event.candidate,
+                }));
+              }
+            };
+
+            stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
+
+            const offer = await pc.current.createOffer({});
+            await pc.current.setLocalDescription(offer);
+            
+            const sendSDP = () => {
+                if(ws.current?.readyState === WebSocket.OPEN) {
+                    ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
+                }
+            };
+
+            if (pc.current.iceGatheringState === 'complete') {
+                sendSDP();
+            } else {
+                // @ts-ignore: React Native WebRTC types are missing onicegatheringstatechange
+                pc.current.onicegatheringstatechange = () => {
+                    if (pc.current?.iceGatheringState === 'complete') sendSDP();
+                };
+            }
+            resolve();
+          };
+
+          socket.onerror = () => {
+            clearTimeout(connectionTimeout);
+            resolve();
+          };
+          
+          socket.onclose = () => {
+            clearTimeout(connectionTimeout);
+            resolve();
+          };
+        });
+      }
+
+      if (!ws.current) {
+        console.error("Failed to connect to any server IP");
+        return;
+      }
 
       ws.current.onmessage = async (e) => {
         const data = JSON.parse(e.data);
@@ -320,11 +378,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           {drawLine(pose.leftHip, pose.leftKnee)}
           {drawLine(pose.rightHip, pose.rightKnee)}
           
-          {Object.values(pose).map((pt, index) => {
-            if(pt.conf > 0.2) {
+          {Object.entries(pose).map(([key, pt], index) => {
+            if(pt && pt.conf > 0.15) {
                return (
                 <Circle 
-                  key={index} 
+                  key={key} 
                   cx={pt.x} 
                   cy={pt.y} 
                   r="5" 
