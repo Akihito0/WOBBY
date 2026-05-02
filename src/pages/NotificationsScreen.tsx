@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: 'Montserrat_900Black', 
     marginTop: -30,
-    marginLeft: 130,
+    marginLeft: 135,
   },
   content: {
     flex: 1,
