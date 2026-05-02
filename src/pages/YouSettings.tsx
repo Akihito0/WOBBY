@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
+import NotificationsScreen from './NotificationsScreen';
 
 type YouStackParamList = {
   YouMain: undefined;
   YouSettings: undefined;
+  NotificationsScreen: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
 };
@@ -15,34 +16,28 @@ type YouStackParamList = {
 type Props = NativeStackScreenProps<YouStackParamList, 'YouSettings'>;
 
 export default function YouSettings({ navigation }: Props) {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      
       if (error) {
         Alert.alert('Error', 'Failed to sign out: ' + error.message);
-        console.error('Sign out error:', error);
       }
-      // The auth state listener in App.tsx will automatically handle navigation to entry screen
     } catch (err) {
-      console.error('Sign out error:', err);
       Alert.alert('Error', 'An unexpected error occurred during sign out.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <LinearGradient
         colors={['#001E20', '#000000']}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-        style={styles.headerGradient}
+        start={{ x: 1, y: 0.5 }}
+        end={{ x: 0.3, y: 0.5 }}
+        style={styles.headerContent}
       >
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={28} color="#10B981" />
+            <Image source={require('../assets/back0.png')} style={styles.backIcon} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>ACCOUNT SETTINGS</Text>
           <View style={styles.headerPlaceholder} />
@@ -53,30 +48,33 @@ export default function YouSettings({ navigation }: Props) {
         {/* General Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>General</Text>
-          
-          <TouchableOpacity style={styles.settingItem}>
+
+<TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation.navigate('NotificationsScreen')}
+          >
             <View style={styles.iconBox}>
-              <Ionicons name="notifications" size={20} color="#F8FAFC" />
+              <Image source={require('../assets/notif_bell.png')} style={styles.icon} />
             </View>
-            <Text style={styles.settingLabel}>Notifications</Text>
+            <Text style={styles.settingLabel}>Notifications</Text> 
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingItem}
             onPress={() => navigation.navigate('PersonalInformation')}
           >
             <View style={styles.iconBox}>
-              <Ionicons name="person-circle" size={20} color="#F8FAFC" />
+              <Image source={require('../assets/profile.png')} style={styles.icon} />
             </View>
             <Text style={styles.settingLabel}>Personal information</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingItem}
             onPress={() => navigation.navigate('LinkedDevices')}
           >
             <View style={styles.iconBox}>
-              <Ionicons name="link" size={20} color="#F8FAFC" />
+              <Image source={require('../assets/link.png')} style={styles.icon} />
             </View>
             <Text style={styles.settingLabel}>Linked devices</Text>
           </TouchableOpacity>
@@ -85,17 +83,17 @@ export default function YouSettings({ navigation }: Props) {
         {/* Help & Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Help & Support</Text>
-          
+
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.iconBox}>
-              <Ionicons name="information-circle" size={20} color="#F8FAFC" />
+              <Image source={require('../assets/about.png')} style={styles.icon} />
             </View>
             <Text style={styles.settingLabel}>About us</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.iconBox}>
-              <Ionicons name="help-circle" size={20} color="#F8FAFC" />
+              <Image source={require('../assets/help.png')} style={styles.icon} />
             </View>
             <Text style={styles.settingLabel}>Help center</Text>
           </TouchableOpacity>
@@ -105,55 +103,52 @@ export default function YouSettings({ navigation }: Props) {
         <View style={styles.logOutSection}>
           <Text style={styles.sectionTitle}>Log Out</Text>
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-            <View style={styles.iconBox}>
-              <Ionicons name="power" size={20} color="#F8FAFC" />
+            <View style={styles.signOutIconBox}>
+              <Image source={require('../assets/sign_out.png')} style={styles.icon} />
             </View>
             <Text style={styles.signOutText}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0a0f0d',
+    backgroundColor: '#121310',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerGradient: {
+    width: '100%',
+  },
+  headerContent: {
+    width: '100%',
+    height: 117,
+    paddingBottom: 18,
+    paddingHorizontal: 10,
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   backButton: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-  },
-  headerGradient: {
-    width: '100%',
-    backgroundColor: '#000',
+  backIcon: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain',
+    marginLeft: -15,
+    marginTop: 70,  
   },
   headerTitle: {
     color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontSize: 28,
+    fontFamily: "Montserrat_900Black",
+    marginTop: 30,
+    marginLeft: 70,
   },
   headerPlaceholder: {
     width: 44,
@@ -161,55 +156,72 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 20,
     paddingBottom: 40,
-    paddingTop: 24,
+    paddingTop: 28,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 35,
   },
   logOutSection: {
     marginBottom: 32,
   },
   sectionTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 16,
+    color: '#FFFFFF',
+    fontFamily: "Montserrat_800ExtraBold",
+    marginBottom: 14,
+    fontSize: 18,
   },
   settingItem: {
-    backgroundColor: '#1a2e1f',
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    backgroundColor: '#22221D',
+    borderRadius: 15,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 15,
   },
   iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: 'transparent',
+    width: 38,
+    height: 38,
+    borderRadius: 7,
+    backgroundColor: '#34342B',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
   },
+  icon: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
+  },
   settingLabel: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: "Montserrat_800ExtraBold",
+    flex: 1,
+    marginLeft: 10,
   },
   signOutButton: {
-    backgroundColor: '#6B2C2C',
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    backgroundColor: '#3d1212',
+    borderRadius: 15,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
   },
+  signOutIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 7,
+    backgroundColor: '#5a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
   signOutText: {
     color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 14,
+    fontSize: 15,
+    fontFamily: "Montserrat_800ExtraBold",
+    flex: 1,
+    marginLeft: 10,
   },
 });

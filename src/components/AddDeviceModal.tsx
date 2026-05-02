@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import {
     View,
     Text,
@@ -8,8 +10,10 @@ import {
     ScrollView,
     Animated,
     Easing,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
 
 interface DiscoveredDevice {
     id: string;
@@ -135,14 +139,27 @@ export default function AddDeviceModal({
             onRequestClose={handleClose}
         >
             <View style={styles.overlay}>
-                <View style={styles.container}>
+                <LinearGradient
+                        colors={['#393939', '#000000']}
+                        start={{ x: 0.3, y: 1 }}
+                        end={{ x: 0.3, y: 0.5 }}
+                        style={styles.container}
+                      >
                     {/* Header */}
                     <View style={styles.header}>
-                        <Text style={styles.headerTitle}>Add New Device</Text>
-                        <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                            <Ionicons name="close-circle" size={24} color="#94A3B8" />
-                        </TouchableOpacity>
-                    </View>
+                        <TouchableOpacity
+                                onPress={handleClose}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Image
+                                    source={require('../assets/X.png')}
+                                    style={styles.closeIcon}
+                                />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>Add New Device</Text>
+                            
+                        </View>
+                    
 
                     {/* Content */}
                     {modalState === 'searching' ? (
@@ -213,7 +230,7 @@ export default function AddDeviceModal({
 
                                 {/* Center search icon */}
                                 <View style={styles.searchIconContainer}>
-                                    <Ionicons name="search" size={40} color="#3B82F6" />
+                                    <Ionicons name="search" size={40} color="#7A9900" />
                                 </View>
                             </View>
                             <Text style={styles.searchingText}>Searching for devices...</Text>
@@ -256,7 +273,8 @@ export default function AddDeviceModal({
                             )}
                         </ScrollView>
                     )}
-                </View>
+                
+                </LinearGradient>
             </View>
         </Modal>
     );
@@ -272,12 +290,13 @@ const styles = StyleSheet.create({
     container: {
         width: '85%',
         maxHeight: '70%',
-        backgroundColor: '#151828',
-        borderRadius: 24,
+        borderRadius: 30,
         overflow: 'hidden',
+        borderColor: '#7A9900',
+        borderWidth: 1,
     },
     header: {
-        flexDirection: 'row',
+        //flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
@@ -287,8 +306,16 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         color: '#F8FAFC',
-        fontSize: 18,
-        fontWeight: '700',
+        fontSize: 21,
+        fontFamily: 'Montserrat_800ExtraBold',
+        alignItems: 'center',
+    },
+    closeIcon: {
+        width: 24,
+        height: 24,
+        resizeMode: 'contain',
+        marginLeft: 250,
+        marginTop: 5,
     },
     searchingContainer: {
         alignItems: 'center',
@@ -308,14 +335,14 @@ const styles = StyleSheet.create({
         height: 120,
         borderRadius: 60,
         borderWidth: 2,
-        borderColor: '#3B82F6',
+        borderColor: '#7A9900',
     },
     searchIconContainer: {
         width: 80,
         height: 80,
         borderRadius: 40,
         borderWidth: 2,
-        borderColor: '#3B82F6',
+        borderColor: '#7A9900',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
@@ -333,7 +360,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: '#1F2937',
+        backgroundColor: '#22221D',
         borderRadius: 16,
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -349,12 +376,12 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 12,
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        backgroundColor: '#34342B',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255,255,255,0.06)',
     },
     deviceName: {
         color: '#F8FAFC',
@@ -363,16 +390,17 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     pairButton: {
-        backgroundColor: '#3B82F6',
+        backgroundColor: '#ccff00',
         paddingHorizontal: 20,
         paddingVertical: 8,
         borderRadius: 8,
         marginLeft: 12,
+        opacity: 0.7,
     },
     pairButtonText: {
-        color: '#FFFFFF',
+        color: '#000000',
         fontSize: 13,
-        fontWeight: '600',
+        fontFamily: 'Montserrat_600SemiBold',
     },
     emptyState: {
         alignItems: 'center',
@@ -385,13 +413,14 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     retryButton: {
-        backgroundColor: '#3B82F6',
+        backgroundColor: '#ccff00',
         paddingHorizontal: 24,
         paddingVertical: 10,
         borderRadius: 8,
+        opacity: 0.7,
     },
     retryButtonText: {
-        color: '#FFFFFF',
+        color: '#000000',
         fontSize: 13,
         fontWeight: '600',
     },
