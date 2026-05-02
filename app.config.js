@@ -46,6 +46,8 @@ export default {
       "expo-font",
       "expo-web-browser",
       "react-native-vision-camera",
+      "@react-native-community/datetimepicker",
+      "expo-image-picker",
       [
         "@rnmapbox/maps",
         {

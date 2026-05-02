@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: "Montserrat_900Black",
     marginTop: 0,
-    marginLeft: 85,
+    marginLeft: 115,
   },
   headerPlaceholder: {
     width: 44,
