@@ -29,16 +29,9 @@ export default {
         NSHealthShareUsageDescription: "Wobby needs to read your Apple Watch data to sync your workout history.",
         NSHealthUpdateUsageDescription: "Wobby needs to save your computer vision workouts to Apple Health."
       }
-    }, 
-    // 🔧 CHANGE: Removed the extra `}` that was previously here.
-    // It prematurely closed the `expo` object, pushing `android`, `web`,
-    // `plugins`, and `extra` outside the config. This broke Expo's parser
-    // and triggered the "Cannot automatically write to dynamic config" error.
+    },
     android: {
-      // 🔧 CHANGE: Updated from "com.noah.wobby" → "com.tweetie.wobby"
-      // to match your iOS bundleIdentifier and satisfy Expo's CLI warning.
-      // Keeping both IDs identical is an Expo/EAS best practice.
-      package: "com.tweetie.wobby",
+      package: "com.ness.wobby",
       targetSdkVersion: 35,
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",

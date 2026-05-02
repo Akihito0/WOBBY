@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Image, ScrollView, TextInput } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -15,10 +14,9 @@ type Props = NativeStackScreenProps<YouStackParamList, 'PersonalInformation'>;
 export default function PersonalInformation({ navigation }: Props) {
   const [username, setUsername] = useState('cashew_123');
   const [fullName, setFullName] = useState('Tung Tung Tung Sahur');
-  const [age, setAge] = useState('21');
-  const [weight, setWeight] = useState('75');
-  const [height, setHeight] = useState('165');
-  const [avatarUrl, setAvatarUrl] = useState('https://i.pravatar.cc/300');// Placeholder avatar URL
+  const [age, setAge] = useState('');
+  const [weight, setWeight] = useState('');
+  const [height, setHeight] = useState('');
 
   const handleSave = () => {
     console.log('Saving profile...');
@@ -34,43 +32,45 @@ export default function PersonalInformation({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <LinearGradient
         colors={['#001E20', '#000000']}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-        style={styles.headerGradient}
+        start={{ x: 1, y: 0.5 }}
+        end={{ x: 0.3, y: 0.5 }}
+        style={styles.headerContent}
       >
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={28} color="#10B981" />
+            <Image source={require('../assets/back0.png')} style={styles.backIcon} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile Settings</Text>
+          <Text style={styles.headerTitle}>PROFILE SETTINGS</Text>
           <View style={styles.headerPlaceholder} />
         </View>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Avatar */}
         <View style={styles.avatarSection}>
           <View style={styles.avatarContainer}>
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <Image source={require('../assets/5.png')} style={styles.avatar} />
           </View>
           <TouchableOpacity onPress={handleChangePicture}>
             <Text style={styles.changePictureText}>Change Picture</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Form */}
         <View style={styles.formContainer}>
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Username</Text>
             <View style={styles.inputContainer}>
-              <Ionicons name="person-circle-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+              <Image source={require('../assets/username.png')} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={username}
                 onChangeText={setUsername}
                 placeholder="Enter username"
-                placeholderTextColor="#666666"
+                placeholderTextColor="#4B5563"
               />
             </View>
           </View>
@@ -78,13 +78,13 @@ export default function PersonalInformation({ navigation }: Props) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Full name</Text>
             <View style={styles.inputContainer}>
-              <Ionicons name="person-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+              <Image source={require('../assets/profile.png')} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="Enter full name"
-                placeholderTextColor="#666666"
+                placeholderTextColor="#4B5563"
               />
             </View>
           </View>
@@ -92,29 +92,29 @@ export default function PersonalInformation({ navigation }: Props) {
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Age</Text>
             <View style={styles.inputContainer}>
-              <Ionicons name="calendar-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+              <Image source={require('../assets/calendar_age.png')} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={age}
                 onChangeText={setAge}
                 placeholder="-"
-                placeholderTextColor="#666666"
+                placeholderTextColor="#4B5563"
                 keyboardType="number-pad"
               />
             </View>
           </View>
 
           <View style={styles.rowContainer}>
-            <View style={styles.halfFieldGroup}>
+            <View style={[styles.halfFieldGroup, { marginRight: 12 }]}>
               <Text style={styles.fieldLabel}>Weight</Text>
               <View style={styles.inputContainer}>
-                <Ionicons name="bag-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Image source={require('../assets/weight.png')} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   value={weight}
                   onChangeText={setWeight}
                   placeholder="kg"
-                  placeholderTextColor="#666666"
+                  placeholderTextColor="#4B5563"
                   keyboardType="number-pad"
                 />
               </View>
@@ -123,13 +123,13 @@ export default function PersonalInformation({ navigation }: Props) {
             <View style={styles.halfFieldGroup}>
               <Text style={styles.fieldLabel}>Height</Text>
               <View style={styles.inputContainer}>
-                <Ionicons name="resize-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                <Image source={require('../assets/height.png')} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   value={height}
                   onChangeText={setHeight}
                   placeholder="cm"
-                  placeholderTextColor="#666666"
+                  placeholderTextColor="#4B5563"
                   keyboardType="number-pad"
                 />
               </View>
@@ -137,6 +137,7 @@ export default function PersonalInformation({ navigation }: Props) {
           </View>
         </View>
 
+        {/* Buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
             <Text style={styles.discardButtonText}>Discard</Text>
@@ -146,38 +147,45 @@ export default function PersonalInformation({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0F1118',
+    backgroundColor: '#121310',
   },
   headerGradient: {
     width: '100%',
-    backgroundColor: '#000',
   },
   headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    width: '100%',
+    height: 100,
+    paddingBottom: 18,
+    paddingHorizontal: 10,
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
   },
   backButton: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: '#151828',
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backIcon: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain',
+    marginLeft: -15,
+    marginTop: 70, 
+  },
   headerTitle: {
     color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 28,
+    fontFamily: "Montserrat_900Black",
+    marginTop: 0,
+    marginLeft: 85,
   },
   headerPlaceholder: {
     width: 44,
@@ -192,24 +200,25 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   avatarContainer: {
-    marginBottom: 16,
-    shadowColor: '#000000',
+    marginBottom: 12,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 6,
   },
   avatar: {
     width: 110,
     height: 110,
-    borderRadius: 24,
-    backgroundColor: '#222430',
+    borderRadius: 10,
+    backgroundColor: '#1e2e22',
+    resizeMode: 'cover',
   },
   changePictureText: {
     color: '#3B82F6',
     fontSize: 15,
-    fontWeight: '700',
-  },
+    fontFamily: 'Montserrat_800ExtraBold',
+    },
   formContainer: {
     marginBottom: 28,
   },
@@ -218,35 +227,36 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: 'Montserrat_800ExtraBold',
     marginBottom: 10,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 16,
+    backgroundColor: '#22221D',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    height: 50,
+    height: 52,
   },
   inputIcon: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
     marginRight: 12,
   },
   input: {
     flex: 1,
-    color: '#FFFFFF',
+    color: '#939394',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'Montserrat_400Regular',
     padding: 0,
   },
   rowContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
   },
   halfFieldGroup: {
     flex: 1,
-    marginRight: 12,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -254,28 +264,29 @@ const styles = StyleSheet.create({
   },
   discardButton: {
     flex: 1,
-    backgroundColor: '#3B4252',
-    borderRadius: 16,
+    backgroundColor: '#22221D',
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   discardButtonText: {
-    color: '#FFFFFF',
+     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Montserrat_800ExtraBold',
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#3B82F6',
-    borderRadius: 16,
+    backgroundColor: '#ccff00',
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    opacity: 0.7,
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: '#000000',
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Montserrat_800ExtraBold',
   },
 });

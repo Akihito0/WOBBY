@@ -47,7 +47,18 @@ const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeT
     const innerState = state.routes[state.index].state;
     const innerIndex = innerState?.index ?? 0;
     const innerRoute = innerState?.routes[innerIndex];
-        if (innerRoute?.name === 'ActiveWorkoutScreen' || innerRoute?.name === 'AchievementsScreen' || innerRoute?.name === 'LeaderboardsScreen' || innerRoute?.name === 'PushScreen' || innerRoute?.name === 'PullScreen' || innerRoute?.name === 'LegScreen') {
+        if (
+          innerRoute?.name === 'ActiveWorkoutScreen' ||
+          innerRoute?.name === 'AchievementsScreen' ||
+          innerRoute?.name === 'LeaderboardsScreen' ||
+          innerRoute?.name === 'PushScreen' ||
+          innerRoute?.name === 'PullScreen' ||
+          innerRoute?.name === 'LegScreen' ||
+          innerRoute?.name === 'YouSettings' ||
+          innerRoute?.name === 'NotificationsScreen' ||
+          innerRoute?.name === 'PersonalInformation' ||
+          innerRoute?.name === 'LinkedDevices'
+        ) {
       return null;
     }
   }

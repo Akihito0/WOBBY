@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import NotificationCard from '../components/NotificationCard';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const notifications = [
   {
@@ -55,9 +56,15 @@ const NotificationsScreen: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       
+      
       {/* ── FIXED HEADER ── */}
       {/* Being outside the FlatList ensures it never moves */}
-      <View style={styles.header}>
+      <LinearGradient
+              colors={['#001E20', '#000000']}
+              start={{ x: 1, y: 0.5 }}
+              end={{ x: 0.3, y: 0.5 }}
+              style={styles.header}
+            >
         <View style={styles.headerRow}>
           <TouchableOpacity 
             style={styles.backButton} 
@@ -72,7 +79,7 @@ const NotificationsScreen: React.FC = () => {
 
           <Text style={styles.headerTitle}>NOTIFICATIONS</Text>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* ── SCROLLABLE BODY ── */}
       <View style={styles.content}>
@@ -99,11 +106,12 @@ const NotificationsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root: { 
     flex: 1, 
-    backgroundColor: "#13140E",
+    backgroundColor: "#121310",
   },
   header: {
     backgroundColor: "#000000",
     paddingTop: Platform.OS === "ios" ? 52 : 32,
+    height: 100,
     paddingBottom: 22,
     paddingHorizontal: 10,
     borderBottomWidth: 1, 
@@ -111,29 +119,31 @@ const styles = StyleSheet.create({
     zIndex: 10, // Ensures header stays on top of content
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    //flexDirection: 'row',
+    //alignItems: 'center',
     justifyContent: 'space-between',
     height: 40,
   },
   backButton: {
+   width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 30,
-    marginLeft: 10, 
   },
   backIcon: {
     width: 30, 
     height: 30,
     resizeMode: 'contain',
+    marginLeft: 5,
+    marginTop: 8,
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 28,
     fontFamily: 'Montserrat_900Black', 
-    marginTop: 13,
-    marginLeft: 120,
-    textAlign: 'left',
+    marginTop: -30,
+    marginLeft: 130,
   },
   content: {
     flex: 1,

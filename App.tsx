@@ -70,6 +70,7 @@ SplashScreen.preventAutoHideAsync();
 type YouStackParamList = {
   YouMain: { scrollTo?: string };
   YouSettings: undefined;
+  NotificationsScreen: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
 };
@@ -150,6 +151,7 @@ function YouStackScreen() {
     <YouStack.Navigator screenOptions={{ headerShown: false }}>
       <YouStack.Screen name="YouMain" component={YouPage} />
       <YouStack.Screen name="YouSettings" component={YouSettings} />
+      <YouStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
       <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
     </YouStack.Navigator>

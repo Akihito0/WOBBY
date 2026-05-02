@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,16 +33,10 @@ export default function LinkedDevices({ navigation }: Props) {
   ]);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const handleAddDevice = () => {
-    setModalVisible(true);
-  };
+  const handleAddDevice = () => setModalVisible(true);
 
   const handlePairDevice = (device: Omit<Device, 'lastSync' | 'isConnected'>) => {
-    const newDevice: Device = {
-      ...device,
-      lastSync: 'now',
-      isConnected: true,
-    };
+    const newDevice: Device = { ...device, lastSync: 'now', isConnected: true };
     setDevices([...devices, newDevice]);
   };
 
@@ -51,18 +45,18 @@ export default function LinkedDevices({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <LinearGradient
         colors={['#001E20', '#000000']}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-        style={styles.headerGradient}
+        start={{ x: 1, y: 0.5 }}
+        end={{ x: 0.3, y: 0.5 }}
+        style={styles.headerContent}
       >
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={28} color="#10B981" />
+            <Image source={require('../assets/back0.png')} style={styles.backIcon} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Linked Devices</Text>
+          <Text style={styles.headerTitle}>LINKED DEVICES</Text>
           <View style={styles.headerPlaceholder} />
         </View>
       </LinearGradient>
@@ -71,54 +65,53 @@ export default function LinkedDevices({ navigation }: Props) {
         {devices.length > 0 ? (
           <View style={styles.devicesContainer}>
             {devices.map((device) => (
-              <View key={device.id} style={styles.deviceCardWrapper}>
-                <View style={styles.deviceCard}>
-                  <View style={styles.deviceIconContainer}>
-                    <View style={styles.deviceIconBox}>
-                      <Ionicons name={device.icon} size={32} color="#FFFFFF" />
-                    </View>
-                  </View>
-
-                  <View style={styles.deviceInfo}>
-                    <Text style={styles.deviceName}>{device.name}</Text>
-                    <Text style={styles.lastSyncText}>Last sync: {device.lastSync}</Text>
-                  </View>
-
-                  <View style={styles.statusIndicator}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        device.isConnected && styles.statusDotConnected,
-                      ]}
-                    />
-                  </View>
-
-                  {device.isConnected && (
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => handleRemoveDevice(device.id)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons name="close-circle" size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                  )}
+              <View key={device.id} style={styles.deviceCard}>
+                {/* Watch icon box */}
+                <View style={styles.deviceIconBox}>
+                  <Ionicons name={device.icon} size={32} color="#FFFFFF" />
                 </View>
+
+                {/* Device info */}
+                <View style={styles.deviceInfo}>
+                  <Text style={styles.deviceName}>{device.name}</Text>
+                  <Text style={styles.lastSyncText}>Last sync: {device.lastSync}</Text>
+                </View>
+
+                {/* Status dot */}
+                <View
+                  style={[
+                    styles.statusDot,
+                    device.isConnected ? styles.statusDotConnected : styles.statusDotDisconnected,
+                  ]}
+                />
+
+                {/* Remove button */}
+                {device.isConnected && (
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => handleRemoveDevice(device.id)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </View>
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="watch-outline" size={64} color="#94A3B8" />
+            <Ionicons name="watch-outline" size={64} color="#4B5563" />
             <Text style={styles.emptyStateText}>No devices connected</Text>
             <Text style={styles.emptyStateSubtext}>Connect your devices to sync activity</Text>
           </View>
         )}
 
-        <TouchableOpacity style={styles.addDeviceButton} onPress={handleAddDevice}>
-          <View style={styles.addButtonContent}>
-            <Ionicons name="add" size={28} color="#F8FAFC" />
-          </View>
-        </TouchableOpacity>
+        {/* Add device button */}
+        <View style={styles.addButtonWrapper}>
+          <TouchableOpacity style={styles.addDeviceButton} onPress={handleAddDevice}>
+            <Text style={styles.addButtonPlus}>+</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <AddDeviceModal
@@ -126,101 +119,103 @@ export default function LinkedDevices({ navigation }: Props) {
         onClose={() => setModalVisible(false)}
         onPairDevice={handlePairDevice}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0F1118',
+    backgroundColor: '#121310',
   },
   headerGradient: {
     width: '100%',
-    backgroundColor: '#000',
   },
   headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    width: '100%',
+    height: 100,
+    paddingBottom: 18,
+    paddingHorizontal: 10,
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
   },
   backButton: {
-    width: 44,
+   width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: '#151828',
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backIcon: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain',
+    marginLeft: -15,
+    marginTop: 70, 
+  },
   headerTitle: {
     color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 28,
+    fontFamily: "Montserrat_900Black",
+    marginTop: 0,
+    marginLeft: 85,
   },
   headerPlaceholder: {
     width: 44,
   },
   container: {
     paddingHorizontal: 20,
-    paddingBottom: 80,
+    paddingBottom: 40,
     paddingTop: 28,
   },
   devicesContainer: {
-    marginBottom: 32,
-  },
-  deviceCardWrapper: {
-    marginBottom: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
+    marginBottom: 24,
   },
   deviceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(21, 24, 40, 0.4)',
-    borderRadius: 20,
+    backgroundColor: '#22221D',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  deviceIconContainer: {
-    marginRight: 16,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   deviceIconBox: {
     width: 56,
     height: 56,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    backgroundColor: '#34342B',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   deviceInfo: {
     flex: 1,
   },
   deviceName: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#F8FAFC',
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 4,
   },
   lastSyncText: {
-    color: '#94A3B8',
+    color: '#6B7280',
     fontSize: 13,
-  },
-  statusIndicator: {
-    marginRight: 12,
+    fontWeight: '500',
   },
   statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#EF4444',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
   },
   statusDotConnected: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#22c55e',
+  },
+  statusDotDisconnected: {
+    backgroundColor: '#EF4444',
   },
   removeButton: {
     padding: 4,
@@ -232,28 +227,34 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     marginTop: 16,
   },
   emptyStateSubtext: {
-    color: '#94A3B8',
-    fontSize: 14,
+    color: '#6B7280',
+    fontSize: 13,
+    marginTop: 6,
+  },
+  addButtonWrapper: {
+    alignItems: 'center',
     marginTop: 8,
   },
   addDeviceButton: {
-    position: 'absolute',
-    bottom: 32,
-    alignSelf: 'center',
-  },
-  addButtonContent: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: '#ccff00',
+    opacity: 0.95,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  addButtonPlus: {
+    color: '#000000',
+    fontSize: 28,
+    fontFamily: 'Montserrat_600SemiBold',
+    lineHeight: 32,
   },
 });
