@@ -6,19 +6,21 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { mediaDevices, RTCPeerConnection, RTCView, RTCSessionDescription } from 'react-native-webrtc';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
+import Modal from 'react-native-modal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // List of potential server IPs to try
-// 10.124.14.51: Your current Wi-Fi IP
+// 192.168.44.13: Your current Wi-Fi IP
 // 192.168.137.1: Standard Windows Hotspot/Shared connection IP
-const SERVER_IPS = ['10.124.14.51', '192.168.137.1', '10.26.208.51', '192.168.1.58', 'localhost']; 
+const SERVER_IPS = ['192.168.44.13', '192.168.137.1', '10.124.14.51', '10.26.208.51', '192.168.1.58', 'localhost']; 
 const PORT = '8765';
 
 type Point = { x: number; y: number; conf: number };
@@ -55,9 +57,10 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [isResting, setIsResting] = useState(false);
   const [time, setTime] = useState(0);
   const [reps, setReps] = useState(0);
-  const [sets, setSets] = useState(1);
+  const [sets, setSets] = useState(route.params?.currentSetNumber || 1);
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
 
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const lastRepTimeRef = useRef<number>(0);
@@ -123,11 +126,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
               { urls: 'stun:stun.l.google.com:19302' },
               { urls: 'stun:stun1.l.google.com:19302' },
               ]
-            }); 
+            }) as any; 
             
             if (!pc.current) return;
             
-            pc.current.onicecandidate = (event: any) => {
+            (pc.current as any).onicecandidate = (event: any) => {
               if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
                 ws.current.send(JSON.stringify({
                   type: 'ice-candidate',
@@ -241,6 +244,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const exerciseId = route.params?.exerciseId;
   const setId = route.params?.setId;
   const exerciseName = route.params?.exerciseName || 'STANDING BICEP CURL';
+  const targetReps = route.params?.targetReps || 0;
 
   useEffect(() => {
     if (isWorkoutStarted && !isResting) {
@@ -317,19 +321,24 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     return `${m}:${sec}`;
   };
 
-    const handleFinish = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    
-    navigation.navigate({
-      name: 'RoutineSelected',
-      params: { finished: true, exerciseId, setId },
-      merge: true,
-    });
+  const handleFinish = () => {
+    const navigateBack = (isIncomplete: boolean) => {
+      navigation.navigate({
+        name: 'RoutineSelected',
+        params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+        merge: true,
+      });
+    };
+
+    if (reps < targetReps) {
+      setShowIncompleteModal(true);
+    } else {
+      navigateBack(false);
+    }
   };
 
   const handleRestToggle = () => {
     if (isResting) {
-      setSets(prev => prev + 1);
       setReps(0);
       exercisePhaseRef.current = 'down';
       consecutiveGoodFormFrames.current = 0;
@@ -394,6 +403,68 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           })}
         </Svg>
       )}
+
+      {/* Incomplete Set Modal */}
+      <Modal 
+        isVisible={showIncompleteModal} 
+        onBackdropPress={() => setShowIncompleteModal(false)}
+        animationIn="zoomIn"
+        animationOut="zoomOut"
+        backdropOpacity={0.8}
+        style={{ margin: 20 }}
+      >
+        <View style={styles.modalGradientContainer}>
+          <LinearGradient
+            colors={['#000000', '#666666']}
+            start={{ x: 0.5, y: 0.16 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.modalBackground}
+          >
+            <View style={styles.modalBorderOverlay} />
+            
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderText}>Set Incomplete</Text>
+            </View>
+
+            <View style={styles.modalContent}>
+              <Image 
+                source={require('../assets/wobby.png')} 
+                style={styles.modalIllustration}
+              />
+              
+              <Text style={styles.modalDescription}>
+                You’ve only done <Text style={{ color: '#65FC0D' }}>{reps}</Text> of <Text style={{ color: '#65FC0D' }}>{targetReps}</Text>. Are you sure you’re finished?
+              </Text>
+
+              <TouchableOpacity 
+                style={styles.keepGoingButton} 
+                onPress={() => setShowIncompleteModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.keepGoingButtonText}>KEEP GOING!</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.finishAnywayButton} 
+                onPress={() => {
+                  setShowIncompleteModal(false);
+                  const navigateBack = (isIncomplete: boolean) => {
+                    navigation.navigate({
+                      name: 'RoutineSelected',
+                      params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+                      merge: true,
+                    });
+                  };
+                  navigateBack(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.finishAnywayButtonText}>Finish Anyway</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
 
       {/* BEFORE WORKOUT STARTS: Dark Setup Menu */}
       {!isWorkoutStarted && (
@@ -531,4 +602,100 @@ const styles = StyleSheet.create({
   circleBlack: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(204,255,0,0.5)', borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   whiteBtnIcon: { width: 24, height: 24, resizeMode: 'contain', tintColor: '#fff' },
   playTriangleBtn: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 18, borderRightWidth: 0, borderBottomWidth: 10, borderTopWidth: 10, borderLeftColor: '#CCFF00', borderRightColor: 'transparent', borderTopColor: 'transparent', borderBottomColor: 'transparent', marginLeft: 6 },
+
+  // MODAL STYLES
+  modalGradientContainer: {
+    borderRadius: 15,
+    overflow: 'hidden',
+    height: 541,
+    width: '100%',
+  },
+  modalBackground: {
+    flex: 1,
+    borderRadius: 15,
+    padding: 3,
+  },
+  modalBorderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 15,
+    borderWidth: 3,
+    borderColor: '#6E8900',
+    pointerEvents: 'none',
+  },
+  modalHeader: {
+    backgroundColor: '#232323',
+    height: 53,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalHeaderText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 20,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.25)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 4,
+  },
+  modalContent: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalIllustration: {
+    width: 198,
+    height: 198,
+    resizeMode: 'contain',
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  modalDescription: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 30,
+  },
+  keepGoingButton: {
+    backgroundColor: '#37C60D',
+    width: 162,
+    height: 60,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
+    marginBottom: 20,
+  },
+  keepGoingButtonText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 20,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.25)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 4,
+  },
+  finishAnywayButton: {
+    backgroundColor: '#C60000',
+    width: 140,
+    height: 37,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  finishAnywayButtonText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
 });

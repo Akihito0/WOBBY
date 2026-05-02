@@ -23,7 +23,7 @@ interface ExerciseSet {
   set: number;
   weight: string;
   reps: number;
-  status: 'START' | 'WAITING' | 'FINISHED';
+  status: 'START' | 'WAITING' | 'FINISHED' | 'INCOMPLETE';
 }
 
 interface Exercise {
@@ -38,6 +38,8 @@ interface SwipeRow {
   exerciseId: string;
   setId: string;
 }
+
+let persistedElapsedSeconds = 0;
 
 const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const routineType = route?.params?.routineType || 'PUSH';
@@ -79,14 +81,18 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(persistedElapsedSeconds);
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
 
   // Auto-start Timer
   React.useEffect(() => {
     const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
+      setElapsedSeconds((prev) => {
+        const next = prev + 1;
+        persistedElapsedSeconds = next;
+        return next;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -97,8 +103,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
       /// Handle completion params reliably
     useEffect(() => {
-      const { finished, exerciseId, setId } = route.params || {};
-      const paramKey = `${finished}-${exerciseId}-${setId}`;
+      const { finished, incomplete, exerciseId, setId } = route.params || {};
+      const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
 
       if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
         lastProcessedKeyRef.current = paramKey;
@@ -111,7 +117,10 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             if (setIdx === -1) return ex;
 
             const updatedSets = [...ex.sets];
-            updatedSets[setIdx] = { ...updatedSets[setIdx], status: 'FINISHED' };
+            updatedSets[setIdx] = { 
+              ...updatedSets[setIdx], 
+              status: incomplete ? 'INCOMPLETE' : 'FINISHED' 
+            };
 
             const nextWaitIdx = updatedSets.findIndex(
               (s: ExerciseSet, i: number) => i > setIdx && s.status === 'WAITING'
@@ -275,6 +284,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         return { backgroundColor: '#CCFF00', color: '#000000' };
       case 'FINISHED':
         return { backgroundColor: '#010101', color: '#CCFF00' };
+      case 'INCOMPLETE':
+        return { backgroundColor: '#FF8800', color: '#FFFFFF' };
       default:
         return { backgroundColor: '#666666', color: '#FFFFFF' };
     }
@@ -348,6 +359,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
                   exerciseName: exercise.name,
                   exerciseId: exercise.id,
                   setId: set.id,
+                  currentSetNumber: set.set,
+                  targetReps: set.reps,
                 });
               } else {
                 updateStatus(exercise.id, set.id);
