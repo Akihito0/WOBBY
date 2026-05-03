@@ -1,10 +1,48 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useHealth } from '../context/HealthContext';
+import { supabase } from '../supabase';
+import { calculateBMI } from '../utils/healthCalculations';
 
-const StatsCards: React.FC = () => {
+interface StatsCardsProps {
+  onBMIPress?: () => void;
+}
+
+const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
   const { heartRate } = useHealth();
+  const [bmi, setBmi] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchBMI();
+  }, []);
+
+  const fetchBMI = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('weight, height')
+        .eq('id', user.id)
+        .single();
+
+      if (error || !profile?.weight || !profile?.height) {
+        setBmi(null);
+        return;
+      }
+
+      // Calculate BMI using utility function
+      const bmiResult = calculateBMI(profile.weight, profile.height);
+      setBmi(bmiResult.bmi);
+    } catch (error) {
+      console.log('Error fetching BMI:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.statsRow}>
@@ -53,7 +91,11 @@ const StatsCards: React.FC = () => {
       </View>
 
       {/* ── BMI CARD ── */}
-      <View style={[styles.shadowWrapper, { flex: 1, backgroundColor: '#000000' }]}>
+      <TouchableOpacity 
+        style={[styles.shadowWrapper, { flex: 1, backgroundColor: '#000000' }]}
+        onPress={onBMIPress}
+        activeOpacity={0.7}
+      >
         <LinearGradient
           colors={["#000328", "#000000"]}
           start={{ x: 0, y: 0 }}
@@ -65,12 +107,16 @@ const StatsCards: React.FC = () => {
             style={styles.bmiImageGauge}
             resizeMode="contain"
           />
-          <View style={styles.bmiTextRow}>
-            <Text style={styles.bmiNumSmall}>25</Text>
-            <Text style={styles.bmiLabelSmall}>BMI</Text>
-          </View>
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <View style={styles.bmiTextRow}>
+              <Text style={styles.bmiNumSmall}>{bmi !== null ? bmi : '—'}</Text>
+              <Text style={styles.bmiLabelSmall}>BMI</Text>
+            </View>
+          )}
         </LinearGradient>
-      </View>
+      </TouchableOpacity>
 
     </View>
   );
