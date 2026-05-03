@@ -61,6 +61,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [showFinishedModal, setShowFinishedModal] = useState(false);
 
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const lastRepTimeRef = useRef<number>(0);
@@ -267,49 +268,111 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     }, [navigation])
   );
 
+  const isLegVisible = (pose: any) => {
+    // Check if at least one leg set (hip to knee) is visible enough
+    if (!pose) return false;
+    const leftLeg = pose.leftHip?.conf > 0.3 && pose.leftKnee?.conf > 0.3;
+    const rightLeg = pose.rightHip?.conf > 0.3 && pose.rightKnee?.conf > 0.3;
+    return leftLeg || rightLeg;
+  };
+
   useEffect(() => {
     if (!isWorkoutStarted || isResting || !pose) return;
 
     const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
     const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
 
-    if (leftElbowAngle === null || rightElbowAngle === null) {
-      setFormFeedback(prev => prev !== 'Stand in frame' ? 'Stand in frame' : prev);
+    // If we can't see the specific parts for the exercise, warn the user
+    if (leftElbowAngle === null && rightElbowAngle === null) {
+      setFormFeedback(prev => prev !== 'Arms not visible' ? 'Arms not visible' : prev);
       return;
     }
 
-    const avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
+    // Use whichever arm is visible, or the average if both are
+    let avgElbowAngle = 0;
+    if (leftElbowAngle !== null && rightElbowAngle !== null) {
+      avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
+    } else {
+      avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
+    }
+
     const currentPhase = exercisePhaseRef.current;
     
-    const elbowSymmetry = Math.abs(leftElbowAngle - rightElbowAngle);
-    const goodForm = elbowSymmetry < 35;
+    // CONFIGURATION BASED ON EXERCISE
+    let upThreshold = 145;    
+    let downThreshold = 100;   
+    let isPushExercise = false;
+
+    const name = exerciseName.toUpperCase();
+    if (name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS')) {
+      isPushExercise = true;
+      upThreshold = 145; 
+      downThreshold = 100; 
+    } else {
+      upThreshold = 60; 
+      downThreshold = 150;
+    }
 
     const updateFeedback = (msg: string) => {
       setFormFeedback(prev => prev !== msg ? msg : prev);
     };
 
+    // LEG VISIBILITY WARNING (Critical for horizontal exercises like Pushups)
+    if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
+       updateFeedback('Move back - show legs');
+       // We still try to count if arms are visible, but warn user
+    }
+
+    // Relaxed symmetry check: if one arm is missing, we still count based on the other
+    const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null) 
+      ? Math.abs(leftElbowAngle - rightElbowAngle) 
+      : 0;
+    
+    const goodForm = elbowSymmetry < 45; // Increased tolerance
+
     if (goodForm) {
       consecutiveGoodFormFrames.current += 1;
     } else {
       consecutiveGoodFormFrames.current = 0;
-      updateFeedback('Uneven curl');
+      updateFeedback('Uneven arms');
     }
 
     if (consecutiveGoodFormFrames.current < 2) return;
 
-    if (currentPhase === 'down' && avgElbowAngle < 60) {
-      exercisePhaseRef.current = 'up';
-      updateFeedback('Up position! ✓');
-    } else if (currentPhase === 'up' && avgElbowAngle > 150) {
-      setReps(prev => prev + 1);
-      exercisePhaseRef.current = 'down';
-      updateFeedback('Rep counted! ✓');
-    } else if (currentPhase === 'down' && avgElbowAngle > 150) {
-      updateFeedback('Ready - curl weight up');
-    } else if (currentPhase === 'up' && avgElbowAngle < 60) {
-      updateFeedback('Squeeze - return slowly');
+    if (isPushExercise) {
+      // PUSH LOGIC (Bench/Pushup/Dips)
+      if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
+        exercisePhaseRef.current = 'down';
+        updateFeedback('Go lower! ✓');
+      } else if (currentPhase === 'down' && avgElbowAngle > upThreshold) {
+        const newReps = reps + 1;
+        setReps(newReps);
+        exercisePhaseRef.current = 'up';
+        updateFeedback('Rep counted! ✓');
+        
+        // Check if target is reached
+        if (targetReps > 0 && newReps >= targetReps) {
+          setShowFinishedModal(true);
+        }
+      }
+    } else {
+      // PULL LOGIC (Curls)
+      if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
+        exercisePhaseRef.current = 'up';
+        updateFeedback('Up position! ✓');
+      } else if (currentPhase === 'up' && avgElbowAngle > downThreshold) {
+        const newReps = reps + 1;
+        setReps(newReps);
+        exercisePhaseRef.current = 'down';
+        updateFeedback('Rep counted! ✓');
+
+        // Check if target is reached
+        if (targetReps > 0 && newReps >= targetReps) {
+          setShowFinishedModal(true);
+        }
+      }
     }
-  }, [pose, isWorkoutStarted, isResting]);
+  }, [pose, isWorkoutStarted, isResting, exerciseName, reps, targetReps]);
 
   const toggleCameraFacing = () => {
     setCameraFacing(c => c === 'back' ? 'front' : 'back');
@@ -466,6 +529,71 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
+      {/* Set Finished Modal */}
+      <Modal 
+        isVisible={showFinishedModal} 
+        onBackdropPress={() => setShowFinishedModal(false)}
+        animationIn="zoomIn"
+        animationOut="zoomOut"
+        backdropOpacity={0.8}
+        style={{ margin: 20 }}
+      >
+        <View style={styles.modalGradientContainer}>
+          <LinearGradient
+            colors={['#000000', '#666666']}
+            start={{ x: 0.5, y: 0.16 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.modalBackground}
+          >
+            <View style={styles.modalBorderOverlaySuccess} />
+            
+            <View style={styles.modalHeaderSuccess}>
+              <Text style={styles.modalHeaderText}>Set Complete!</Text>
+            </View>
+
+            <View style={styles.modalContent}>
+              <Image 
+                source={require('../assets/wobby.png')} 
+                style={styles.modalIllustration}
+              />
+              
+              <Text style={styles.modalDescriptionLarge}>
+                CONGRATS!
+              </Text>
+              <Text style={styles.modalDescription}>
+                You reached your goal of <Text style={{ color: '#65FC0D' }}>{targetReps}</Text> reps. Ready to wrap it up?
+              </Text>
+
+              <TouchableOpacity 
+                style={styles.keepGoingButton} 
+                onPress={() => setShowFinishedModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.keepGoingButtonText}>Keep Pushing</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.finishSetButton} 
+                onPress={() => {
+                  setShowFinishedModal(false);
+                  const navigateBack = (isIncomplete: boolean) => {
+                    navigation.navigate({
+                      name: 'RoutineSelected',
+                      params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+                      merge: true,
+                    });
+                  };
+                  navigateBack(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.finishSetButtonText}>Finish Set</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
+
       {/* BEFORE WORKOUT STARTS: Dark Setup Menu */}
       {!isWorkoutStarted && (
         <View
@@ -607,7 +735,7 @@ const styles = StyleSheet.create({
   modalGradientContainer: {
     borderRadius: 15,
     overflow: 'hidden',
-    height: 541,
+    height: 560, // Increased from 541 to give more room at the bottom
     width: '100%',
   },
   modalBackground: {
@@ -697,5 +825,43 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Bold',
     fontSize: 14,
     color: '#FFFFFF',
+  },
+  modalBorderOverlaySuccess: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 15,
+    borderWidth: 3,
+    borderColor: '#37C60D',
+    pointerEvents: 'none',
+  },
+  modalHeaderSuccess: {
+    backgroundColor: '#37C60D',
+    height: 53,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalDescriptionLarge: {
+    fontFamily: 'Montserrat-Black',
+    fontSize: 32,
+    color: '#65FC0D',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  finishSetButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: 140,
+    height: 37,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#65FC0D',
+    marginBottom: 20, // Added margin to pull it away from the bottom border
+  },
+  finishSetButtonText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+    color: '#65FC0D',
   },
 });
