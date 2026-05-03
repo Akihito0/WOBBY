@@ -13,7 +13,8 @@ import {
   PanResponder,
   Dimensions,
   GestureResponderEvent,
-  PanResponderGestureState
+  PanResponderGestureState,
+  Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -90,6 +91,35 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(persistedElapsedSeconds);
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
+
+  // Back Button Confirmation
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // If we are navigating to ActiveWorkout or something within the flow, don't alert
+      // We only alert if trying to go back to Routines/Dashboard
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        Alert.alert(
+          'Discard Workout?',
+          'Going back will reset your progress and timer for this routine. Are you sure?',
+          [
+            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Discard', 
+              style: 'destructive', 
+              onPress: () => {
+                // Clear persistence
+                persistedExercises = null;
+                persistedElapsedSeconds = 0;
+                navigation.dispatch(e.data.action);
+              } 
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation]);
 
   // Reset persistence if the routine type changed or if we want to fresh load
   useEffect(() => {
