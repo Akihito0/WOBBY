@@ -1,9 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 const LeaderboardPodium: React.FC = () => {
+  const navigation = useNavigation<any>();
+
   return (
     <View style={styles.container}>
       <Text style={styles.sectionLabel}>Leaderboards</Text>
@@ -55,7 +58,10 @@ const LeaderboardPodium: React.FC = () => {
         />
       </View>
 
-      <TouchableOpacity style={styles.viewLink}>
+      <TouchableOpacity
+        style={styles.viewLink}
+        onPress={() => navigation.navigate('Performance', { screen: 'LeaderboardsScreen' })}
+      >
         <Text style={styles.viewLinkText}>View Leaderboards</Text>
       </TouchableOpacity>
     </View>
@@ -64,12 +70,11 @@ const LeaderboardPodium: React.FC = () => {
 
 export default LeaderboardPodium;
 
-// ─── STYLES ───
 const styles = StyleSheet.create({
   container: {
     paddingVertical: 20,
     alignItems: 'center',
-    backgroundColor: '#121310', // Match your dark dashboard theme
+    backgroundColor: '#121310',
   },
   sectionLabel: {
     fontFamily: "Montserrat_900Black",
@@ -89,8 +94,8 @@ const styles = StyleSheet.create({
   },
   bgImage: {
     position: 'absolute',
-    top: -50,       // Positioned to glow behind the winner
-    width: 320,     // Adjust width to match your PNG's aspect ratio
+    top: -50,
+    width: 320,
     height: 320,
     zIndex: 0,
     opacity: 0.9,   
@@ -98,7 +103,7 @@ const styles = StyleSheet.create({
   crown: {
     width: 50,
     height: 50,
-    marginBottom: 50, // Pushed up away from the winner's head
+    marginBottom: 50,
     zIndex: 10,
   },
   avatarRow: {
@@ -111,12 +116,12 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 50,
     borderWidth: 2,
-    borderColor: '#CCFF00', // Lime Yellow Border
+    borderColor: '#CCFF00',
     backgroundColor: '#000',
     overflow: 'hidden',
   },
   winnerBorder: {
-    width: 100, // Winner is slightly larger
+    width: 100,
     height: 100,
     borderRadius: 50,
     borderWidth: 3,
@@ -127,8 +132,8 @@ const styles = StyleSheet.create({
   },
   rank1: {
     zIndex: 3,
-    marginHorizontal: -20, // Overlap effect
-    transform: [{ translateY: -40 }], // Winner "Podium" lift
+    marginHorizontal: -20,
+    transform: [{ translateY: -40 }],
   },
   rank2: { 
     zIndex: 2 
@@ -137,7 +142,7 @@ const styles = StyleSheet.create({
     zIndex: 1 
   },
   podiumBase: {
-    width: '50%', // Centered platform
+    width: '50%',
     height: 80,
     marginTop: -30,
     zIndex: 0,
