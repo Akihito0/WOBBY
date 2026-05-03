@@ -16,28 +16,34 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.tweetie.wobby",
+      bundleIdentifier: process.env.EXPO_PUBLIC_IOS_BUNDLE_ID || "com.tweetie.wobby", // <-- DYNAMIC ID MAGIC!
       entitlements: {
-        "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.access": []
+        "com.apple.developer.healthkit": true
       },
-      // 🔧 CHANGE: Merged your two separate `infoPlist` objects into one.
-      // In JS, duplicate keys cause the second to silently overwrite the first,
-      // which was dropping `ITSAppUsesNonExemptEncryption: false`.
-      infoPlist: {
+      infoPlist: { 
         ITSAppUsesNonExemptEncryption: false,
         NSHealthShareUsageDescription: "Wobby needs to read your Apple Watch data to sync your workout history.",
-        NSHealthUpdateUsageDescription: "Wobby needs to save your computer vision workouts to Apple Health."
+        NSHealthUpdateUsageDescription: "Wobby needs to save your computer vision workouts to Apple Health.",
+        NSBluetoothAlwaysAndWhenInUseUsageDescription: "Wobby needs Bluetooth to connect to your fitness devices and wearables.",
+        NSBluetoothPeripheralUsageDescription: "Wobby needs Bluetooth to connect to your fitness devices and wearables."
       }
     },
     android: {
-      package: "com.ness.wobby",
+      package: "com.tweetie.wobby",
       targetSdkVersion: 35,
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./src/assets/android-icon-foreground.png"
       },
-      predictiveBackGestureEnabled: false
+      predictiveBackGestureEnabled: false,
+      permissions: [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     web: {
       favicon: "./src/assets/favicon.png"
