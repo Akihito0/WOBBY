@@ -248,6 +248,20 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const targetReps = route.params?.targetReps || 0;
 
   useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // If the workout has started and we haven't reached target reps, and we aren't already showing a modal
+      if (isWorkoutStarted && reps < targetReps && !showIncompleteModal && !showFinishedModal) {
+        // Only block if it's a back action
+        if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+            e.preventDefault();
+            setShowIncompleteModal(true);
+        }
+      }
+    });
+    return unsub;
+  }, [navigation, isWorkoutStarted, reps, targetReps, showIncompleteModal, showFinishedModal]);
+
+  useEffect(() => {
     if (isWorkoutStarted && !isResting) {
       intervalRef.current = setInterval(() => setTime(prev => prev + 1), 1000);
     } else {
