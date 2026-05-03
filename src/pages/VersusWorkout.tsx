@@ -1,18 +1,140 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
 import ExerciseModal from '../components/ExerciseModal';
+import { supabase } from '../supabase';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
 
   const [isFinding, setIsFinding] = useState(false);
-  const handleRunPress = () => {
-  setIsFinding(true);
-  // Logic to find opponent goes here
-  //setIsFinding(false); // Call this once the match is found
-};
+  
+  const handleRunPress = async () => {
+    setIsFinding(true);
+    
+    try {
+      // Get current user
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user?.id) {
+        Alert.alert('Error', 'Could not authenticate user.');
+        setIsFinding(false);
+        return;
+      }
+
+      const userId = session.user.id;
+      const now = new Date();
+
+      // Create or update versus_match entry for this user
+      const { data: existingMatch, error: checkError } = await supabase
+        .from('versus_matches')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'waiting')
+        .single();
+
+      if (!existingMatch) {
+        // Create new match record - this user is now waiting
+        const { data: newMatch, error: createError } = await supabase
+          .from('versus_matches')
+          .insert([
+            {
+              user_id: userId,
+              status: 'waiting',
+              created_at: now.toISOString(),
+            }
+          ])
+          .select()
+          .single();
+
+        if (createError && createError.code !== 'PGRST116') throw createError;
+      }
+
+      // Poll for opponent match every 2 seconds (max 30 seconds)
+      let matchFound = false;
+      let attempts = 0;
+      const maxAttempts = 15;
+
+      while (!matchFound && attempts < maxAttempts) {
+        attempts++;
+        
+        // Check for any other waiting user
+        const { data: opponentMatches, error: opponentError } = await supabase
+          .from('versus_matches')
+          .select('*')
+          .eq('status', 'waiting')
+          .neq('user_id', userId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (opponentError && opponentError.code !== 'PGRST116') throw opponentError;
+
+        if (opponentMatches && opponentMatches.length > 0) {
+          const opponent = opponentMatches[0];
+          
+          // Get opponent profile info
+          const { data: opponentProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .eq('id', opponent.user_id)
+            .single();
+
+          if (profileError && profileError.code !== 'PGRST116') throw profileError;
+
+          // Update both match records to "matched"
+          const matchIds = [
+            { user_id: userId },
+            { user_id: opponent.user_id }
+          ];
+
+          for (const matchId of matchIds) {
+            await supabase
+              .from('versus_matches')
+              .update({ 
+                status: 'matched',
+                opponent_id: matchId.user_id === userId ? opponent.user_id : userId,
+                matched_at: new Date().toISOString()
+              })
+              .eq('user_id', matchId.user_id);
+          }
+
+          matchFound = true;
+          setIsFinding(false);
+
+          // Navigate to VersusRunScreen with opponent info
+          navigation.navigate('VersusRun', {
+            opponentUsername: opponentProfile?.username || 'Runner',
+            opponentId: opponentProfile?.id || opponent.user_id,
+            matchId: opponent.id,
+          });
+
+          return;
+        }
+
+        // Wait 2 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // No match found after 30 seconds
+      setIsFinding(false);
+      
+      // Clean up: remove this user's waiting record
+      await supabase
+        .from('versus_matches')
+        .delete()
+        .eq('user_id', userId)
+        .eq('status', 'waiting');
+
+      Alert.alert(
+        'No Opponent Found',
+        'No other users are looking for a versus run right now. Try again later!'
+      );
+    } catch (error) {
+      console.error('Error in matchmaking:', error);
+      setIsFinding(false);
+      Alert.alert('Error', 'Failed to find opponent. Please try again.');
+    }
+  };
 
 const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
 const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
@@ -141,11 +263,12 @@ const handleConfirmExercises = () => {
   >
     <View style={styles.modeButtonTopRow}>
       <Text style={styles.modeButtonText}>RUN</Text>
-      <Finding visible={isFinding} />
       <Image source={require('../assets/gooo.png')} style={styles.modeButtonIcon} />
     </View>
   </LinearGradient>
 </TouchableOpacity>
+
+<Finding visible={isFinding} />
 
 <ExerciseModal 
   visible={exerciseModalVisible}
@@ -154,7 +277,6 @@ const handleConfirmExercises = () => {
   onClose={() => setExerciseModalVisible(false)} // Closes on Cancel
   onConfirm={handleConfirmExercises} // Opens Finding.tsx on Confirm
 />
-<Finding visible={isFinding} />
     </ScrollView>
   );
 };

@@ -68,6 +68,7 @@ import GettingStarted from './src/pages/GettingStarted';
 import TroubleShooting from './src/pages/TroubleShooting';
 import PullScreen from './src/pages/PullScreen';
 import LegScreen from './src/pages/LegScreen';
+import VersusRunScreen from './src/pages/VersusRunScreen';
 import { HealthProvider } from './src/context/HealthContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -133,6 +134,7 @@ function WorkoutStackScreen() {
       <WorkoutStack.Screen name="WorkoutMain" component={WorkoutScreen} />
       <WorkoutStack.Screen name="SoloWorkoutScreen" component={SoloWorkoutScreen} />
       <WorkoutStack.Screen name="VersusWorkoutScreen" component={VersusWorkoutScreen} />
+      <WorkoutStack.Screen name="VersusRun" component={VersusRunScreen} />
       <WorkoutStack.Screen name="RunScreen" component={RunScreen} />
       <WorkoutStack.Screen name="RoutineSelected" component={RoutineSelectedScreen} />
       <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
