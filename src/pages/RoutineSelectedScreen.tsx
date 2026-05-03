@@ -48,8 +48,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const exercisesData: Exercise[] = [
     {
       id: '1',
-      name: 'Push Ups',
-      icon: require('../assets/push.png'),
+      name: routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats',
+      icon: routineType === 'PUSH' || routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
       expanded: true,
       sets: [
         { id: '1', set: 1, weight: 'Body Weight', reps: 10, status: 'START' },
@@ -59,18 +59,18 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     },
     {
       id: '2',
-      name: 'Bench Press',
+      name: routineType === 'PUSH' ? 'Bench Press' : routineType === 'PULL' ? 'Seated Cable Row' : 'Lunges',
       icon: require('../assets/dumbell.png'),
       expanded: false,
       sets: [
-        { id: '4', set: 1, weight: '40 kg', reps: 12, status: 'START' },
-        { id: '5', set: 2, weight: '40 kg', reps: 12, status: 'WAITING' },
+        { id: '4', set: 1, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'START' },
+        { id: '5', set: 2, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'WAITING' },
       ],
     },
     {
       id: '3',
-      name: 'Tricep Dips',
-      icon: require('../assets/push.png'),
+      name: routineType === 'PUSH' ? 'Tricep Dips' : routineType === 'PULL' ? 'Single Arm Bicep Curls' : 'Leg Extensions',
+      icon: routineType === 'PUSH' ? require('../assets/push.png') : routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
       expanded: false,
       sets: [
         { id: '6', set: 1, weight: 'Body Weight', reps: 15, status: 'START' },
@@ -79,11 +79,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     },
   ];
 
-  const [exercises, setExercises] = useState(() => {
-    // If we have a fresh navigation to this routine, we should probably reset/update
-    // For now, let's force the update if persistedExercises is null
-    return persistedExercises || exercisesData;
-  });
+  const [exercises, setExercises] = useState(() => persistedExercises || exercisesData);
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
@@ -93,10 +89,49 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   // Reset persistence if the routine type changed or if we want to fresh load
   useEffect(() => {
+    // If we have a fresh navigation to this routine and the routineType has changed, reset persistence
+    if (persistedExercises && persistedExercises.length > 0) {
+      const expectedFirstExerciseName = routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats';
+      if (persistedExercises[0].name !== expectedFirstExerciseName) {
+        persistedExercises = null;
+        persistedElapsedSeconds = 0;
+        setElapsedSeconds(0);
+      }
+    }
+    
     if (!persistedExercises) {
       setExercises(exercisesData);
     }
   }, [routineType]);
+
+  // Back Button Confirmation
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // If we are navigating to ActiveWorkout or something within the flow, don't alert
+      // We only alert if trying to go back to Routines/Dashboard
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        Alert.alert(
+          'Discard Workout?',
+          'Going back will reset your progress and timer for this routine. Are you sure?',
+          [
+            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Discard', 
+              style: 'destructive', 
+              onPress: () => {
+                // Clear persistence
+                persistedExercises = null;
+                persistedElapsedSeconds = 0;
+                navigation.dispatch(e.data.action);
+              } 
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation]);
 
   // Auto-start Timer
   React.useEffect(() => {
@@ -109,20 +144,21 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-// Sync cache on every state change
+
+  // Sync cache on every state change
   useEffect(() => {
     persistedExercises = exercises;
   }, [exercises]);
 
-      /// Handle completion params reliably
-    useEffect(() => {
-      const { finished, incomplete, exerciseId, setId } = route.params || {};
-      const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
+  /// Handle completion params reliably
+  useEffect(() => {
+    const { finished, incomplete, exerciseId, setId } = route.params || {};
+    const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
 
-      if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
-        lastProcessedKeyRef.current = paramKey;
+    if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
+      lastProcessedKeyRef.current = paramKey;
 
-        setExercises(prev => {
+      setExercises(prev => {
           return prev.map((ex: Exercise) => {
             if (ex.id !== exerciseId) return ex;
             
