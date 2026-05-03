@@ -48,13 +48,13 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const exercisesData: Exercise[] = [
     {
       id: '1',
-      name: 'Bicep Curl',
+      name: 'Push Ups',
       icon: require('../assets/push.png'),
       expanded: true,
       sets: [
-        { id: '1', set: 1, weight: 'Body Weight', reps: 8, status: 'START' },
-        { id: '2', set: 2, weight: 'Body Weight', reps: 12, status: 'WAITING' },
-        { id: '3', set: 3, weight: 'Body Weight', reps: 12, status: 'WAITING' },
+        { id: '1', set: 1, weight: 'Body Weight', reps: 10, status: 'START' },
+        { id: '2', set: 2, weight: 'Body Weight', reps: 10, status: 'WAITING' },
+        { id: '3', set: 3, weight: 'Body Weight', reps: 10, status: 'WAITING' },
       ],
     },
     {
@@ -63,27 +63,40 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
       icon: require('../assets/dumbell.png'),
       expanded: false,
       sets: [
-        { id: '4', set: 1, weight: '20 kg', reps: 10, status: 'START' },
+        { id: '4', set: 1, weight: '40 kg', reps: 12, status: 'START' },
+        { id: '5', set: 2, weight: '40 kg', reps: 12, status: 'WAITING' },
       ],
     },
     {
       id: '3',
-      name: 'Bench Press (Incline)',
-      icon: require('../assets/dumbell.png'),
+      name: 'Tricep Dips',
+      icon: require('../assets/push.png'),
       expanded: false,
       sets: [
-        { id: '5', set: 1, weight: '25 kg', reps: 8, status: 'START' },
+        { id: '6', set: 1, weight: 'Body Weight', reps: 15, status: 'START' },
+        { id: '7', set: 2, weight: 'Body Weight', reps: 15, status: 'WAITING' },
       ],
     },
   ];
 
-  const [exercises, setExercises] = useState(() => persistedExercises || exercisesData);
+  const [exercises, setExercises] = useState(() => {
+    // If we have a fresh navigation to this routine, we should probably reset/update
+    // For now, let's force the update if persistedExercises is null
+    return persistedExercises || exercisesData;
+  });
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(persistedElapsedSeconds);
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
+
+  // Reset persistence if the routine type changed or if we want to fresh load
+  useEffect(() => {
+    if (!persistedExercises) {
+      setExercises(exercisesData);
+    }
+  }, [routineType]);
 
   // Auto-start Timer
   React.useEffect(() => {
