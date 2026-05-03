@@ -13,6 +13,7 @@ import StreakCalendar from "../components/layout/StreakCalendar";
 import TargetedSessions from "../components/TargetedSessions";
 import MotivationBanner from "../components/MotivationBanner";
 import StatsCards from "../components/StatsCards";
+import BMIModal from "../components/BMIModal";
 import ChallengersCarousel from "../components/ChallengersCarousel";
 import LeaderboardPodium from "../components/LeaderboardPodium";
 import ActivityFeed from "../components/ActivityFeed";
@@ -24,6 +25,8 @@ import { useNavigation } from "@react-navigation/native";
 // ─── COMPONENT ─────────────────────────────────────────────────────────────
 export default function UserDashboard() {
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [bmiModalVisible, setBmiModalVisible] = useState(false);
+  const [refreshStats, setRefreshStats] = useState(0);
   const navigation = useNavigation<any>();
 
   const [fontsLoaded] = useFonts({
@@ -74,7 +77,7 @@ export default function UserDashboard() {
 
         {/* ════════ STATS CARDS ════════ */}
         <View style={styles.separator}>
-        <StatsCards/>
+        <StatsCards onBMIPress={() => setBmiModalVisible(true)} />
         </View>
 
         {/* ════════ ACTIVITY FEED ════════ */}
@@ -93,6 +96,15 @@ export default function UserDashboard() {
         <LeaderboardPodium />
 
       </ScrollView>
+
+      {/* BMI Modal */}
+      <BMIModal
+        isVisible={bmiModalVisible}
+        onClose={() => setBmiModalVisible(false)}
+        onBMIUpdated={() => {
+          setRefreshStats(refreshStats + 1);
+        }}
+      />
     </View>
   );
 }
