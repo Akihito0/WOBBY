@@ -177,11 +177,7 @@ export default function PersonalInformation({ navigation }: Props) {
                 ]}
               >
                 {age
-                  ? `${age} yrs old${birthDate
-                      ? `  ·  ${birthDate.toLocaleDateString('en-PH', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                        })}`
-                      : ''}`
+                  ? `${age}`
                   : 'Tap to pick your birthday'}
               </Text>
             </TouchableOpacity>
