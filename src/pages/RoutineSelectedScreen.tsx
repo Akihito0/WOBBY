@@ -95,9 +95,12 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   // Back Button Confirmation
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', (e: any) => {
-      // If we are navigating to ActiveWorkout or something within the flow, don't alert
-      // We only alert if trying to go back to Routines/Dashboard
+      // If the action is triggered by the completion navigation (which usually uses Navigate or a specific target)
+      // we don't want to show the alert. But GO_BACK and POP usually mean the user header back button or physical back.
       if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        // Double check target page to ensure we aren't blocking a legitimate flow
+        // However, if discarding, we want to go back to the selection screen.
+        
         e.preventDefault();
         Alert.alert(
           'Discard Workout?',
@@ -111,7 +114,16 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
                 // Clear persistence
                 persistedExercises = null;
                 persistedElapsedSeconds = 0;
-                navigation.dispatch(e.data.action);
+                
+                // Clear the navigation history and replace it with SoloWorkoutScreen
+                // This prevents the "back button" from returning to this screen
+                navigation.reset({
+                  index: 1,
+                  routes: [
+                    { name: 'WorkoutMain' },
+                    { name: 'SoloWorkoutScreen' },
+                  ],
+                });
               } 
             },
           ]
