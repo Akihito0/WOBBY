@@ -1,8 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useHealth } from '../context/HealthContext';
 
 const StatsCards: React.FC = () => {
+  const { heartRate } = useHealth();
+
   return (
     <View style={styles.statsRow}>
 
@@ -38,7 +41,14 @@ const StatsCards: React.FC = () => {
             style={styles.hrImageCenter}
             resizeMode="contain"
           />
-          <Text style={styles.hrNoWatch}>No watch detected</Text>
+          {heartRate !== null ? (
+            <>
+              <Text style={styles.hrNum}>{heartRate}</Text>
+              <Text style={styles.hrUnit}>BPM</Text>
+            </>
+          ) : (
+            <Text style={styles.hrNoWatch}>No watch detected</Text>
+          )}
         </LinearGradient>
       </View>
 
@@ -122,6 +132,18 @@ const styles = StyleSheet.create({
   },
   hrCard: { justifyContent: "center" },
   hrImageCenter: { width: 70, height: 70, marginTop: -15, marginLeft: 25, marginBottom: 2 },
+  hrNum: {
+    fontFamily: "Montserrat_900Black",
+    fontSize: 24,
+    color: "#FF4444",
+    marginTop: -5,
+  },
+  hrUnit: {
+    fontFamily: "Barlow_400Regular",
+    fontSize: 9,
+    color: "#888",
+    marginTop: -2,
+  },
   hrNoWatch: { 
     fontFamily: "Barlow_400Regular", 
     fontSize: 9, 

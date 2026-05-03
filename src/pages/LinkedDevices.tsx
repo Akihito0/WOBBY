@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import AddDeviceModal from '../components/AddDeviceModal';
+import { useHealth } from '../context/HealthContext';
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -19,29 +20,71 @@ interface Device {
   icon: keyof typeof Ionicons.glyphMap;
   lastSync: string;
   isConnected: boolean;
+  heartRate?: number | null;
 }
 
 export default function LinkedDevices({ navigation }: Props) {
-  const [devices, setDevices] = useState<Device[]>([
-    {
-      id: '1',
-      name: 'Apple Watch SE 3',
-      icon: 'watch',
-      lastSync: '10:28 am',
-      isConnected: true,
-    },
-  ]);
+  const { heartRate, isAuthorized, refreshHeartRate } = useHealth();
+  const [devices, setDevices] = useState<Device[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Initialize Apple Watch device only when actually authorized/connected
+  useEffect(() => {
+    if (isAuthorized) {
+      setDevices([
+        {
+          id: 'apple-watch',
+          name: 'Apple Watch',
+          icon: 'watch',
+          lastSync: heartRate ? 'Just now' : 'Recently',
+          isConnected: true,
+          heartRate: heartRate,
+        },
+      ]);
+    } else {
+      setDevices([]);
+    }
+  }, [isAuthorized, heartRate]);
 
   const handleAddDevice = () => setModalVisible(true);
 
-  const handlePairDevice = (device: Omit<Device, 'lastSync' | 'isConnected'>) => {
-    const newDevice: Device = { ...device, lastSync: 'now', isConnected: true };
+  const handlePairDevice = (device: Omit<Device, 'lastSync' | 'isConnected' | 'heartRate'>) => {
+    // Check if Apple Watch was already paired
+    if (device.id === 'apple-watch') {
+      // Already handled by HealthContext, just close modal
+      setModalVisible(false);
+      return;
+    }
+
+    // For other devices, add to list
+    const newDevice: Device = {
+      ...device,
+      lastSync: 'Just connected',
+      isConnected: true,
+      heartRate: null,
+    };
     setDevices([...devices, newDevice]);
+    setModalVisible(false);
   };
 
   const handleRemoveDevice = (id: string) => {
     setDevices(devices.filter(device => device.id !== id));
+  };
+
+  const handleRefreshAppleWatch = async () => {
+    setIsRefreshing(true);
+    try {
+      refreshHeartRate();
+      // Give it a moment to fetch
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleConnectAppleWatch = async () => {
+    handleRefreshAppleWatch();
   };
 
   return (
@@ -65,36 +108,82 @@ export default function LinkedDevices({ navigation }: Props) {
         {devices.length > 0 ? (
           <View style={styles.devicesContainer}>
             {devices.map((device) => (
-              <View key={device.id} style={styles.deviceCard}>
-                {/* Watch icon box */}
-                <View style={styles.deviceIconBox}>
-                  <Ionicons name={device.icon} size={32} color="#FFFFFF" />
-                </View>
+              <View key={device.id} style={styles.deviceCardWrapper}>
+                <LinearGradient
+                  colors={
+                    device.isConnected
+                      ? ['rgba(16, 185, 129, 0.1)', 'rgba(16, 185, 129, 0.05)']
+                      : ['rgba(21, 24, 40, 0.4)', 'rgba(21, 24, 40, 0.4)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.deviceCard}
+                >
+                  <View style={styles.deviceIconContainer}>
+                    <View style={[styles.deviceIconBox, device.isConnected && styles.deviceIconBoxConnected]}>
+                      <Ionicons name={device.icon} size={32} color="#FFFFFF" />
+                    </View>
+                  </View>
 
-                {/* Device info */}
-                <View style={styles.deviceInfo}>
-                  <Text style={styles.deviceName}>{device.name}</Text>
-                  <Text style={styles.lastSyncText}>Last sync: {device.lastSync}</Text>
-                </View>
+                  <View style={styles.deviceInfo}>
+                    <Text style={styles.deviceName}>{device.name}</Text>
+                    {device.isConnected && device.heartRate ? (
+                      <View style={styles.heartRateRow}>
+                        <Ionicons name="heart" size={14} color="#FF4444" />
+                        <Text style={styles.heartRateText}>{device.heartRate} BPM</Text>
+                        <Text style={styles.lastSyncText}>• {device.lastSync}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.lastSyncText}>{device.lastSync}</Text>
+                    )}
+                  </View>
 
-                {/* Status dot */}
-                <View
-                  style={[
-                    styles.statusDot,
-                    device.isConnected ? styles.statusDotConnected : styles.statusDotDisconnected,
-                  ]}
-                />
+                  <View style={styles.statusIndicator}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        device.isConnected && styles.statusDotConnected,
+                      ]}
+                    />
+                  </View>
 
-                {/* Remove button */}
-                {device.isConnected && (
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveDevice(device.id)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
+                  {device.isConnected ? (
+                    <>
+                      <TouchableOpacity
+                        style={styles.syncButton}
+                        onPress={handleRefreshAppleWatch}
+                        disabled={isRefreshing}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        {isRefreshing ? (
+                          <ActivityIndicator size="small" color="#10B981" />
+                        ) : (
+                          <Ionicons name="refresh" size={20} color="#10B981" />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => handleRemoveDevice(device.id)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#EF4444" />
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.connectButton}
+                      onPress={handleConnectAppleWatch}
+                      disabled={isRefreshing}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      {isRefreshing ? (
+                        <ActivityIndicator size="small" color="#3B82F6" />
+                      ) : (
+                        <Ionicons name="link" size={20} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </LinearGradient>
               </View>
             ))}
           </View>
@@ -170,6 +259,9 @@ const styles = StyleSheet.create({
   devicesContainer: {
     marginBottom: 24,
   },
+  deviceCardWrapper: {
+    width: '100%',
+  },
   deviceCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -179,6 +271,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+  },
+  deviceIconContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deviceIconBox: {
     width: 56,
@@ -191,6 +287,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
+  deviceIconBoxConnected: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
   deviceInfo: {
     flex: 1,
   },
@@ -200,10 +300,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
   },
+  heartRateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heartRateText: {
+    color: '#FF4444',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   lastSyncText: {
     color: '#6B7280',
     fontSize: 13,
     fontWeight: '500',
+  },
+  statusIndicator: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
   statusDot: {
     width: 10,
@@ -216,6 +331,14 @@ const styles = StyleSheet.create({
   },
   statusDotDisconnected: {
     backgroundColor: '#EF4444',
+  },
+  syncButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  connectButton: {
+    padding: 8,
+    marginRight: 8,
   },
   removeButton: {
     padding: 4,

@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
-
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -10,9 +8,14 @@ import {
     ScrollView,
     Animated,
     Easing,
+    Platform,
+    PermissionsAndroid,
     Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AppleHealthKit from 'react-native-health';
+import { BleManager, Device } from 'react-native-ble-plx';
+import { LinearGradient } from 'expo-linear-gradient'; // <-- Add this new line
 
 
 interface DiscoveredDevice {
@@ -37,6 +40,24 @@ export default function AddDeviceModal({
     const [ripple1Value] = useState(new Animated.Value(0));
     const [ripple2Value] = useState(new Animated.Value(0));
     const [ripple3Value] = useState(new Animated.Value(0));
+    const [error, setError] = useState<string | null>(null);
+    const bleManager = useMemo(() => {
+        try {
+            return new BleManager();
+        } catch (err) {
+            console.warn('BleManager initialization failed:', err);
+            return null;
+        }
+    }, []);
+
+    // Cleanup BleManager on unmount
+    useEffect(() => {
+        return () => {
+            if (bleManager) {
+                bleManager.destroy();
+            }
+        };
+    }, [bleManager]);
 
     // Animate ripples
     useEffect(() => {
@@ -103,32 +124,191 @@ export default function AddDeviceModal({
         }
     }, [visible, modalState, ripple1Value, ripple2Value, ripple3Value]);
 
-    // Simulate device discovery
+    // Search for available devices
     useEffect(() => {
         if (visible && modalState === 'searching') {
-            const timer = setTimeout(() => {
-                setDiscoveredDevices([
-                    { id: '2', name: 'Realme Watch S', icon: 'watch' },
-                    { id: '3', name: 'Fitbit Charge 5', icon: 'watch' },
-                    { id: '4', name: 'Apple Watch Ultra', icon: 'watch' },
-                    { id: '5', name: 'Garmin Venu', icon: 'watch' },
-                ]);
-                setModalState('found');
-            }, 3000);
-
-            return () => clearTimeout(timer);
+            searchForDevices();
         }
     }, [visible, modalState]);
 
+    const searchForDevices = async () => {
+        try {
+            setError(null);
+            const discoveredDevicesList: DiscoveredDevice[] = [];
+            const deviceMap = new Map<string, DiscoveredDevice>();
+
+            // Check platform
+            if (Platform.OS === 'android') {
+                // Request Bluetooth permissions on Android
+                try {
+                    const permissions = await PermissionsAndroid.requestMultiple([
+                        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+                        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+                        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                    ]);
+
+                    if (
+                        permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] !==
+                        PermissionsAndroid.RESULTS.GRANTED
+                    ) {
+                        setError('Bluetooth permissions required');
+                        setModalState('found');
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Permission error:', err);
+                    setError('Failed to request Bluetooth permissions');
+                    setModalState('found');
+                    return;
+                }
+            }
+
+            // If BleManager is not available, fall back to showing Apple Watch only
+            if (!bleManager) {
+                console.log('BleManager not available, falling back to Apple Watch');
+                setDiscoveredDevices([
+                    { id: 'apple-watch', name: 'Apple Watch', icon: 'watch' },
+                ]);
+                setModalState('found');
+                return;
+            }
+
+            // Start BLE scan
+            bleManager.startDeviceScan(null, null, (error: any, device: Device | null) => {
+                if (error) {
+                    console.error('Scan error:', error);
+                    return;
+                }
+
+                if (device && device.name) {
+                    const deviceName = device.name.toLowerCase();
+                    let icon: keyof typeof Ionicons.glyphMap = 'bluetooth';
+                    let displayName = device.name;
+
+                    // Identify device type based on name patterns
+                    if (
+                        deviceName.includes('apple watch') ||
+                        deviceName.includes('watch')
+                    ) {
+                        icon = 'watch';
+                        displayName = device.name;
+                    } else if (
+                        deviceName.includes('airpods') ||
+                        deviceName.includes('beats')
+                    ) {
+                        icon = 'headset';
+                        displayName = device.name;
+                    } else if (
+                        deviceName.includes('fitbit') ||
+                        deviceName.includes('garmin') ||
+                        deviceName.includes('polar') ||
+                        deviceName.includes('whoop')
+                    ) {
+                        icon = 'fitness';
+                        displayName = device.name;
+                    }
+
+                    // Avoid duplicates
+                    if (!deviceMap.has(device.id)) {
+                        const discoveredDevice: DiscoveredDevice = {
+                            id: device.id,
+                            name: displayName,
+                            icon,
+                        };
+                        deviceMap.set(device.id, discoveredDevice);
+                    }
+                }
+            });
+
+            // Scan for 3 seconds
+            setTimeout(() => {
+                bleManager.stopDeviceScan();
+
+                const devices = Array.from(deviceMap.values());
+
+                if (devices.length === 0) {
+                    setError('No devices found. Make sure your devices are nearby, turned on, and Bluetooth is enabled.');
+                } else {
+                    setDiscoveredDevices(devices);
+                }
+
+                setModalState('found');
+            }, 3000);
+        } catch (err) {
+            console.error('Error searching for devices:', err);
+            setError('Failed to search for devices. Please try again.');
+            setModalState('found');
+        }
+    };
+
     const handleClose = () => {
+        if (bleManager) {
+            bleManager.stopDeviceScan();
+        }
         setModalState('searching');
         setDiscoveredDevices([]);
+        setError(null);
         onClose();
     };
 
-    const handlePair = (device: DiscoveredDevice) => {
-        onPairDevice(device);
-        handleClose();
+    const handlePair = async (device: DiscoveredDevice) => {
+        try {
+            if (bleManager) {
+                bleManager.stopDeviceScan();
+            }
+
+            // Check if it's an Apple Watch
+            if (device.name.toLowerCase().includes('apple watch') || device.name.toLowerCase().includes('watch')) {
+                // Use HealthKit for Apple Watch
+                if (!AppleHealthKit || !AppleHealthKit.initHealthKit) {
+                    setError('HealthKit is not available on this device');
+                    return;
+                }
+
+                const permissions = {
+                    permissions: {
+                        read: [
+                            AppleHealthKit.Constants.Permissions.HeartRate,
+                            AppleHealthKit.Constants.Permissions.StepCount,
+                            AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+                        ],
+                        write: [AppleHealthKit.Constants.Permissions.ActiveEnergyBurned],
+                    },
+                } as any;
+
+                AppleHealthKit.initHealthKit(permissions, (error: string) => {
+                    if (error) {
+                        console.log('[ERROR] Cannot grant HealthKit permissions!', error);
+                        setError('Failed to connect Apple Watch. Please check HealthKit permissions in Settings.');
+                        return;
+                    }
+
+                    // Successfully paired
+                    onPairDevice(device);
+                    handleClose();
+                });
+            } else if (bleManager) {
+                // Handle other BLE devices
+                try {
+                    const peripheralDevice = await bleManager.connectToDevice(device.id);
+                    await peripheralDevice.discoverAllServicesAndCharacteristics();
+
+                    console.log(`Successfully paired with ${device.name}`);
+                    onPairDevice(device);
+                    handleClose();
+                } catch (err) {
+                    console.error('BLE pairing error:', err);
+                    setError(`Failed to connect to ${device.name}. Please try again.`);
+                }
+            } else {
+                // BleManager not available
+                onPairDevice(device);
+                handleClose();
+            }
+        } catch (err) {
+            console.error('Error pairing device:', err);
+            setError('Failed to pair device');
+        }
     };
 
     return (
@@ -240,7 +420,22 @@ export default function AddDeviceModal({
                             contentContainerStyle={styles.devicesListContent}
                             showsVerticalScrollIndicator={false}
                         >
-                            {discoveredDevices.length > 0 ? (
+                            {error ? (
+                                <View style={styles.emptyState}>
+                                    <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+                                    <Text style={styles.errorText}>{error}</Text>
+                                    <TouchableOpacity
+                                        style={styles.retryButton}
+                                        onPress={() => {
+                                            setModalState('searching');
+                                            setDiscoveredDevices([]);
+                                            setError(null);
+                                        }}
+                                    >
+                                        <Text style={styles.retryButtonText}>Try Again</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : discoveredDevices.length > 0 ? (
                                 discoveredDevices.map((device) => (
                                     <View key={device.id} style={styles.deviceItemWrapper}>
                                         <View style={styles.deviceItem}>
@@ -411,6 +606,14 @@ const styles = StyleSheet.create({
         color: '#94A3B8',
         fontSize: 14,
         marginBottom: 16,
+    },
+    errorText: {
+        color: '#F8FAFC',
+        fontSize: 16,
+        fontWeight: '600',
+        marginTop: 16,
+        marginBottom: 16,
+        textAlign: 'center',
     },
     retryButton: {
         backgroundColor: '#ccff00',

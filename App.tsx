@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
 import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import NavBar from './src/components/layout/NavBar';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -62,8 +62,13 @@ import YouPage from './src/pages/YouPage';
 import YouSettings from './src/pages/YouSettings';
 import PersonalInformation from './src/pages/PersonalInformation';
 import LinkedDevices from './src/pages/LinkedDevices';
+import AboutUs from './src/pages/AboutUs';
+import HelpCenter from './src/pages/HelpCenter';
+import GettingStarted from './src/pages/GettingStarted'; 
+import TroubleShooting from './src/pages/TroubleShooting';
 import PullScreen from './src/pages/PullScreen';
 import LegScreen from './src/pages/LegScreen';
+import { HealthProvider } from './src/context/HealthContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -73,6 +78,10 @@ type YouStackParamList = {
   NotificationsScreen: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
+  AboutUs: undefined;
+  HelpCenter: undefined;
+  GettingStarted: undefined; 
+  TroubleShooting: undefined; 
 };
 
 const RoutinesStack = createNativeStackNavigator();
@@ -88,7 +97,6 @@ const Tab = createBottomTabNavigator();
 
 const { width, height } = Dimensions.get('window');
 
-// Define a type for the screens
 type ScreenName = 
   | 'splash'
   | 'entry'
@@ -119,7 +127,6 @@ function PerformanceStackScreen() {
   );
 }
 
-
 function WorkoutStackScreen() {
   return (
     <WorkoutStack.Navigator screenOptions={{ headerShown: false }}>
@@ -145,7 +152,6 @@ function RoutinesStackScreen() {
   );
 }
 
- 
 function YouStackScreen() {
   return (
     <YouStack.Navigator screenOptions={{ headerShown: false }}>
@@ -154,6 +160,10 @@ function YouStackScreen() {
       <YouStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
       <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
+      <YouStack.Screen name="AboutUs" component={AboutUs} />
+      <YouStack.Screen name="HelpCenter" component={HelpCenter} />
+      <YouStack.Screen name="GettingStarted" component={GettingStarted} />
+      <YouStack.Screen name="TroubleShooting" component={TroubleShooting} />
     </YouStack.Navigator>
   );
 }
@@ -162,7 +172,24 @@ function YouStackScreen() {
 function AppTabs() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <NavBar {...props} />}
+      tabBar={(props) => {
+        // 1. Get the currently active tab route
+        const currentRoute = props.state.routes[props.state.index];
+
+        // 2. Extract the nested screen name
+        const routeName = getFocusedRouteNameFromRoute(currentRoute) ?? currentRoute.name;
+
+        // 3. Define exactly which sub-screens should completely hide the NavBar
+        const hiddenRoutes = ['HelpCenter', 'GettingStarted', 'TroubleShooting', 'AboutUs'];
+
+        // 4. If the current screen is in the hidden list, return null (renders nothing)
+        if (hiddenRoutes.includes(routeName)) {
+          return null;
+        }
+
+        // 5. Otherwise, render your custom NavBar normally
+        return <NavBar {...props} />;
+      }}
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home" component={UserDashboard} />
@@ -383,19 +410,33 @@ export default function App() {
           // For OAuth, Supabase redirects with tokens in the hash/fragment
           // We need to explicitly extract them since native apps work differently than web
           try {
-            // Parse the redirect URL to extract OAuth tokens
-            const result = await supabase.auth.parseRedirectUrl(url);
+            // 1. Extract the part of the URL with the tokens (usually after '#' for Supabase OAuth)
+            const fragment = url.split('#')[1] || url.split('?')[1];
+
+            if (!fragment) {
+              console.log('ℹ️ No token fragments found in URL');
+              return; 
+            }
+
+            // 2. Parse the string into usable variables
+            const params = new URLSearchParams(fragment);
+            const access_token = params.get('access_token');
+            const refresh_token = params.get('refresh_token');
+
             console.log('📊 Parsed redirect URL:', {
-              access_token: result.data?.session?.access_token ? '✅ found' : '❌ missing',
-              refresh_token: result.data?.session?.refresh_token ? '✅ found' : '❌ missing',
-              user_email: result.data?.session?.user?.email,
+              access_token: access_token ? '✅ found' : '❌ missing',
+              refresh_token: refresh_token ? '✅ found' : '❌ missing',
             });
 
-            if (result.data?.session) {
+            // 3. If tokens exist, manually set the session
+            if (access_token && refresh_token) {
               console.log('✅ Session found in redirect URL! Setting session...');
-              // Manually set the session from the OAuth callback
-              // This is critical for native apps since detectSessionInUrl doesn't work the same way
-              const { error: setSessionError } = await supabase.auth.setSession(result.data.session);
+              
+              const { error: setSessionError } = await supabase.auth.setSession({
+                access_token,
+                refresh_token,
+              });
+
               if (setSessionError) {
                 console.error('❌ Error setting session from OAuth:', setSessionError);
               } else {
@@ -440,22 +481,24 @@ export default function App() {
 
   // --- NAVIGATION FLOW ---  
   if (currentScreen === 'dashboard') {
-  return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <NavigationContainer>
-        <MainStack.Navigator screenOptions={{ headerShown: false }}>
-          <MainStack.Screen name="AppTabs" component={AppTabs} />
-          <MainStack.Screen
-            name="Notifications"
-            component={NotificationsScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-        </MainStack.Navigator>
-      </NavigationContainer>
-      <StatusBar style="light" />
-    </View>
-  );
-}
+    return (
+      <HealthProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <NavigationContainer>
+            <MainStack.Navigator screenOptions={{ headerShown: false }}>
+              <MainStack.Screen name="AppTabs" component={AppTabs} />
+              <MainStack.Screen
+                name="Notifications"
+                component={NotificationsScreen}
+                options={{ animation: 'slide_from_right' }}
+              />
+            </MainStack.Navigator>
+          </NavigationContainer>
+          <StatusBar style="light" />
+        </View>
+      </HealthProvider>
+    );
+  }
 
   if (currentScreen === 'begin') {
     return (
@@ -570,7 +613,6 @@ export default function App() {
         <Register 
           onNavigateToLogin={() => setCurrentScreen('login')} 
           onRegisterSuccess={() => {
-            // onAuthStateChange will handle navigation, so we can just log it.
             console.log('Registration successful, waiting for auth state change...');
           }}
         />
@@ -583,7 +625,7 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')}
-          onSignIn={() => {}} // Auth listener handles routing
+          onSignIn={() => {}} 
         />
       </View>
     );

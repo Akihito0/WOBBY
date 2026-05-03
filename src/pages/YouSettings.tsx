@@ -11,6 +11,8 @@ type YouStackParamList = {
   NotificationsScreen: undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
+  AboutUs: undefined;
+  HelpCenter: undefined;
 };
 
 type Props = NativeStackScreenProps<YouStackParamList, 'YouSettings'>;
@@ -84,14 +86,20 @@ export default function YouSettings({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Help & Support</Text>
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation.navigate('AboutUs')}
+          >
             <View style={styles.iconBox}>
               <Image source={require('../assets/about.png')} style={styles.icon} />
             </View>
             <Text style={styles.settingLabel}>About us</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation.navigate('HelpCenter')}
+          >
             <View style={styles.iconBox}>
               <Image source={require('../assets/help.png')} style={styles.icon} />
             </View>
