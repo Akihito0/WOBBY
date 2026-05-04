@@ -13,6 +13,28 @@ type Set = { id: number; weight: string; reps: string };
 type Exercise = { id: number; name: string; sets: Set[]; expanded: boolean };
 
 const LegScreen = ({ navigation }: any) => {
+  // Back Button Confirmation
+  React.useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        Alert.alert(
+          'Discard Workout?',
+          'Going back will reset your progress for this routine. Are you sure?',
+          [
+            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Discard', 
+              style: 'destructive', 
+              onPress: () => navigation.dispatch(e.data.action) 
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation]);
+
   const [exercises, setExercises] = useState<Exercise[]>([
     {
       id: 1,

@@ -54,6 +54,7 @@ export default {
       "react-native-vision-camera",
       "@react-native-community/datetimepicker",
       "expo-image-picker",
+      "react-native-ble-plx",
       [
         "@rnmapbox/maps",
         {

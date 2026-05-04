@@ -13,7 +13,8 @@ import {
   PanResponder,
   Dimensions,
   GestureResponderEvent,
-  PanResponderGestureState
+  PanResponderGestureState,
+  Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -51,8 +52,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const exercisesData: Exercise[] = [
     {
       id: '1',
-      name: 'Push Ups',
-      icon: require('../assets/push.png'),
+      name: routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats',
+      icon: routineType === 'PUSH' || routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
       expanded: true,
       sets: [
         { id: '1', set: 1, weight: 'Body Weight', reps: 10, status: 'START' },
@@ -62,18 +63,18 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     },
     {
       id: '2',
-      name: 'Bench Press',
+      name: routineType === 'PUSH' ? 'Bench Press' : routineType === 'PULL' ? 'Seated Cable Row' : 'Lunges',
       icon: require('../assets/dumbell.png'),
       expanded: false,
       sets: [
-        { id: '4', set: 1, weight: '40 kg', reps: 12, status: 'START' },
-        { id: '5', set: 2, weight: '40 kg', reps: 12, status: 'WAITING' },
+        { id: '4', set: 1, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'START' },
+        { id: '5', set: 2, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'WAITING' },
       ],
     },
     {
       id: '3',
-      name: 'Tricep Dips',
-      icon: require('../assets/push.png'),
+      name: routineType === 'PUSH' ? 'Tricep Dips' : routineType === 'PULL' ? 'Single Arm Bicep Curls' : 'Leg Extensions',
+      icon: routineType === 'PUSH' ? require('../assets/push.png') : routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
       expanded: false,
       sets: [
         { id: '6', set: 1, weight: 'Body Weight', reps: 15, status: 'START' },
@@ -82,9 +83,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     },
   ];
 
-  const [exercises, setExercises] = useState(() => {
-    return persistedExercises || exercisesData;
-  });
+  const [exercises, setExercises] = useState(() => persistedExercises || exercisesData);
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
@@ -92,12 +91,94 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
 
+  // Back Button Confirmation
   useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // If the action is triggered by the completion navigation (which usually uses Navigate or a specific target)
+      // we don't want to show the alert. But GO_BACK and POP usually mean the user header back button or physical back.
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        // Double check target page to ensure we aren't blocking a legitimate flow
+        // However, if discarding, we want to go back to the selection screen.
+        
+        e.preventDefault();
+        Alert.alert(
+          'Discard Workout?',
+          'Going back will reset your progress and timer for this routine. Are you sure?',
+          [
+            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Discard', 
+              style: 'destructive', 
+              onPress: () => {
+                // Clear persistence
+                persistedExercises = null;
+                persistedElapsedSeconds = 0;
+                
+                // Clear the navigation history and replace it with SoloWorkoutScreen
+                // This prevents the "back button" from returning to this screen
+                navigation.reset({
+                  index: 1,
+                  routes: [
+                    { name: 'WorkoutMain' },
+                    { name: 'SoloWorkoutScreen' },
+                  ],
+                });
+              } 
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation]);
+
+  // Reset persistence if the routine type changed or if we want to fresh load
+  useEffect(() => {
+    // If we have a fresh navigation to this routine and the routineType has changed, reset persistence
+    if (persistedExercises && persistedExercises.length > 0) {
+      const expectedFirstExerciseName = routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats';
+      if (persistedExercises[0].name !== expectedFirstExerciseName) {
+        persistedExercises = null;
+        persistedElapsedSeconds = 0;
+        setElapsedSeconds(0);
+      }
+    }
+    
     if (!persistedExercises) {
       setExercises(exercisesData);
     }
   }, [routineType]);
 
+  // Back Button Confirmation
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // If we are navigating to ActiveWorkout or something within the flow, don't alert
+      // We only alert if trying to go back to Routines/Dashboard
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        e.preventDefault();
+        Alert.alert(
+          'Discard Workout?',
+          'Going back will reset your progress and timer for this routine. Are you sure?',
+          [
+            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Discard', 
+              style: 'destructive', 
+              onPress: () => {
+                // Clear persistence
+                persistedExercises = null;
+                persistedElapsedSeconds = 0;
+                navigation.dispatch(e.data.action);
+              } 
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation]);
+
+  // Auto-start Timer
   React.useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => {
@@ -109,6 +190,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Sync cache on every state change
   useEffect(() => {
     persistedExercises = exercises;
   }, [exercises]);
@@ -122,11 +204,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
       lastProcessedKeyRef.current = paramKey;
 
       setExercises(prev => {
-        return prev.map((ex: Exercise) => {
-          if (ex.id !== exerciseId) return ex;
-          
-          const setIdx = ex.sets.findIndex((s: ExerciseSet) => s.id === setId);
-          if (setIdx === -1) return ex;
+          return prev.map((ex: Exercise) => {
+            if (ex.id !== exerciseId) return ex;
+            
+            const setIdx = ex.sets.findIndex((s: ExerciseSet) => s.id === setId);
+            if (setIdx === -1) return ex;
 
           const updatedSets = [...ex.sets];
           updatedSets[setIdx] = { 

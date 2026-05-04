@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   ScrollView, TextInput, Modal, Platform
@@ -7,6 +7,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../supabase';
+import { useFocusEffect } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -17,25 +21,92 @@ type YouStackParamList = {
 type Props = NativeStackScreenProps<YouStackParamList, 'PersonalInformation'>;
 
 export default function PersonalInformation({ navigation }: Props) {
-  const [username, setUsername] = useState('cashew_123');
-  const [fullName, setFullName] = useState('Tung Tung Tung Sahur');
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
   const [age, setAge] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [weightUnit, setWeightUnit] = useState('KG');
+  const [heightUnit, setHeightUnit] = useState('cm');
+  const [validationError, setValidationError] = useState('');
+
+  const [originalData, setOriginalData] = useState({
+    username: '',
+    age: '',
+    weight: '',
+    height: '',
+    avatarUri: null as string | null,
+  });
+
+  const [toast, setToast] = useState<{ message: string; type: 'saved' | 'discarded' } | null>(null);
+
+  const showToast = (message: string, type: 'saved' | 'discarded') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
-
-  // ── Focus states ──
   const [usernameFocused, setUsernameFocused] = useState(false);
-  const [fullNameFocused, setFullNameFocused] = useState(false);
   const [weightFocused, setWeightFocused] = useState(false);
   const [heightFocused, setHeightFocused] = useState(false);
-
-  // ── Saved state — forces all text back to grey after Save ──
   const [saved, setSaved] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+    }, [])
+  );
+
+  const fetchUserData = async () => {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw authError ?? new Error('Not logged in');
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('username, age, weight, height, avatar_url, weight_unit, height_unit')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      const fetchedData = {
+        username: profile.username ?? '',
+        age: profile.age ? String(profile.age) : '',
+        weight: profile.weight ? String(profile.weight) : '',
+        height: profile.height ? String(profile.height) : '',
+        avatarUri: profile.avatar_url ?? null,
+      };
+
+      setUsername(fetchedData.username);
+      setAge(fetchedData.age);
+      setWeight(fetchedData.weight);
+      setHeight(fetchedData.height);
+      setAvatarUri(fetchedData.avatarUri);
+      setAvatarUrl(fetchedData.avatarUri);
+      setOriginalData(fetchedData);
+      setFullName(user.email ?? '');
+      setWeightUnit(profile.weight_unit ?? 'KG');
+      setHeightUnit(profile.height_unit ?? 'cm');
+    } catch (err) {
+      console.error('fetchUserData error:', err);
+    }
+  };
+
+  const handleDiscard = () => {
+    setUsername(originalData.username);
+    setAge(originalData.age);
+    setWeight(originalData.weight);
+    setHeight(originalData.height);
+    setAvatarUri(originalData.avatarUri);
+    setSaved(false);
+    setValidationError('');
+    showToast('Changes discarded', 'discarded');
+  };
 
   const inputColor = (focused: boolean) => {
     if (saved) return '#939394';
@@ -58,6 +129,7 @@ export default function PersonalInformation({ navigation }: Props) {
         setBirthDate(selected);
         setAge(String(calculateAge(selected)));
         setSaved(false);
+        setValidationError('');
       }
     } else {
       if (selected) setTempDate(selected);
@@ -68,6 +140,7 @@ export default function PersonalInformation({ navigation }: Props) {
     setBirthDate(tempDate);
     setAge(String(calculateAge(tempDate)));
     setSaved(false);
+    setValidationError('');
     setShowDatePicker(false);
   };
 
@@ -88,8 +161,96 @@ export default function PersonalInformation({ navigation }: Props) {
     }
   };
 
+  const handleSave = async () => {
+    // Validation
+    if (!username.trim() || !age || !weight || !height) {
+      setValidationError('All fields are required.');
+      return;
+    }
+    if (parseInt(age) === 0) {
+      setValidationError('Age cannot be 0.');
+      return;
+    }
+    setValidationError('');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let uploadedAvatarUrl: string | null = avatarUri;
+
+      if (avatarUri && !avatarUri.startsWith('http')) {
+        const ext = avatarUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const fileName = `${user.id}/avatar.${ext}`;
+
+        const base64 = await FileSystem.readAsStringAsync(avatarUri, {
+          encoding: 'base64' as any,
+        });
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, decode(base64), {
+            contentType: mimeType,
+            upsert: true,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+
+        uploadedAvatarUrl = urlData.publicUrl;
+        setAvatarUri(uploadedAvatarUrl);
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          username,
+          age: age ? parseInt(age) : null,
+          weight: weight ? parseInt(weight) : null,
+          height: height ? parseInt(height) : null,
+          avatar_url: uploadedAvatarUrl,
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setOriginalData({
+        username,
+        age,
+        weight,
+        height,
+        avatarUri: uploadedAvatarUrl,
+      });
+
+      setSaved(true);
+      showToast('Changes saved', 'saved');
+    } catch (err) {
+      console.error('Save error:', err);
+    }
+  };
+
   return (
     <View style={styles.safeArea}>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <View style={[
+          styles.toast,
+          toast.type === 'saved' ? styles.toastSaved : styles.toastDiscarded
+        ]}>
+          <Text style={[
+            styles.toastText,
+            { color: toast.type === 'saved' ? '#000000' : '#FFFFFF' }
+          ]}>
+            {toast.message}
+          </Text>
+        </View>
+      )}
+
       <LinearGradient
         colors={['#001E20', '#000000']}
         start={{ x: 1, y: 0.5 }}
@@ -106,11 +267,12 @@ export default function PersonalInformation({ navigation }: Props) {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+
         {/* Avatar */}
         <View style={styles.avatarSection}>
           <View style={styles.avatarContainer}>
             <Image
-              source={avatarUri ? { uri: avatarUri } : require('../assets/5.png')}
+              source={avatarUri ? { uri: avatarUri } : require('../assets/user.png')}
               style={styles.avatar}
             />
           </View>
@@ -130,7 +292,7 @@ export default function PersonalInformation({ navigation }: Props) {
               <TextInput
                 style={[styles.input, { color: inputColor(usernameFocused) }]}
                 value={username}
-                onChangeText={(t) => { setSaved(false); setUsername(t); }}
+                onChangeText={(t) => { setSaved(false); setUsername(t); setValidationError(''); }}
                 onFocus={() => { setSaved(false); setUsernameFocused(true); }}
                 onBlur={() => setUsernameFocused(false)}
                 placeholder="e.g. cool_lifter_99"
@@ -139,18 +301,16 @@ export default function PersonalInformation({ navigation }: Props) {
             </View>
           </View>
 
-          {/* Full name */}
+          {/* Email */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Full name</Text>
+            <Text style={styles.fieldLabel}>Email</Text>
             <View style={styles.inputContainer}>
               <Image source={require('../assets/profile.png')} style={styles.inputIcon} />
               <TextInput
-                style={[styles.input, { color: inputColor(fullNameFocused) }]}
+                style={[styles.input, { color: '#939394' }]}
                 value={fullName}
-                onChangeText={(t) => { setSaved(false); setFullName(t); }}
-                onFocus={() => { setSaved(false); setFullNameFocused(true); }}
-                onBlur={() => setFullNameFocused(false)}
-                placeholder="e.g. Juan dela Cruz"
+                editable={false}
+                placeholder="your@email.com"
                 placeholderTextColor="#939394"
               />
             </View>
@@ -165,6 +325,7 @@ export default function PersonalInformation({ navigation }: Props) {
                 setSaved(false);
                 setTempDate(birthDate ?? new Date());
                 setShowDatePicker(true);
+                setValidationError('');
               }}
               activeOpacity={0.8}
             >
@@ -176,13 +337,7 @@ export default function PersonalInformation({ navigation }: Props) {
                   { color: saved ? '#939394' : age ? '#FFFFFF' : '#939394' },
                 ]}
               >
-                {age
-                  ? `${age} yrs old${birthDate
-                      ? `  ·  ${birthDate.toLocaleDateString('en-PH', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                        })}`
-                      : ''}`
-                  : 'Tap to pick your birthday'}
+                {age ? `${age}` : 'Tap to set your age'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -196,14 +351,14 @@ export default function PersonalInformation({ navigation }: Props) {
                 <TextInput
                   style={[styles.input, { color: inputColor(weightFocused) }]}
                   value={weight}
-                  onChangeText={(t) => { setSaved(false); setWeight(t.replace(/[^0-9]/g, '')); }}
+                  onChangeText={(t) => { setSaved(false); setWeight(t.replace(/[^0-9]/g, '')); setValidationError(''); }}
                   onFocus={() => { setSaved(false); setWeightFocused(true); }}
                   onBlur={() => setWeightFocused(false)}
-                  placeholder="kg"
                   placeholderTextColor="#939394"
                   keyboardType="number-pad"
                   maxLength={3}
                 />
+                <Text style={styles.unitLabel}>{weightUnit}</Text>
               </View>
             </View>
 
@@ -214,31 +369,30 @@ export default function PersonalInformation({ navigation }: Props) {
                 <TextInput
                   style={[styles.input, { color: inputColor(heightFocused) }]}
                   value={height}
-                  onChangeText={(t) => { setSaved(false); setHeight(t.replace(/[^0-9]/g, '')); }}
+                  onChangeText={(t) => { setSaved(false); setHeight(t.replace(/[^0-9]/g, '')); setValidationError(''); }}
                   onFocus={() => { setSaved(false); setHeightFocused(true); }}
                   onBlur={() => setHeightFocused(false)}
-                  placeholder="cm"
                   placeholderTextColor="#939394"
                   keyboardType="number-pad"
                   maxLength={3}
                 />
+                <Text style={styles.unitLabel}>{heightUnit}</Text>
               </View>
             </View>
           </View>
         </View>
 
+        {/* Validation Error */}
+        {validationError ? (
+          <Text style={styles.validationError}>{validationError}</Text>
+        ) : null}
+
         {/* Buttons */}
         <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.discardButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.discardButton} onPress={handleDiscard}>
             <Text style={styles.discardButtonText}>Discard</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.saveButton}
-            onPress={() => {
-              setSaved(true);
-              console.log('Saved:', { username, fullName, age, weight, height });
-            }}
-          >
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
             <Text style={styles.saveButtonText}>Save</Text>
           </TouchableOpacity>
         </View>
@@ -287,6 +441,26 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#121310',
+  },
+  toast: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 999,
+    elevation: 999,
+  },
+  toastSaved: {
+    backgroundColor: '#ccff00',
+  },
+  toastDiscarded: {
+    backgroundColor: '#334155',
+  },
+  toastText: {
+    fontSize: 13,
+    fontFamily: 'Montserrat_800ExtraBold',
   },
   headerGradient: {
     width: '100%',
@@ -378,6 +552,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat_400Regular',
     padding: 0,
   },
+  unitLabel: {
+    color: '#939394',
+    fontSize: 14,
+    fontFamily: 'Montserrat_400Regular',
+    marginLeft: 4,
+  },
   inputTouchable: {
     paddingVertical: 14,
   },
@@ -386,6 +566,13 @@ const styles = StyleSheet.create({
   },
   halfFieldGroup: {
     flex: 1,
+  },
+  validationError: {
+    color: '#FF4D4D',
+    fontSize: 13,
+    fontFamily: 'Montserrat_600SemiBold',
+    textAlign: 'center',
+    marginBottom: 12,
   },
   buttonContainer: {
     flexDirection: 'row',
