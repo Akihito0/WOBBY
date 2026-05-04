@@ -43,3 +43,4 @@ instructions.md
 # generated native folders
 /ios
 /android
+modules/wobby-health/android/build/

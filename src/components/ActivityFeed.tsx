@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,13 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Platform,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
-
-const workoutGallery = [
-  require('../assets/workout_1.png'),
-  require('../assets/workout_2.png'),
-  require('../assets/workout_3.png'),
-];
 
 const IMAGE_WIDTH = width * 0.65;
 const IMAGE_MARGIN = 12;
@@ -27,15 +24,80 @@ const ITEM_SIZE = IMAGE_WIDTH + IMAGE_MARGIN;
 // Padding so each item snaps centered
 const SIDE_INSET = (width - IMAGE_WIDTH) / 2;
 
-const ActivityFeed = () => {
+// Helper function to format duration from seconds to HH:MM format
+const formatDuration = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+};
+
+// Helper function to format date to readable format
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
+  return date.toLocaleDateString('en-US', options);
+};
+
+interface RunData {
+  title: string;
+  description?: string;
+  distance: number;
+  duration: number;
+  pace: string;
+  workout_type: string;
+  completed_at: string;
+  media_urls?: string[];
+  average_bpm?: number;
+  max_bpm?: number;
+  elevation_gain?: number;
+  elevation_loss?: number;
+  min_elevation?: number;
+  max_elevation?: number;
+  average_elevation?: number;
+  route_map_url?: string;
+}
+
+const ActivityFeed = ({ username = 'Guest', avatarUrl, runData }: { username?: string; avatarUrl?: string | null; runData?: RunData }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // Use real media from run, or fallback to placeholder images
+  const workoutGallery = useMemo(() => {
+    if (runData?.media_urls && runData.media_urls.length > 0) {
+      return runData.media_urls.map(url => ({ uri: url }));
+    }
+    // Fallback to placeholder images
+    return [
+      require('../assets/workout_1.png'),
+      require('../assets/workout_2.png'),
+      require('../assets/workout_3.png'),
+    ];
+  }, [runData?.media_urls]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / ITEM_SIZE);
     setCurrentIndex(Math.min(Math.max(index, 0), workoutGallery.length - 1));
   };
+
+  // If no run data, show a placeholder or hide the component
+  if (!runData) {
+    return null;
+  }
+
+  const formattedDate = formatDate(runData.completed_at);
+  const formattedDuration = formatDuration(runData.duration);
+  const runMode = runData.workout_type || 'Solo';
 
   return (
     <View style={styles.rootWrapper}>
@@ -45,10 +107,10 @@ const ActivityFeed = () => {
         {/* ── USER HEADER ── */}
         <View style={styles.userHeader}>
           <View style={styles.userInfo}>
-            <Image source={require('../assets/cashew.png')} style={styles.avatar} />
+            <Image source={avatarUrl ? { uri: avatarUrl } : require('../assets/cashew.png')} style={styles.avatar} />
             <View>
-              <Text style={styles.username}>cashew_123</Text>
-              <Text style={styles.timestamp}>January 1, 2026 at 12:00 AM • Cebu City</Text>
+              <Text style={styles.username}>{username}</Text>
+              <Text style={styles.timestamp}>{formattedDate}</Text>
             </View>
           </View>
           <TouchableOpacity hitSlop={10}>
@@ -57,24 +119,21 @@ const ActivityFeed = () => {
         </View>
 
         {/* ── WORKOUT TITLE ── */}
-        <Text style={styles.workoutTitle}>Chest Day!</Text>
+        <Text style={styles.workoutTitle}>{runData.title}</Text>
 
         {/* ── STATS ROW ── */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Duration</Text>
-            <Text style={styles.statValue}>5 hrs</Text>
+            <Text style={styles.statValue}>{formattedDuration}</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Mode</Text>
-            <Text style={styles.statValue}>Solo</Text>
+            <Text style={styles.statLabel}>Distance</Text>
+            <Text style={styles.statValue}>{runData.distance.toFixed(2)} km</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { textAlign: 'right' }]}>Achievements</Text>
-            <View style={styles.xpContainer}>
-              <Text style={styles.statValue}>10XP </Text>
-              <Image source={require('../assets/xp_gem.png')} style={styles.gemIcon} />
-            </View>
+            <Text style={[styles.statLabel, { textAlign: 'right' }]}>Mode</Text>
+            <Text style={[styles.statValue, { textAlign: 'right' }]}>{runMode}</Text>
           </View>
         </View>
 
@@ -82,50 +141,189 @@ const ActivityFeed = () => {
         <View style={styles.congratsBanner}>
           <Image source={require('../assets/trophy.png')} style={styles.trophyIconImage} />
           <Text style={styles.congratsText}>
-            Congrats! You have completed your upper body workout!
+            🎉 Awesome run! You completed {runData.distance.toFixed(1)}km at {runData.pace} /km!
           </Text>
         </View>
 
-        {/* ── GALLERY ── */}
-        <FlatList
-          ref={flatListRef}
-          data={workoutGallery}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(_, index) => index.toString()}
-          snapToInterval={ITEM_SIZE}
-          snapToAlignment="start"       // Keep "start" — the inset shifts the visual center
-          decelerationRate="fast"
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          // ── iOS: use contentInset to pad both sides so first/last items center ──
-          {...(Platform.OS === 'ios'
-            ? {
-                contentInset: { left: SIDE_INSET, right: SIDE_INSET },
-                contentOffset: { x: -SIDE_INSET, y: 0 },
-              }
-            : {
-                // ── Android: contentInset not supported, use contentContainerStyle padding ──
-                contentContainerStyle: { paddingHorizontal: SIDE_INSET },
-              })}
-          renderItem={({ item }) => (
-            <Image source={item} style={styles.galleryImage} />
-          )}
-        />
+        {/* ── SEE MORE BUTTON ── */}
+        <TouchableOpacity 
+          style={styles.seeMoreBtn}
+          onPress={() => setDetailsModalVisible(true)}
+        >
+          <Text style={styles.seeMoreText}>See More Details</Text>
+          <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
+        </TouchableOpacity>
 
-        {/* ── PAGINATION ── */}
-        <View style={styles.paginationRow}>
-          {workoutGallery.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.dot, index === currentIndex && styles.activeDot]}
+        {/* ── GALLERY ── */}
+        {workoutGallery.length > 0 && (
+          <>
+            <FlatList
+              ref={flatListRef}
+              data={workoutGallery}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(_, index) => index.toString()}
+              snapToInterval={ITEM_SIZE}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              {...(Platform.OS === 'ios'
+                ? {
+                    contentInset: { left: SIDE_INSET, right: SIDE_INSET },
+                    contentOffset: { x: -SIDE_INSET, y: 0 },
+                  }
+                : {
+                    contentContainerStyle: { paddingHorizontal: SIDE_INSET },
+                  })}
+              renderItem={({ item }: any) => (
+                <Image 
+                  source={typeof item === 'string' || (item && item.uri) ? item : item}
+                  style={styles.galleryImage}
+                />
+              )}
             />
-          ))}
-        </View>
+
+            {/* ── PAGINATION ── */}
+            <View style={styles.paginationRow}>
+              {workoutGallery.map((_, index) => (
+                <View
+                  key={index}
+                  style={[styles.dot, index === currentIndex && styles.activeDot]}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* ── DETAILS MODAL ── */}
+        <Modal 
+          visible={detailsModalVisible}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setDetailsModalVisible(false)}
+        >
+          <LinearGradient
+            colors={['#001E20', '#0a0a0a']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.modalGradient}
+          >
+            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {/* ── MODAL HEADER ── */}
+              <View style={styles.modalHeader}>
+                <TouchableOpacity 
+                  style={styles.modalCloseBtn}
+                  onPress={() => setDetailsModalVisible(false)}
+                >
+                  <MaterialCommunityIcons name="close" size={28} color="#FFF" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>RUN DETAILS</Text>
+                <View style={{ width: 28 }} />
+              </View>
+
+              {/* ── MAP THUMBNAIL ── */}
+              {runData.route_map_url && (
+                <Image 
+                  source={{ uri: runData.route_map_url }}
+                  style={styles.modalMapImage}
+                />
+              )}
+
+              {/* ── TITLE ── */}
+              <Text style={styles.modalRunTitle}>{runData.title}</Text>
+
+              {/* ── MAIN STATS ── */}
+              <View style={styles.modalStatsGrid}>
+                <View style={styles.modalStatBox}>
+                  <Text style={styles.modalStatLabel}>Distance</Text>
+                  <Text style={styles.modalStatValue}>{runData.distance.toFixed(2)}</Text>
+                  <Text style={styles.modalStatUnit}>km</Text>
+                </View>
+                <View style={styles.modalStatBox}>
+                  <Text style={styles.modalStatLabel}>Duration</Text>
+                  <Text style={styles.modalStatValue}>{formattedDuration}</Text>
+                </View>
+                <View style={styles.modalStatBox}>
+                  <Text style={styles.modalStatLabel}>Pace</Text>
+                  <Text style={styles.modalStatValue}>{runData.pace}</Text>
+                  <Text style={styles.modalStatUnit}>/km</Text>
+                </View>
+                <View style={styles.modalStatBox}>
+                  <Text style={styles.modalStatLabel}>Mode</Text>
+                  <Text style={styles.modalStatValue}>{runMode}</Text>
+                </View>
+              </View>
+
+              {/* ── ELEVATION SECTION ── */}
+              {(runData.elevation_gain !== undefined && runData.elevation_gain > 0) && (
+                <>
+                  <Text style={styles.modalSectionLabel}>Elevation</Text>
+                  <View style={styles.modalStatsGrid}>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Gain</Text>
+                      <Text style={styles.modalStatValue}>{runData.elevation_gain || 0}</Text>
+                      <Text style={styles.modalStatUnit}>m</Text>
+                    </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Loss</Text>
+                      <Text style={styles.modalStatValue}>{runData.elevation_loss || 0}</Text>
+                      <Text style={styles.modalStatUnit}>m</Text>
+                    </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Min</Text>
+                      <Text style={styles.modalStatValue}>{runData.min_elevation || 0}</Text>
+                      <Text style={styles.modalStatUnit}>m</Text>
+                    </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Max</Text>
+                      <Text style={styles.modalStatValue}>{runData.max_elevation || 0}</Text>
+                      <Text style={styles.modalStatUnit}>m</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {/* ── HEART RATE SECTION ── */}
+              {(runData.average_bpm && runData.average_bpm > 0) && (
+                <>
+                  <Text style={styles.modalSectionLabel}>Heart Rate</Text>
+                  <View style={styles.modalStatsGrid}>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Average</Text>
+                      <Text style={styles.modalStatValue}>{runData.average_bpm}</Text>
+                      <Text style={styles.modalStatUnit}>BPM</Text>
+                    </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Peak</Text>
+                      <Text style={[styles.modalStatValue, { color: '#FF4444' }]}>{runData.max_bpm || 0}</Text>
+                      <Text style={styles.modalStatUnit}>BPM</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {/* ── DESCRIPTION ── */}
+              {runData.description && runData.description.trim() && (
+                <>
+                  <Text style={styles.modalSectionLabel}>Description</Text>
+                  <View style={styles.modalDescriptionBox}>
+                    <Text style={styles.modalDescriptionText}>{runData.description}</Text>
+                  </View>
+                </>
+              )}
+
+              {/* ── DATE ── */}
+              <Text style={styles.modalDateText}>{formattedDate}</Text>
+            </ScrollView>
+          </LinearGradient>
+        </Modal>
       </View>
     </View>
   );
 };
+
+export default ActivityFeed;
 
 const styles = StyleSheet.create({
   rootWrapper: {
@@ -254,6 +452,133 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEE',
     width: 12,
   },
-});
+  
+  // ── SEE MORE BUTTON ──
+  seeMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#C8FF00',
+    borderRadius: 8,
+    backgroundColor: 'rgba(200, 255, 0, 0.05)',
+  },
+  seeMoreText: {
+    color: '#C8FF00',
+    fontSize: 13,
+    fontFamily: 'Montserrat_700Bold',
+    marginRight: 8,
+  },
 
-export default ActivityFeed;
+  // ── MODAL STYLES ──
+  modalGradient: {
+    flex: 1,
+  },
+  modalContent: {
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  modalCloseBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontFamily: 'Montserrat_800ExtraBold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  modalMapImage: {
+    width: '100%',
+    height: 200,
+    marginTop: 20,
+  },
+  modalRunTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontFamily: 'Montserrat_900Black',
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 25,
+  },
+  modalSectionLabel: {
+    color: '#888',
+    fontSize: 11,
+    fontFamily: 'Montserrat_700Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    paddingHorizontal: 20,
+    marginTop: 25,
+    marginBottom: 12,
+  },
+  modalStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  modalStatBox: {
+    flex: 1,
+    minWidth: '48%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  modalStatLabel: {
+    color: '#888',
+    fontSize: 10,
+    fontFamily: 'Montserrat_600SemiBold',
+    marginBottom: 4,
+  },
+  modalStatValue: {
+    color: '#C8FF00',
+    fontSize: 18,
+    fontFamily: 'Montserrat_900Black',
+  },
+  modalStatUnit: {
+    color: '#666',
+    fontSize: 9,
+    fontFamily: 'Montserrat_500Medium',
+    marginTop: 2,
+  },
+  modalDescriptionBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10,
+    padding: 16,
+    marginHorizontal: 20,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  modalDescriptionText: {
+    color: '#DDD',
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: 'Montserrat_400Regular',
+  },
+  modalDateText: {
+    color: '#666',
+    fontSize: 11,
+    fontFamily: 'Montserrat_500Medium',
+    textAlign: 'center',
+    marginTop: 30,
+    marginBottom: 10,
+  },
+});

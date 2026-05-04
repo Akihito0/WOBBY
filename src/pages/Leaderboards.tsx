@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { supabase } from '../supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -57,6 +58,31 @@ const LeaderboardRow = ({ user }: { user: LeaderboardUser }) => (
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 const LeaderboardsScreen = () => {
   const navigation = useNavigation();
+  const [currentUsername, setCurrentUsername] = useState(CURRENT_USER.username);
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setCurrentUsername(data.username ?? CURRENT_USER.username);
+    } catch (error: any) {
+      console.log('Error fetching current user:', error.message);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchCurrentUser();
+    }, [fetchCurrentUser])
+  );
 
   // Filter out the top 3 since they are displayed in your static podium image
   const listUsers = MOCK_USERS.filter(u => u.rank >= 4);
@@ -89,7 +115,7 @@ const LeaderboardsScreen = () => {
           <View style={styles.podiumWrapper}>
             {/* Rank 1 (Center - Highest) */}
             <View style={[styles.podiumUser, { alignSelf: 'center', bottom: 110 }]}>
-              <Text style={[styles.podiumUsername, styles.rank1Text]}>cashew_123</Text>
+              <Text style={[styles.podiumUsername, styles.rank1Text]}>{currentUsername}</Text>
               <View style={[styles.podiumAvatarBox, styles.rank1Avatar]} />
               <Text style={[styles.podiumXPLabel, styles.rank1Text]}>1001 XP</Text>
             </View>
@@ -135,7 +161,7 @@ const LeaderboardsScreen = () => {
              {/* Placeholder for current user avatar */}
           </View>
           <Text style={styles.footerText}>
-              {CURRENT_USER.username}                          TOP {CURRENT_USER.percentile}%
+              {currentUsername}                          TOP {CURRENT_USER.percentile}%
           </Text>
         </View>
       </LinearGradient>
