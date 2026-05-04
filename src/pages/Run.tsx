@@ -441,7 +441,7 @@ const RunScreen = ({ navigation }: any) => {
         }
       } catch (error) {}
 
-      const runData = {
+      const runData: any = {
         user_id: userId,
         title: workoutTitle,
         description: workoutDesc,
@@ -455,8 +455,6 @@ const RunScreen = ({ navigation }: any) => {
         average_elevation: elevationMetrics.min && elevationMetrics.max 
           ? Math.round((elevationMetrics.min + elevationMetrics.max) / 2)
           : 0,
-        average_heart_rate: sessionStats.avg,
-        max_heart_rate: sessionStats.max,
         route_coordinates: routeCoords, 
         route_map_url: mapUrl || null,
         media_urls: otherUrls,
@@ -465,6 +463,12 @@ const RunScreen = ({ navigation }: any) => {
         completed_at: now.toISOString(),
         created_at: now.toISOString(),
       };
+
+      // Only add heart rate data if smartwatch is connected (avg HR > 0)
+      if (sessionStats.avg > 0) {
+        runData.average_bpm = sessionStats.avg;
+        runData.max_bpm = sessionStats.max;
+      }
 
       const { data, error } = await supabase
         .from('runs')
@@ -812,61 +816,86 @@ const RunScreen = ({ navigation }: any) => {
               <View style={{ width: 24 }} />
             </View>
 
-            {/* 👇 FIX: Added the expanding chevron indicator to the right side */}
-            <TouchableOpacity 
-              style={[styles.hrSummaryBox, showHRChart && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, marginBottom: 0 }]}
-              activeOpacity={0.8}
-              onPress={() => setShowHRChart(!showHRChart)}
-            >
-              <View style={styles.hrSummaryContent}>
-                <View style={styles.hrSummaryItem}>
-                  <Text style={styles.hrSummaryLabel}>AVERAGE HR</Text>
-                  <Text style={styles.hrSummaryValue}>{sessionStats.avg} <Text style={{fontSize: 12}}>BPM</Text></Text>
-                </View>
-                <View style={styles.hrSummaryDivider} />
-                <View style={styles.hrSummaryItem}>
-                  <Text style={styles.hrSummaryLabel}>PEAK HR</Text>
-                  <Text style={[styles.hrSummaryValue, {color: '#FF4444'}]}>{sessionStats.max} <Text style={{fontSize: 12}}>BPM</Text></Text>
-                </View>
-              </View>
-              <Ionicons 
-                name={showHRChart ? "chevron-up" : "chevron-down"} 
-                size={24} 
-                color="#666" 
-                style={{ marginLeft: 8 }} 
-              />
-            </TouchableOpacity>
+            {/* 👇 Only show HR data if smartwatch is connected (avg HR > 0) */}
+            {sessionStats.avg > 0 && (
+              <>
+                <TouchableOpacity 
+                  style={[styles.hrSummaryBox, showHRChart && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, marginBottom: 0 }]}
+                  activeOpacity={0.8}
+                  onPress={() => setShowHRChart(!showHRChart)}
+                >
+                  <View style={styles.hrSummaryContent}>
+                    <View style={styles.hrSummaryItem}>
+                      <Text style={styles.hrSummaryLabel}>AVERAGE HR</Text>
+                      <Text style={styles.hrSummaryValue}>{sessionStats.avg} <Text style={{fontSize: 12}}>BPM</Text></Text>
+                    </View>
+                    <View style={styles.hrSummaryDivider} />
+                    <View style={styles.hrSummaryItem}>
+                      <Text style={styles.hrSummaryLabel}>PEAK HR</Text>
+                      <Text style={[styles.hrSummaryValue, {color: '#FF4444'}]}>{sessionStats.max} <Text style={{fontSize: 12}}>BPM</Text></Text>
+                    </View>
+                  </View>
+                  <Ionicons 
+                    name={showHRChart ? "chevron-up" : "chevron-down"} 
+                    size={24} 
+                    color="#666" 
+                    style={{ marginLeft: 8 }} 
+                  />
+                </TouchableOpacity>
 
-            {showHRChart && sessionHRData.length > 0 && (
-              <View style={styles.hrChartContainer}>
-                <View style={styles.hrChartHeader}>
-                  <Text style={styles.hrChartRangeLabel}>RANGE</Text>
-                  <Text style={styles.hrChartRangeValue}>
-                    {Math.min(...sessionHRData)}–{Math.max(...sessionHRData)} <Text style={styles.hrChartBpm}>BPM</Text>
-                  </Text>
-                </View>
+                {showHRChart && sessionHRData.length > 0 && (
+                  <View style={styles.hrChartContainer}>
+                    <View style={styles.hrChartHeader}>
+                      <Text style={styles.hrChartRangeLabel}>RANGE</Text>
+                      <Text style={styles.hrChartRangeValue}>
+                        {Math.min(...sessionHRData)}–{Math.max(...sessionHRData)} <Text style={styles.hrChartBpm}>BPM</Text>
+                      </Text>
+                    </View>
+                    
+                    <BarChart
+                      stackData={stackedData}
+                      height={150}
+                      width={chartWidth}
+                      barWidth={barWidth}
+                      spacing={safeSpacing}
+                      initialSpacing={10}
+                      hideRules={false}
+                      rulesType="solid"
+                      rulesColor="rgba(255,255,255,0.05)"
+                      yAxisTextStyle={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat-Medium' }}
+                      hideYAxisText={false}
+                      yAxisColor="transparent"
+                      xAxisColor="#333333"
+                      maxValue={Math.max(...sessionHRData, 120) + 10} 
+                      noOfSections={4}
+                    />
+                  </View>
+                )}
                 
-                <BarChart
-                  stackData={stackedData}
-                  height={150}
-                  width={chartWidth}
-                  barWidth={barWidth}
-                  spacing={safeSpacing}
-                  initialSpacing={10}
-                  hideRules={false}
-                  rulesType="solid"
-                  rulesColor="rgba(255,255,255,0.05)"
-                  yAxisTextStyle={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat-Medium' }}
-                  hideYAxisText={false}
-                  yAxisColor="transparent"
-                  xAxisColor="#333333"
-                  maxValue={Math.max(...sessionHRData, 120) + 10} 
-                  noOfSections={4}
-                />
-              </View>
+                <View style={{ height: showHRChart ? 20 : 0 }} />
+              </>
             )}
-            
-            <View style={{ height: showHRChart ? 20 : 0 }} />
+
+            {/* 👇 ADDED: Run Stats Summary Box */}
+            <View style={styles.runStatsSummaryBox}>
+              <View style={styles.runStatsContent}>
+                <View style={styles.runStatsItem}>
+                  <Text style={styles.runStatsLabel}>DISTANCE</Text>
+                  <Text style={styles.runStatsValue}>{distance.toFixed(2)} <Text style={{fontSize: 12}}>km</Text></Text>
+                </View>
+                <View style={styles.runStatsDivider} />
+                <View style={styles.runStatsItem}>
+                  <Text style={styles.runStatsLabel}>AVG PACE</Text>
+                  <Text style={styles.runStatsValue}>{calcPace(distance, elapsed)}</Text>
+                  <Text style={styles.runStatsSubLabel}>/km</Text>
+                </View>
+                <View style={styles.runStatsDivider} />
+                <View style={styles.runStatsItem}>
+                  <Text style={styles.runStatsLabel}>TIME</Text>
+                  <Text style={styles.runStatsValue}>{formatTime(elapsed)}</Text>
+                </View>
+              </View>
+            </View>
 
             <TextInput
               style={styles.inputField}
@@ -1133,6 +1162,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
     fontFamily: 'Montserrat-Medium',
+  },
+
+  runStatsSummaryBox: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  runStatsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  runStatsItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  runStatsLabel: {
+    color: '#888',
+    fontSize: 10,
+    fontFamily: 'Montserrat-Bold',
+    marginBottom: 4,
+  },
+  runStatsValue: {
+    color: '#C8FF00',
+    fontSize: 20,
+    fontFamily: 'Montserrat-Black',
+  },
+  runStatsSubLabel: {
+    color: '#888',
+    fontSize: 10,
+    fontFamily: 'Montserrat-Medium',
+    marginTop: 2,
+  },
+  runStatsDivider: {
+    width: 1,
+    backgroundColor: '#333',
+    height: 40,
+    marginHorizontal: 10,
   },
 
   inputField: {
