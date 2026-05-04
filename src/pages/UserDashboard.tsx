@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -20,13 +20,16 @@ import ActivityFeed from "../components/ActivityFeed";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFonts, Montserrat_900Black, Montserrat_800ExtraBold, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
 import { Barlow_400Regular } from "@expo-google-fonts/barlow";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { supabase } from "../supabase";
 
 // ─── COMPONENT ─────────────────────────────────────────────────────────────
 export default function UserDashboard() {
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [bmiModalVisible, setBmiModalVisible] = useState(false);
   const [refreshStats, setRefreshStats] = useState(0);
+  const [username, setUsername] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const navigation = useNavigation<any>();
 
   const [fontsLoaded] = useFonts({
@@ -35,6 +38,32 @@ export default function UserDashboard() {
     Montserrat_600SemiBold,
     Barlow_400Regular,
   });
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+
+      setUsername(data.username ?? '');
+      setAvatarUrl(data.avatar_url ?? null);
+    } catch (error: any) {
+      console.log('Error fetching profile:', error.message);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfile();
+    }, [fetchProfile])
+  );
 
   if (!fontsLoaded) return null;
 
@@ -47,12 +76,12 @@ export default function UserDashboard() {
         <View style={styles.headerRow}>
           <View style={styles.avatarRow}>
             <Image
-              source={require("../assets/cashew.png")}
+              source={avatarUrl ? { uri: avatarUrl } : require("../assets/cashew.png")}
               style={styles.avatarImage}
             />
             <View>
               <Text style={styles.greetLabel}>Time to Grind,</Text>
-              <Text style={styles.username}>cashew_123</Text>
+              <Text style={styles.username}>{username || 'Guest'}</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.bellWrap}
@@ -81,7 +110,7 @@ export default function UserDashboard() {
         </View>
 
         {/* ════════ ACTIVITY FEED ════════ */}
-        <ActivityFeed />
+        <ActivityFeed username={username} avatarUrl={avatarUrl} />
 
         {/* ════════ MOTIVATION BANNER ════════ */}
         <MotivationBanner/>

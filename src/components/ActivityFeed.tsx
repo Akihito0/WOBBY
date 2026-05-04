@@ -27,7 +27,7 @@ const ITEM_SIZE = IMAGE_WIDTH + IMAGE_MARGIN;
 // Padding so each item snaps centered
 const SIDE_INSET = (width - IMAGE_WIDTH) / 2;
 
-const ActivityFeed = () => {
+const ActivityFeed = ({ username = 'Guest', avatarUrl }: { username?: string; avatarUrl?: string | null }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
@@ -45,9 +45,9 @@ const ActivityFeed = () => {
         {/* ── USER HEADER ── */}
         <View style={styles.userHeader}>
           <View style={styles.userInfo}>
-            <Image source={require('../assets/cashew.png')} style={styles.avatar} />
+            <Image source={avatarUrl ? { uri: avatarUrl } : require('../assets/cashew.png')} style={styles.avatar} />
             <View>
-              <Text style={styles.username}>cashew_123</Text>
+              <Text style={styles.username}>{username}</Text>
               <Text style={styles.timestamp}>January 1, 2026 at 12:00 AM • Cebu City</Text>
             </View>
           </View>
