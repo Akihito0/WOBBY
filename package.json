@@ -43,7 +43,7 @@
     "react-native": "0.81.5",
     "react-native-ble-plx": "^3.5.1",
     "react-native-fast-tflite": "^3.0.0",
-    "react-native-health": "^1.19.0",
+    "react-native-gifted-charts": "^1.4.76",
     "react-native-mediapipe": "^0.6.0",
     "react-native-modal": "^14.0.0-rc.1",
     "react-native-nitro-modules": "^0.35.4",

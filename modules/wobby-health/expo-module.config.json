@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["WobbyHealthModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.wobbyhealth.WobbyHealthModule"]
+  }
+}

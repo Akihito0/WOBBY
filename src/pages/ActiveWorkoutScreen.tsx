@@ -15,6 +15,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
 import Modal from 'react-native-modal';
 
+// 👇 ADDED: Import the health context and native module
+import { useHealth } from '../context/HealthContext';
+import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // List of potential server IPs to try
@@ -49,6 +53,11 @@ const COLLAPSED_HEIGHT = 140;
 const EXPANDED_HEIGHT = 190;
 
 export default function ActiveWorkoutScreen({ navigation, route }: any) {
+  // 👇 ADDED: Heart Rate States
+  const { heartRate: contextHR } = useHealth();
+  const [activeHR, setActiveHR] = useState<number | null>(null);
+  const [sessionHRData, setSessionHRData] = useState<number[]>([]);
+
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
   const [localStream, setLocalStream] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -71,6 +80,45 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   
   const ws = useRef<WebSocket | null>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
+
+  // 👇 ADDED: Aggressive 2-second Polling for Live Heart Rate
+  useEffect(() => {
+    let hrIntervalId: ReturnType<typeof setInterval>;
+
+    const fetchLiveHR = async () => {
+      try {
+        const history: HeartRateSample[] = await getHeartRateHistory(1);
+        if (history && history.length > 0) {
+          const val = Math.round(history[history.length - 1].value);
+          setActiveHR(val);
+
+          // Record this point in our session array if actively lifting
+          if (isWorkoutStarted && !isResting) {
+            setSessionHRData(prev => [...prev, val]);
+          }
+        }
+      } catch (error) {
+        console.log('Error polling HR:', error);
+      }
+    };
+
+    if (isWorkoutStarted && !isResting) {
+      fetchLiveHR(); 
+      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+    }
+
+    return () => {
+      if (hrIntervalId) clearInterval(hrIntervalId);
+    };
+  }, [isWorkoutStarted, isResting]);
+
+  const displayHR = activeHR !== null ? activeHR : contextHR;
+
+  // 👇 ADDED: Calculate session stats for the finish screen
+  const sessionStats = {
+    avg: sessionHRData.length > 0 ? Math.round(sessionHRData.reduce((a, b) => a + b, 0) / sessionHRData.length) : 0,
+    max: sessionHRData.length > 0 ? Math.max(...sessionHRData) : 0,
+  };
 
   useEffect(() => {
     startWebRTC(cameraFacing);
@@ -402,7 +450,15 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     const navigateBack = (isIncomplete: boolean) => {
       navigation.navigate({
         name: 'RoutineSelected',
-        params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+        params: { 
+          finished: true, 
+          incomplete: isIncomplete, 
+          exerciseId, 
+          setId,
+          // 👇 ADDED: Pass the captured stats safely back to the next screen!
+          avgHR: sessionStats.avg,
+          maxHR: sessionStats.max
+        },
         merge: true,
       });
     };
@@ -528,7 +584,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                   const navigateBack = (isIncomplete: boolean) => {
                     navigation.navigate({
                       name: 'RoutineSelected',
-                      params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+                      params: { 
+                        finished: true, 
+                        incomplete: isIncomplete, 
+                        exerciseId, 
+                        setId,
+                        avgHR: sessionStats.avg, // Passed
+                        maxHR: sessionStats.max  // Passed
+                      },
                       merge: true,
                     });
                   };
@@ -593,7 +656,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                   const navigateBack = (isIncomplete: boolean) => {
                     navigation.navigate({
                       name: 'RoutineSelected',
-                      params: { finished: true, incomplete: isIncomplete, exerciseId, setId },
+                      params: { 
+                        finished: true, 
+                        incomplete: isIncomplete, 
+                        exerciseId, 
+                        setId,
+                        avgHR: sessionStats.avg, // Passed
+                        maxHR: sessionStats.max  // Passed
+                      },
                       merge: true,
                     });
                   };
@@ -649,7 +719,17 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         <View style={styles.activeWorkoutContainer}>
           <View style={styles.darkStatsCard}>
             <View style={{flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 15}}>
+              
+              {/* 👇 ADDED: Live Heart Rate UI */}
+              <View style={{ position: 'absolute', left: 0, top: 0, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
+                <Text style={{ color: '#FF4444', fontSize: 12, fontFamily: 'Barlow-Bold' }}>
+                  {displayHR !== null ? `${displayHR} BPM` : '-- BPM'}
+                </Text>
+              </View>
+
               <Text style={styles.darkStatsExerciseName}>{exerciseName}</Text>
+              
               <Text style={{ position: 'absolute', right: 0, top: 0, color: isConnected ? '#CCFF00' : 'red', fontSize: 10, fontFamily: 'Barlow-Medium' }}>
                 {isConnected ? '● Connected' : '○ Offline'}
               </Text>
@@ -749,7 +829,7 @@ const styles = StyleSheet.create({
   modalGradientContainer: {
     borderRadius: 15,
     overflow: 'hidden',
-    height: 560, // Increased from 541 to give more room at the bottom
+    height: 560,
     width: '100%',
   },
   modalBackground: {
@@ -871,7 +951,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#65FC0D',
-    marginBottom: 20, // Added margin to pull it away from the bottom border
+    marginBottom: 20,
   },
   finishSetButtonText: {
     fontFamily: 'Montserrat-Bold',
