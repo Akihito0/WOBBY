@@ -30,6 +30,7 @@ export default function UserDashboard() {
   const [refreshStats, setRefreshStats] = useState(0);
   const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [latestRun, setLatestRun] = useState<any>(null);
   const navigation = useNavigation<any>();
 
   const [fontsLoaded] = useFonts({
@@ -59,10 +60,32 @@ export default function UserDashboard() {
     }
   }, []);
 
+  const fetchLatestRun = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('runs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
+      setLatestRun(data || null);
+    } catch (error: any) {
+      console.log('Error fetching latest run:', error.message);
+      setLatestRun(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
-    }, [fetchProfile])
+      fetchLatestRun();
+    }, [fetchProfile, fetchLatestRun])
   );
 
   if (!fontsLoaded) return null;
@@ -110,7 +133,7 @@ export default function UserDashboard() {
         </View>
 
         {/* ════════ ACTIVITY FEED ════════ */}
-        <ActivityFeed username={username} avatarUrl={avatarUrl} />
+        {latestRun && <ActivityFeed username={username} avatarUrl={avatarUrl} runData={latestRun} />}
 
         {/* ════════ MOTIVATION BANNER ════════ */}
         <MotivationBanner/>
