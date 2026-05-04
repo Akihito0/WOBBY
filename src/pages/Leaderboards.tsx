@@ -17,31 +17,25 @@ const { width } = Dimensions.get('window');
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 export interface LeaderboardUser {
+  id: string;
   rank: number;
   username: string;
   xp: number;
-  avatar: any; // Using require() for local assets or {uri} for remote
+  avatar_url: string | null;
 }
 
-// ─── MOCK DATA (Matches the Rank 4-10 in your image) ─────────────────────────
-const MOCK_USERS: LeaderboardUser[] = [
-  { rank: 1, username: 'cashew_123', xp: 1001, avatar: null },
-  { rank: 2, username: '6CLARK7',    xp: 1000, avatar: null },
-  { rank: 3, username: 'NoWaHG',     xp: 999,  avatar: null },
-  { rank: 4, username: 'Ness_XX',    xp: 900,  avatar: null },
-  { rank: 5, username: 'Rain',       xp: 800,  avatar: null },
-  { rank: 6, username: 'TwT23',      xp: 700,  avatar: null },
-  { rank: 7, username: 'Jonard',     xp: 600,  avatar: null },
-  { rank: 8, username: 'Ald_MF_rich',xp: 500,  avatar: null },
-  { rank: 9, username: 'Laurence143',xp: 400,  avatar: null },
-  { rank: 10, username: 'GabGab_suan',xp: 300, avatar: null },
-];
-
-const CURRENT_USER = { username: 'cashew_123', percentile: '12.07' };
+// ─── DEFAULT VALUES ─────────────────────────────────────────────────────────
+const CURRENT_USER = { username: '', xp: 0, percentile: '0.00' };
 
 // ─── AVATAR COMPONENT ─────────────────────────────────────────────────────────
-const Avatar = ({ size = 40 }: { size?: number }) => (
+const Avatar = ({ avatar_url, size = 40 }: { avatar_url?: string | null; size?: number }) => (
   <View style={[styles.avatarBox, { width: size, height: size, borderRadius: 8 }]}>
+    {avatar_url ? (
+      <Image
+        source={{ uri: avatar_url }}
+        style={{ width: size, height: size, borderRadius: 8 }}
+      />
+    ) : null}
   </View>
 );
 
@@ -49,7 +43,7 @@ const Avatar = ({ size = 40 }: { size?: number }) => (
 const LeaderboardRow = ({ user }: { user: LeaderboardUser }) => (
   <View style={styles.row}>
     <Text style={styles.rowRank}>{user.rank}</Text>
-    <Avatar size={40} />
+    <Avatar avatar_url={user.avatar_url} size={40} />
     <Text style={styles.rowUsername}>{user.username}</Text>
     <Text style={styles.rowXP}>{user.xp} XP</Text>
   </View>
@@ -58,34 +52,78 @@ const LeaderboardRow = ({ user }: { user: LeaderboardUser }) => (
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 const LeaderboardsScreen = () => {
   const navigation = useNavigation();
-  const [currentUsername, setCurrentUsername] = useState(CURRENT_USER.username);
+  const [leaderboardUsers, setLeaderboardUsers] = useState<LeaderboardUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    xp: number;
+    rank: number;
+    percentile: string;
+    avatar_url: string | null;
+  }>({
+    username: '',
+    xp: 0,
+    rank: 0,
+    percentile: '0.00',
+    avatar_url: null,
+  });
+  const [loading, setLoading] = useState(true);
 
-  const fetchCurrentUser = useCallback(async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      setLoading(true);
+      
+      // Get current user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
 
-      const { data, error } = await supabase
+      // Fetch all users from profiles sorted by XP descending
+      const { data: allUsers, error } = await supabase
         .from('profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single();
+        .select('id, username, xp, avatar_url')
+        .order('xp', { ascending: false });
 
       if (error) throw error;
-      setCurrentUsername(data.username ?? CURRENT_USER.username);
+
+      if (allUsers && allUsers.length > 0) {
+        // Add ranks to all users
+        const rankedUsers = allUsers.map((user: any, index: number) => ({
+          ...user,
+          rank: index + 1,
+        }));
+
+        setLeaderboardUsers(rankedUsers);
+
+        // Find current user in the leaderboard
+        const currentUserData = rankedUsers.find((u: any) => u.id === authUser.id);
+        if (currentUserData) {
+          const percentile = ((rankedUsers.length - currentUserData.rank + 1) / rankedUsers.length * 100).toFixed(2);
+          setCurrentUser({
+            username: currentUserData.username,
+            xp: currentUserData.xp || 0,
+            rank: currentUserData.rank,
+            percentile,
+            avatar_url: currentUserData.avatar_url || null,
+          });
+        }
+      }
     } catch (error: any) {
-      console.log('Error fetching current user:', error.message);
+      console.log('Error fetching leaderboard:', error.message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchCurrentUser();
-    }, [fetchCurrentUser])
+      fetchLeaderboard();
+    }, [fetchLeaderboard])
   );
 
-  // Filter out the top 3 since they are displayed in your static podium image
-  const listUsers = MOCK_USERS.filter(u => u.rank >= 4);
+  // Get top 3 users for podium
+  const podiumUsers = leaderboardUsers.slice(0, 3);
+  
+  // Get remaining users for list (rank 4+)
+  const listUsers = leaderboardUsers.filter(u => u.rank >= 4);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -112,28 +150,36 @@ const LeaderboardsScreen = () => {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
           {/* ── PODIUM USERS SECTION ── */}
-          <View style={styles.podiumWrapper}>
-            {/* Rank 1 (Center - Highest) */}
-            <View style={[styles.podiumUser, { alignSelf: 'center', bottom: 110 }]}>
-              <Text style={[styles.podiumUsername, styles.rank1Text]}>{currentUsername}</Text>
-              <View style={[styles.podiumAvatarBox, styles.rank1Avatar]} />
-              <Text style={[styles.podiumXPLabel, styles.rank1Text]}>1001 XP</Text>
-            </View>
+          {podiumUsers.length > 0 && (
+            <View style={styles.podiumWrapper}>
+              {/* Rank 1 (Center - Highest) */}
+              {podiumUsers[0] && (
+                <View style={[styles.podiumUser, { alignSelf: 'center', bottom: 110 }]}>
+                  <Text style={[styles.podiumUsername, styles.rank1Text]}>{podiumUsers[0].username}</Text>
+                  <Avatar avatar_url={podiumUsers[0].avatar_url} size={70} />
+                  <Text style={[styles.podiumXPLabel, styles.rank1Text]}>{podiumUsers[0].xp} XP</Text>
+                </View>
+              )}
 
-            {/* Rank 2 (Left - Medium Height) */}
-            <View style={[styles.podiumUser, { left: '13%', bottom: 70 }]}>
-              <Text style={styles.podiumUsername}>6CLARK7</Text>
-              <View style={styles.podiumAvatarBox} />
-              <Text style={styles.podiumXPLabel}>1000 XP</Text>
-            </View>
+              {/* Rank 2 (Left - Medium Height) */}
+              {podiumUsers[1] && (
+                <View style={[styles.podiumUser, { left: '13%', bottom: 70 }]}>
+                  <Text style={styles.podiumUsername}>{podiumUsers[1].username}</Text>
+                  <Avatar avatar_url={podiumUsers[1].avatar_url} size={56} />
+                  <Text style={styles.podiumXPLabel}>{podiumUsers[1].xp} XP</Text>
+                </View>
+              )}
 
-            {/* Rank 3 (Right - Lowest) */}
-            <View style={[styles.podiumUser, { right: '13%', bottom: 40 }]}>
-              <Text style={styles.podiumUsername}>NoWaHG</Text>
-              <View style={styles.podiumAvatarBox} />
-              <Text style={styles.podiumXPLabel}>999 XP</Text>
+              {/* Rank 3 (Right - Lowest) */}
+              {podiumUsers[2] && (
+                <View style={[styles.podiumUser, { right: '13%', bottom: 40 }]}>
+                  <Text style={styles.podiumUsername}>{podiumUsers[2].username}</Text>
+                  <Avatar avatar_url={podiumUsers[2].avatar_url} size={56} />
+                  <Text style={styles.podiumXPLabel}>{podiumUsers[2].xp} XP</Text>
+                </View>
+              )}
             </View>
-          </View>
+          )}
 
           {/* ── PODIUM IMAGE ── */}
           <View style={styles.podiumImageContainer}>
@@ -146,7 +192,7 @@ const LeaderboardsScreen = () => {
           {/* ── RANK LIST (Light Grey Overlay) ── */}
           <View style={styles.listCard}>
             {listUsers.map((user, index) => (
-              <React.Fragment key={user.rank}>
+              <React.Fragment key={user.id}>
                 <LeaderboardRow user={user} />
                 {index < listUsers.length - 1 && <View style={styles.divider} />}
               </React.Fragment>
@@ -158,10 +204,17 @@ const LeaderboardsScreen = () => {
         {/* ── FOOTER ── */}
         <View style={styles.footer}>
           <View style={styles.footerAvatar}>
-             {/* Placeholder for current user avatar */}
+            {currentUser.avatar_url ? (
+              <Image
+                source={{ uri: currentUser.avatar_url }}
+                style={{ width: 30, height: 30, borderRadius: 5 }}
+              />
+            ) : (
+              <View style={{ width: 30, height: 30, borderRadius: 5, backgroundColor: '#A3CF06' }} />
+            )}
           </View>
           <Text style={styles.footerText}>
-              {currentUsername}                          TOP {CURRENT_USER.percentile}%
+              {currentUser.username || 'Loading...'}                          TOP {currentUser.percentile}%
           </Text>
         </View>
       </LinearGradient>
@@ -251,7 +304,6 @@ podiumImageContainer: {
   podiumAvatarBox: {
     width: 56,
     height: 56,
-    backgroundColor: '#333', // Placeholder color
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
