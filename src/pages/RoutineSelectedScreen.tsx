@@ -18,12 +18,15 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 
 let persistedExercises: Exercise[] | null = null;
+
 interface ExerciseSet {
   id: string;
   set: number;
   weight: string;
   reps: number;
   status: 'START' | 'WAITING' | 'FINISHED' | 'INCOMPLETE';
+  avgHR?: number; // 👇 ADDED: To store the average HR for this specific set
+  maxHR?: number; // 👇 ADDED: To store the peak HR for this specific set
 }
 
 interface Exercise {
@@ -80,8 +83,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   ];
 
   const [exercises, setExercises] = useState(() => {
-    // If we have a fresh navigation to this routine, we should probably reset/update
-    // For now, let's force the update if persistedExercises is null
     return persistedExercises || exercisesData;
   });
   const lastProcessedKeyRef = useRef<string>('');
@@ -91,14 +92,12 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
 
-  // Reset persistence if the routine type changed or if we want to fresh load
   useEffect(() => {
     if (!persistedExercises) {
       setExercises(exercisesData);
     }
   }, [routineType]);
 
-  // Auto-start Timer
   React.useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => {
@@ -109,52 +108,53 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-// Sync cache on every state change
+
   useEffect(() => {
     persistedExercises = exercises;
   }, [exercises]);
 
-      /// Handle completion params reliably
-    useEffect(() => {
-      const { finished, incomplete, exerciseId, setId } = route.params || {};
-      const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
+  useEffect(() => {
+    // 👇 ADDED: Extract avgHR and maxHR passed from the camera screen
+    const { finished, incomplete, exerciseId, setId, avgHR, maxHR } = route.params || {};
+    const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
 
-      if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
-        lastProcessedKeyRef.current = paramKey;
+    if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
+      lastProcessedKeyRef.current = paramKey;
 
-        setExercises(prev => {
-          return prev.map((ex: Exercise) => {
-            if (ex.id !== exerciseId) return ex;
-            
-            const setIdx = ex.sets.findIndex((s: ExerciseSet) => s.id === setId);
-            if (setIdx === -1) return ex;
+      setExercises(prev => {
+        return prev.map((ex: Exercise) => {
+          if (ex.id !== exerciseId) return ex;
+          
+          const setIdx = ex.sets.findIndex((s: ExerciseSet) => s.id === setId);
+          if (setIdx === -1) return ex;
 
-            const updatedSets = [...ex.sets];
-            updatedSets[setIdx] = { 
-              ...updatedSets[setIdx], 
-              status: incomplete ? 'INCOMPLETE' : 'FINISHED' 
-            };
+          const updatedSets = [...ex.sets];
+          updatedSets[setIdx] = { 
+            ...updatedSets[setIdx], 
+            status: incomplete ? 'INCOMPLETE' : 'FINISHED',
+            avgHR: avgHR, // 👇 Save the heart rate data!
+            maxHR: maxHR  // 👇 Save the heart rate data!
+          };
 
-            const nextWaitIdx = updatedSets.findIndex(
-              (s: ExerciseSet, i: number) => i > setIdx && s.status === 'WAITING'
-            );
+          const nextWaitIdx = updatedSets.findIndex(
+            (s: ExerciseSet, i: number) => i > setIdx && s.status === 'WAITING'
+          );
 
-            if (nextWaitIdx !== -1) {
-              updatedSets[nextWaitIdx] = { ...updatedSets[nextWaitIdx], status: 'START' };
-            }
+          if (nextWaitIdx !== -1) {
+            updatedSets[nextWaitIdx] = { ...updatedSets[nextWaitIdx], status: 'START' };
+          }
 
-            return {
-              ...ex,
-              sets: updatedSets,
-              expanded: nextWaitIdx !== -1 ? true : ex.expanded,
-            };
-          });
+          return {
+            ...ex,
+            sets: updatedSets,
+            expanded: nextWaitIdx !== -1 ? true : ex.expanded,
+          };
         });
+      });
 
-        // Clear params to prevent stale re-triggers
-        navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined });
-      }
-    }, [route.params]);
+      navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined, avgHR: undefined, maxHR: undefined });
+    }
+  }, [route.params]);
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -163,7 +163,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Get or create animated value for a row
   const getAnimatedValue = (rowId: string): Animated.Value => {
     if (!animatedValues.current[rowId]) {
       animatedValues.current[rowId] = new Animated.Value(0);
@@ -171,7 +170,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     return animatedValues.current[rowId];
   };
 
-  // Handle pan gesture
   const createPanResponder = (exerciseId: string, setId: string) => {
     const rowId = `${exerciseId}-${setId}`;
     return PanResponder.create({
@@ -185,7 +183,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
       },
       onPanResponderRelease: (evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
         if (gestureState.dx < -50) {
-          // Swipe left - show delete button
           Animated.timing(getAnimatedValue(rowId), {
             toValue: -80,
             duration: 200,
@@ -193,7 +190,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           }).start();
           setSwipedRow({ exerciseId, setId });
         } else {
-          // Snap back
           Animated.timing(getAnimatedValue(rowId), {
             toValue: 0,
             duration: 200,
@@ -205,13 +201,13 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     });
   };
 
-  // Toggle exercise expand/collapse
   const toggleExerciseExpand = (exerciseId: string) => {
-    setSwipedRow(null); // Close any open swipe
+    setSwipedRow(null); 
     setExercises(exercises.map(ex => 
       ex.id === exerciseId ? { ...ex, expanded: !ex.expanded } : ex
     ));
   };
+
   const updateSetWeight = (exerciseId: string, setId: string, newWeight: string) => {
     setExercises(exercises.map(ex => 
       ex.id === exerciseId 
@@ -225,7 +221,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     ));
   };
 
-  // Update set reps
   const updateSetReps = (exerciseId: string, setId: string, newReps: string) => {
     setExercises(exercises.map(ex => 
       ex.id === exerciseId 
@@ -239,7 +234,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     ));
   };
 
-  // Delete a set
   const deleteSet = (exerciseId: string, setId: string) => {
     setExercises(exercises.map(ex => 
       ex.id === exerciseId 
@@ -252,7 +246,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     setSwipedRow(null);
   };
 
-  // Add new set to exercise
   const handleAddSet = (exerciseId: string) => {
     setExercises(exercises.map(ex => {
       if (ex.id === exerciseId) {
@@ -269,7 +262,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     }));
   };
 
-  // Update status
+  // 👇 FIXED: TypeScript error resolved by making the status cycle explicitly type-safe
   const updateStatus = (exerciseId: string, setId: string) => {
     setExercises(exercises.map(ex => 
       ex.id === exerciseId 
@@ -277,9 +270,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             ...ex,
             sets: ex.sets.map(s => {
               if (s.id === setId) {
-                const statuses: Array<'START' | 'WAITING' | 'FINISHED'> = ['WAITING', 'START', 'FINISHED'];
-                const currentIndex = statuses.indexOf(s.status);
-                const nextStatus = statuses[(currentIndex + 1) % statuses.length];
+                let nextStatus: ExerciseSet['status'] = 'WAITING';
+                if (s.status === 'WAITING') nextStatus = 'START';
+                else if (s.status === 'START') nextStatus = 'FINISHED';
+                else if (s.status === 'FINISHED' || s.status === 'INCOMPLETE') nextStatus = 'WAITING';
+                
                 return { ...s, status: nextStatus };
               }
               return s;
@@ -315,7 +310,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         style={styles.setRowContainer}
         {...panResponder.panHandlers}
       >
-        {/* Delete Button (Revealed on Swipe) */}
         <View style={styles.deleteButtonContainer}>
           <TouchableOpacity
             style={styles.deleteButton}
@@ -325,17 +319,14 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           </TouchableOpacity>
         </View>
 
-        {/* Animated Content Row */}
         <Animated.View 
           style={[
             styles.setRowContent,
             { transform: [{ translateX: animatedValue }] }
           ]}
         >
-          {/* Set Number */}
           <Text style={[styles.setNumber, { flex: 0.5 }]}>{set.set}</Text>
 
-          {/* Weight Input */}
           <TextInput
             style={[styles.editableInput, { flex: 1.2 }]}
             value={set.weight}
@@ -346,7 +337,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             placeholderTextColor="#999"
           />
 
-          {/* Reps Input */}
           <TextInput
             style={[styles.editableInput, { flex: 0.8 }]}
             value={String(set.reps)}
@@ -358,7 +348,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             placeholderTextColor="#999"
           />
 
-          {/* Status Button */}
           <TouchableOpacity
             style={[
               styles.statusButton,
@@ -367,7 +356,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             onPress={() => {
               setSwipedRow(null);
               if (set.status === 'START') {
-                // Do not update status here; let ActiveWorkoutScreen return the finished state
                 navigation.navigate('ActiveWorkoutScreen', { 
                   exerciseName: exercise.name,
                   exerciseId: exercise.id,
@@ -389,7 +377,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   const renderExerciseCard = (exercise: Exercise) => (
     <View key={exercise.id} style={styles.exerciseCard}>
-      {/* Exercise Header - Collapsible */}
       <TouchableOpacity
         style={styles.exerciseHeader}
         onPress={() => toggleExerciseExpand(exercise.id)}
@@ -405,10 +392,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         />
       </TouchableOpacity>
 
-      {/* Expanded Content */}
       {exercise.expanded && (
         <View>
-          {/* Table Header */}
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, { flex: 0.5 }]}>Set</Text>
             <Text style={[styles.tableHeaderText, { flex: 1.2 }]}>Weight (kg)</Text>
@@ -416,10 +401,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>Status</Text>
           </View>
 
-          {/* Sets Rows */}
           {exercise.sets.map((set) => renderSetRow(exercise, set))}
 
-          {/* Add Set Button */}
           <TouchableOpacity
             onPress={() => handleAddSet(exercise.id)}
             style={styles.addSetButton}
@@ -442,7 +425,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     </View>
   );
 
-  // Dynamic computation of completed sets and reps
   const completedSets = exercises.reduce((acc, ex) => 
     acc + ex.sets.filter(s => s.status === 'FINISHED').length, 0);
 
@@ -451,7 +433,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   return (
     <View style={styles.container}>
-      {/* Header with SOLO WORKOUT */}
       <LinearGradient
         colors={['#0F4933', '#000000']}
         locations={[0, 0.93]}
@@ -471,10 +452,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         <Text style={styles.headerTitle}>SOLO WORKOUT</Text>
       </LinearGradient>
 
-      {/* PUSH ROUTINE Subtitle (RED) */}
       <Text style={styles.routineSubtitle}>{routineType} ROUTINE</Text>
 
-      {/* Duration and Stats Combined Card */}
       <LinearGradient
         colors={['#000000', '#323C2E']}
         start={{ x: 0.02, y: 0.5 }}
@@ -484,7 +463,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         <Text style={styles.durationLabel}>DURATION</Text>
         <Text style={styles.durationTimer}>{formatTime(elapsedSeconds)}</Text>
 
-        {/* Stats Row Inside Duration Card */}
         <View style={styles.statsInsideRow}>
           <View style={styles.statInside}>
             <Text style={styles.statInsideLabel}>Total Repetition</Text>
@@ -497,12 +475,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         </View>
       </LinearGradient>
 
-      {/* Exercises List */}
       <ScrollView style={styles.exercisesContainer} showsVerticalScrollIndicator={false}>
         {exercises.map(ex => renderExerciseCard(ex))}
       </ScrollView>
 
-      {/* Finish Button */}
+      {/* FINISH BUTTON: Notice that it passes `exercises` which now includes the HR data! */}
       <TouchableOpacity
         style={styles.finishBtnWrapper}
         activeOpacity={0.8}
@@ -521,15 +498,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   );
 };
 
-
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121310',
   },
-
-  // Header Styles
   headerGradient: {
     height: 134,
     width: '100%',
@@ -555,13 +528,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Black',
     fontWeight: '900',
   },
-
-  // Routine Subtitle (RED)
   routineSubtitle: {
     color: '#FF0000',
     fontSize: 30,
     fontFamily: 'Montserrat-Bold',
-    fontWeight: 900,
+    fontWeight: '900',
     paddingHorizontal: 20,
     paddingVertical: 12,
     textTransform: 'uppercase',
@@ -570,8 +541,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
   },
-
-  // Duration Card (Combined with stats inside)
   durationCard: {
     marginHorizontal: 20,
     marginBottom: 20,
@@ -618,15 +587,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Black',
     fontWeight: 'bold',
   },
-
-  // Exercises Container
   exercisesContainer: {
     flex: 1,
     paddingHorizontal: 20,
     marginBottom: 20,
   },
-
-  // Exercise Card Styles
   exerciseCard: {
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
@@ -661,8 +626,6 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     tintColor: '#B1DD01',
   },
-
-  // Table Styles
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#222222',
@@ -681,8 +644,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
-
-  // Set Row Styles
   setRowContainer: {
     flexDirection: 'row',
     marginBottom: 8,
@@ -738,8 +699,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
-
-  // Delete Button (Swipe)
   deleteButton: {
     backgroundColor: '#FF4444',
     width: 80,
@@ -752,8 +711,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
   },
-
-  // Add Set Button
   addSetButton: {
     marginTop: 12,
     borderRadius: 8,
@@ -780,8 +737,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
-
-  // Finish Button
   finishBtnWrapper: {
     marginHorizontal: 20,
     marginBottom: 30,

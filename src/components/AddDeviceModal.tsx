@@ -13,10 +13,11 @@ import {
     Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AppleHealthKit from 'react-native-health';
 import { BleManager, Device } from 'react-native-ble-plx';
-import { LinearGradient } from 'expo-linear-gradient'; // <-- Add this new line
+import { LinearGradient } from 'expo-linear-gradient';
 
+// 👇 ADDED: Import your custom module instead of the old library
+import { requestPermissions } from '../../modules/wobby-health';
 
 interface DiscoveredDevice {
     id: string;
@@ -259,34 +260,19 @@ export default function AddDeviceModal({
 
             // Check if it's an Apple Watch
             if (device.name.toLowerCase().includes('apple watch') || device.name.toLowerCase().includes('watch')) {
-                // Use HealthKit for Apple Watch
-                if (!AppleHealthKit || !AppleHealthKit.initHealthKit) {
-                    setError('HealthKit is not available on this device');
-                    return;
-                }
-
-                const permissions = {
-                    permissions: {
-                        read: [
-                            AppleHealthKit.Constants.Permissions.HeartRate,
-                            AppleHealthKit.Constants.Permissions.StepCount,
-                            AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
-                        ],
-                        write: [AppleHealthKit.Constants.Permissions.ActiveEnergyBurned],
-                    },
-                } as any;
-
-                AppleHealthKit.initHealthKit(permissions, (error: string) => {
-                    if (error) {
-                        console.log('[ERROR] Cannot grant HealthKit permissions!', error);
-                        setError('Failed to connect Apple Watch. Please check HealthKit permissions in Settings.');
-                        return;
+                // 👇 UPDATED: Use your new custom module for permissions
+                try {
+                    const success = await requestPermissions();
+                    if (success) {
+                        onPairDevice(device);
+                        handleClose();
+                    } else {
+                         setError('Failed to connect Apple Watch. Please check HealthKit permissions in Settings.');
                     }
-
-                    // Successfully paired
-                    onPairDevice(device);
-                    handleClose();
-                });
+                } catch (error) {
+                    console.log('[ERROR] Cannot grant HealthKit permissions via custom module!', error);
+                    setError('Failed to connect Apple Watch. HealthKit might not be available.');
+                }
             } else if (bleManager) {
                 // Handle other BLE devices
                 try {

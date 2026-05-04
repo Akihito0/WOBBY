@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,18 +13,26 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons'; // 👇 ADDED: For the expand/collapse arrow
 import { supabase } from '../supabase';
 import { uploadRunMedia, uploadMapSnapshot, snapRouteToRoads } from '../services/runUpload';
+
+import { useHealth } from '../context/HealthContext';
+import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
+
+import { BarChart } from 'react-native-gifted-charts';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Helper: Convert file URI to base64 ───────────────────────────────────────
 const uriToBase64 = async (uri: string): Promise<string | null> => {
   try {
-    // Use XMLHttpRequest instead of fetch for file:// URIs on Android
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.onload = () => {
@@ -173,6 +181,13 @@ const GpsDot = ({ gpsReady, runState }: { gpsReady: boolean, runState: RunState 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const RunScreen = ({ navigation }: any) => {
+  const { heartRate: contextHR } = useHealth();
+  const [activeHR, setActiveHR] = useState<number | null>(null);
+  const [sessionHRData, setSessionHRData] = useState<number[]>([]);
+
+  // State to toggle the graph visibility
+  const [showHRChart, setShowHRChart] = useState(false);
+
   const [runState, setRunState] = useState<RunState>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [distance, setDistance] = useState(0);
@@ -184,23 +199,56 @@ const RunScreen = ({ navigation }: any) => {
   const [isSaving, setIsSaving] = useState(false);
   const [snappedRoute, setSnappedRoute] = useState<any>(null);
   
-  // Finish Modal States
   const [workoutTitle, setWorkoutTitle] = useState('');
   const [workoutDesc, setWorkoutDesc] = useState('');
   
-  // Media upload states
   const [selectedMedia, setSelectedMedia] = useState<any[]>([]);
-  const [mapSnapshot, setMapSnapshot] = useState<string | null>(null); // Store base64, not URI
+  const [mapSnapshot, setMapSnapshot] = useState<string | null>(null); 
   const mapViewRef = useRef<MapboxGL.MapView>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
 
+  useEffect(() => {
+    let hrIntervalId: ReturnType<typeof setInterval>;
+
+    const fetchLiveHR = async () => {
+      try {
+        const history: HeartRateSample[] = await getHeartRateHistory(1);
+        if (history && history.length > 0) {
+          const val = Math.round(history[history.length - 1].value);
+          setActiveHR(val);
+
+          if (runState === 'running') {
+            setSessionHRData(prev => [...prev, val]);
+          }
+        }
+      } catch (error) {
+        console.log('Error polling HR:', error);
+      }
+    };
+
+    if (runState === 'running') {
+      fetchLiveHR(); 
+      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+    }
+
+    return () => {
+      if (hrIntervalId) clearInterval(hrIntervalId);
+    };
+  }, [runState]);
+
+  const displayHR = activeHR !== null ? activeHR : contextHR;
+
+  const sessionStats = {
+    avg: sessionHRData.length > 0 ? Math.round(sessionHRData.reduce((a, b) => a + b, 0) / sessionHRData.length) : 0,
+    max: sessionHRData.length > 0 ? Math.max(...sessionHRData) : 0,
+  };
+
   // ── Location Permissions and Updates ────────────────────────────────────────
   useEffect(() => {
     const startLocationUpdates = async () => {
-      // Request foreground location permissions
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.error('Permission to access location was denied');
@@ -208,7 +256,6 @@ const RunScreen = ({ navigation }: any) => {
         return;
       }
 
-      // Request background location permissions (for screen-off tracking)
       if (Platform.OS === 'ios') {
         const bgStatus = await Location.requestBackgroundPermissionsAsync();
         if (bgStatus.status === 'granted') {
@@ -216,7 +263,6 @@ const RunScreen = ({ navigation }: any) => {
         }
       }
 
-      // Get initial location to center the map
       try {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.BestForNavigation,
@@ -236,12 +282,11 @@ const RunScreen = ({ navigation }: any) => {
         console.error("Could not get initial position", error);
       }
 
-      // Start watching for location changes with high accuracy
       locationSubscription.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 1000,
-          distanceInterval: 5, // Increased from 1m to 5m to filter GPS noise
+          distanceInterval: 5, 
         },
         (location) => {
           const coord: Coordinate = {
@@ -253,14 +298,12 @@ const RunScreen = ({ navigation }: any) => {
           if (!gpsReady) setGpsReady(true);
 
           if (runState === 'running') {
-            // Filter coordinates: only add if accuracy is good (< 20m error tolerance)
             const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy < 20;
             
             if (hasGoodAccuracy) {
               setRouteCoords(prev => {
                 const updated = [...prev, coord];
                 setDistance(calcDistance(updated));
-                // Update elevation metrics
                 const metrics = calcElevationMetrics(updated);
                 setElevationMetrics(metrics);
                 return updated;
@@ -295,32 +338,6 @@ const RunScreen = ({ navigation }: any) => {
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [runState]);
-
-  // ── Location update handler ─────────────────────────────────────────────────
-  // This is now handled by the useEffect with watchPositionAsync
-  /*
-  const handleUserLocationUpdate = (location: MapboxGL.Location) => {
-    const coord: Coordinate = {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-    };
-    setCurrentLocation(coord);
-    if (!gpsReady) setGpsReady(true);
-
-    if (runState === 'running') {
-      setRouteCoords(prev => {
-        const updated = [...prev, coord];
-        setDistance(calcDistance(updated));
-        return updated;
-      });
-      cameraRef.current?.setCamera({
-        centerCoordinate: [coord.longitude, coord.latitude],
-        animationDuration: 500,
-      });
-    }
-  };
-  */
-  
   
   // ── Route GeoJSON ───────────────────────────────────────────────────────────
   const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> | null =
@@ -334,56 +351,6 @@ const RunScreen = ({ navigation }: any) => {
           properties: {},
         }
       : null;
-
-  // Log route status for debugging
-  useEffect(() => {
-    if (routeCoords.length > 0) {
-      console.log('🗺️ Route Status:', {
-        coordinatesCount: routeCoords.length,
-        hasGeoJSON: !!routeGeoJSON,
-        distance: distance.toFixed(2),
-        firstCoord: routeCoords[0],
-        lastCoord: routeCoords[routeCoords.length - 1],
-      });
-    }
-  }, [routeCoords, distance, routeGeoJSON]);
-
-  // ── Capture Map Snapshot ────────────────────────────────────────────────────
-  const captureMapSnapshot = async (): Promise<string | null> => {
-    try {
-      if (!mapViewRef.current) {
-        console.warn('❌ Map view ref not available');
-        return null;
-      }
-      
-      // Give the map a moment to fully render the route before capturing
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      console.log('📸 Attempting to capture map snapshot...');
-      const snapshotUri = await mapViewRef.current.takeSnap();
-      
-      if (!snapshotUri) {
-        console.warn('❌ takeSnap() returned null or undefined');
-        return null;
-      }
-
-      console.log('✅ Snapshot captured successfully');
-      console.log('📁 Snapshot URI:', snapshotUri);
-      
-      // Convert the snapshot URI to base64
-      const base64Data = await uriToBase64(snapshotUri);
-      
-      if (!base64Data) {
-        console.warn('❌ Failed to convert snapshot to base64');
-        return null;
-      }
-      
-      return base64Data;
-    } catch (error) {
-      console.error('❌ Error capturing map snapshot:', error);
-      return null;
-    }
-  };
 
   // ── Handle Photo Selection ──────────────────────────────────────────────────
   const handleAddPhotos = async () => {
@@ -408,7 +375,6 @@ const RunScreen = ({ navigation }: any) => {
     }
   };
 
-  // ── Remove Media Item ───────────────────────────────────────────────────────
   const removeMediaItem = (index: number) => {
     setSelectedMedia(prev => prev.filter((_, i) => i !== index));
   };
@@ -426,11 +392,8 @@ const RunScreen = ({ navigation }: any) => {
       return;
     }
 
-    console.log('✅ Run validation passed. Starting save...');
-    console.log('📍 Route has', routeCoords.length, 'coordinates');
     setIsSaving(true);
     try {
-      // Get current user session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session?.user?.id) {
@@ -445,76 +408,45 @@ const RunScreen = ({ navigation }: any) => {
       let mapUrl = '';
       let otherUrls: string[] = [];
 
-      // ── Upload Map Snapshot ────────────────────────────────────────
-      console.log('🚀 Starting map snapshot upload...');
-      console.log('mapSnapshot state value type:', typeof mapSnapshot);
       try {
         if (mapSnapshot && mapSnapshot.length > 0) {
-          console.log('📸 Map snapshot base64 available, size:', mapSnapshot.length, 'bytes');
-          
           try {
-            console.log('📤 Uploading map snapshot to bucket...');
-            console.log('Parameters:', { userId, filename: `map-${Date.now()}.png` });
-            
             mapUrl = await uploadMapSnapshot(userId, mapSnapshot, `map-${Date.now()}.png`);
-            console.log('✅ Map snapshot uploaded successfully:', mapUrl);
           } catch (uploadError) {
-            console.error('❌ uploadMapSnapshot threw error:', uploadError);
             mapUrl = '';
           }
         } else {
-          console.warn('⚠️ mapSnapshot is null, empty, or not base64');
-          console.log('mapSnapshot value:', mapSnapshot);
           mapUrl = '';
         }
       } catch (error) {
-        console.error('❌ Error in map snapshot upload try-catch:', error);
         mapUrl = '';
       }
       
-      console.log('📊 After map upload - mapUrl value:', mapUrl);
-
-      // ── Upload Selected Media (Photos/Videos) ────────────────────
-      console.log('🚀 Starting media upload for', selectedMedia.length, 'files');
       try {
         for (let i = 0; i < selectedMedia.length; i++) {
           const media = selectedMedia[i];
-          console.log(`📷 Processing media ${i + 1}/${selectedMedia.length}:`, media.uri);
-          
           try {
             const base64Data = await uriToBase64(media.uri);
-            
-            if (!base64Data || base64Data.length === 0) {
-              console.warn(`⚠️ Media ${i} resulted in empty base64`);
-              continue;
-            }
+            if (!base64Data || base64Data.length === 0) continue;
 
             const mimeType = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
             const ext = media.type === 'video' ? 'mp4' : 'jpg';
             const fileName = `media-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
             
-            console.log(`📤 Uploading media ${i + 1}/${selectedMedia.length} as ${fileName}...`);
             const mediaUrl = await uploadRunMedia(userId, base64Data, fileName, mimeType);
             otherUrls.push(mediaUrl);
-            console.log(`✅ Media ${i + 1} uploaded:`, mediaUrl);
           } catch (mediaError) {
-            console.error(`❌ Error uploading media ${i}:`, mediaError);
             continue;
           }
         }
-      } catch (error) {
-        console.error('❌ Failed to upload media batch:', error);
-      }
+      } catch (error) {}
 
-      console.log('📊 Upload summary - Map URL:', mapUrl, 'Media URLs:', otherUrls.length);
-
-      // Prepare run data
       const runData = {
         user_id: userId,
         title: workoutTitle,
         description: workoutDesc,
-        distance: distance, // in km
-        duration: elapsed, // in seconds
+        distance: distance, 
+        duration: elapsed, 
         pace: calcPace(distance, elapsed),
         elevation_gain: elevationMetrics.gain,
         elevation_loss: elevationMetrics.loss,
@@ -523,7 +455,9 @@ const RunScreen = ({ navigation }: any) => {
         average_elevation: elevationMetrics.min && elevationMetrics.max 
           ? Math.round((elevationMetrics.min + elevationMetrics.max) / 2)
           : 0,
-        route_coordinates: routeCoords, // Store as JSONB array
+        average_heart_rate: sessionStats.avg,
+        max_heart_rate: sessionStats.max,
+        route_coordinates: routeCoords, 
         route_map_url: mapUrl || null,
         media_urls: otherUrls,
         workout_type: workoutType,
@@ -532,49 +466,32 @@ const RunScreen = ({ navigation }: any) => {
         created_at: now.toISOString(),
       };
 
-      // Insert into 'runs' table
-      console.log('💾 Inserting run data with:');
-      console.log('  - title:', runData.title);
-      console.log('  - distance:', runData.distance);
-      console.log('  - duration:', runData.duration);
-      console.log('  - routeCoordinatesCount:', runData.route_coordinates.length);
-      console.log('  - route_map_url:', runData.route_map_url);
-      console.log('  - media_urls:', runData.media_urls);
-      console.log('  - Full runData object:', JSON.stringify(runData, null, 2));
-
       const { data, error } = await supabase
         .from('runs')
         .insert([runData])
         .select();
 
       if (error) {
-        console.error('❌ Error saving run to database:', error);
-        console.error('Error details:', { code: error.code, message: error.message, details: error.details });
         Alert.alert('Error', `Failed to save run: ${error.message}`);
         setIsSaving(false);
         return;
       }
 
-      console.log('✅ Run saved successfully!');
-      console.log('📊 Saved run data:', data);
       Alert.alert('Success! 🏃', 'Your workout has been saved to your profile.');
-
-      // Reset and go back
       handleDiscardOrSave();
       navigation.goBack();
     } catch (error) {
-      console.error('Error in saveRunToDatabase:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
       setIsSaving(false);
     }
   };
 
-  // ── Controls ────────────────────────────────────────────────────────────────
   const handleStart = () => {
     setRunState('running');
     if (elapsed === 0) {
       setDistance(0);
       setRouteCoords([]);
+      setSessionHRData([]); 
       setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
     }
   };
@@ -584,22 +501,17 @@ const RunScreen = ({ navigation }: any) => {
   const handleTriggerFinish = async () => {
     setRunState('finished');
     
-    // Only attempt snapping if we have enough meaningful coordinates
     if (routeCoords.length >= 2) {
-      // Fit camera to the route bounds before taking a snapshot
       const bounds = getBounds(routeCoords);
-      cameraRef.current?.fitBounds(bounds[0], bounds[1], 60, 500); // 60px padding, 500ms animation
+      cameraRef.current?.fitBounds(bounds[0], bounds[1], 60, 500); 
 
       try {
-        // Mapbox Map Matching requires coords to be at least ~10m apart
-        // and works best with 2–100 waypoints. Downsample if needed.
         const MAX_WAYPOINTS = 100;
         let coordsToSnap = routeCoords;
         
         if (routeCoords.length > MAX_WAYPOINTS) {
           const step = Math.ceil(routeCoords.length / MAX_WAYPOINTS);
           coordsToSnap = routeCoords.filter((_, i) => i % step === 0);
-          // Always include the last coordinate
           if (coordsToSnap[coordsToSnap.length - 1] !== routeCoords[routeCoords.length - 1]) {
             coordsToSnap.push(routeCoords[routeCoords.length - 1]);
           }
@@ -608,24 +520,18 @@ const RunScreen = ({ navigation }: any) => {
         const snapped = await snapRouteToRoads(coordsToSnap);
         setSnappedRoute(snapped);
       } catch (error) {
-        // Snapping failed (no road data, too few points, etc.) — silently fall back
-        console.warn('Route snapping unavailable, using raw GPS data');
         setSnappedRoute(null);
       }
     }
   
-    // Run snapshot capture independently, not dependent on snapping
     captureAndStoreMapSnapshot();
   };
 
-  // ── Capture and Store Map Snapshot ──────────────────────────────────────────
   const captureAndStoreMapSnapshot = async () => {
     try {
-      console.log('📸 Starting map snapshot capture...');
       await new Promise(resolve => setTimeout(resolve, 1000));
   
       if (!mapViewRef.current) {
-        console.warn('❌ Map view ref not available');
         setMapSnapshot(null);
         return;
       }
@@ -633,37 +539,25 @@ const RunScreen = ({ navigation }: any) => {
       let snapshotUri: string | null = null;
       
       try {
-        snapshotUri = await mapViewRef.current.takeSnap(true); // pass `true` for writeToDisk on Android
+        snapshotUri = await mapViewRef.current.takeSnap(true); 
       } catch (snapError) {
-        // takeSnap can throw a synthetic event on Android — log it safely
-        console.warn('⚠️ takeSnap() failed:', 
-          snapError instanceof Error ? snapError.message : JSON.stringify(snapError)
-        );
         setMapSnapshot(null);
         return;
       }
   
       if (!snapshotUri || typeof snapshotUri !== 'string') {
-        console.warn('❌ takeSnap returned invalid value:', snapshotUri);
         setMapSnapshot(null);
         return;
       }
   
-      console.log('✅ Snapshot URI obtained:', snapshotUri);
-  
       const base64Data = await uriToBase64(snapshotUri);
   
       if (base64Data && base64Data.length > 0) {
-        console.log('✅ Snapshot converted to base64, size:', base64Data.length);
         setMapSnapshot(base64Data);
       } else {
-        console.warn('⚠️ Failed to convert snapshot to base64');
         setMapSnapshot(null);
       }
     } catch (error) {
-      console.error('❌ Error in captureAndStoreMapSnapshot:', 
-        error instanceof Error ? error.message : JSON.stringify(error)
-      );
       setMapSnapshot(null);
     }
   };
@@ -673,6 +567,8 @@ const RunScreen = ({ navigation }: any) => {
     setElapsed(0);
     setDistance(0);
     setRouteCoords([]);
+    setSessionHRData([]); 
+    setShowHRChart(false); 
     setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
     setWorkoutTitle('');
     setWorkoutDesc('');
@@ -684,7 +580,37 @@ const RunScreen = ({ navigation }: any) => {
   const pace = calcPace(distance, elapsed);
   const distanceDisplay = distance.toFixed(2);
 
+  const chartWidth = SCREEN_WIDTH - 80;
+  const barWidth = 6;
+  const targetBars = 20; 
+  
+  const stackedData = useMemo(() => {
+    if (sessionHRData.length === 0) return [];
+    
+    const chunkSize = Math.max(1, Math.ceil(sessionHRData.length / targetBars));
+    const processed = [];
+    
+    for (let i = 0; i < sessionHRData.length; i += chunkSize) {
+      const chunk = sessionHRData.slice(i, i + chunkSize);
+      const min = Math.min(...chunk);
+      const max = Math.max(...chunk);
+      
+      const height = Math.max(8, max - min); 
+      const baseValue = Math.max(0, max - height);
 
+      processed.push({
+        stacks: [
+          { value: baseValue, color: 'transparent' },
+          { value: height, color: '#FF4444', borderRadius: 4, marginBottom: 2 }
+        ]
+      });
+    }
+    return processed;
+  }, [sessionHRData]);
+
+  const numBars = stackedData.length || 1;
+  const availableWidth = chartWidth - 30; 
+  const safeSpacing = numBars > 1 ? (availableWidth - (numBars * barWidth)) / (numBars - 1) : 0;
 
   return (
     <View style={styles.container}>
@@ -702,7 +628,7 @@ const RunScreen = ({ navigation }: any) => {
           centerCoordinate={
             currentLocation
               ? [currentLocation.longitude, currentLocation.latitude]
-              : undefined // Let mapbox handle initial center if no location yet
+              : undefined 
           }
           followUserLocation={runState !== 'idle'}
           followZoomLevel={16}
@@ -744,30 +670,35 @@ const RunScreen = ({ navigation }: any) => {
         )}
       </MapboxGL.MapView>
 
-      {/* ── Floating Top Header ────────────────────────────────────────── */}
       <View style={styles.floatingHeader}>
         <TouchableOpacity style={styles.backBtnWrap} onPress={() => navigation.goBack()}>
           <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>{'<'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Recenter button (Moved up slightly to clear the taller panels) */}
-      <TouchableOpacity
-        style={styles.recenterBtn}
-        onPress={() => {
-          if (currentLocation) {
-            cameraRef.current?.setCamera({
-              centerCoordinate: [currentLocation.longitude, currentLocation.latitude],
-              zoomLevel: 16,
-              animationDuration: 600,
-            });
-          }
-        }}
-      >
-        <Text style={styles.recenterIcon}>◎</Text>
-      </TouchableOpacity>
+      <View style={styles.floatingRightControls}>
+        {runState === 'running' && displayHR !== null && (
+          <View style={styles.floatingHRBadge}>
+            <Text style={{ fontSize: 12, marginRight: 4 }}>❤️</Text>
+            <Text style={styles.floatingHRText}>{displayHR}</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={styles.recenterBtn}
+          onPress={() => {
+            if (currentLocation) {
+              cameraRef.current?.setCamera({
+                centerCoordinate: [currentLocation.longitude, currentLocation.latitude],
+                zoomLevel: 16,
+                animationDuration: 600,
+              });
+            }
+          }}
+        >
+          <Text style={styles.recenterIcon}>◎</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* ── Bottom Interface Overlay ────────────────────────────────────── */}
       <View style={styles.bottomOverlayContainer}>
         
         <View style={styles.statsPanel}>
@@ -828,9 +759,18 @@ const RunScreen = ({ navigation }: any) => {
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.sideControl}>
-                <View style={styles.sideIconWrap}><Text style={styles.sideIconText}>💓</Text></View>
+                <View style={[styles.sideIconWrap, displayHR ? { backgroundColor: 'rgba(255, 68, 68, 0.15)' } : {}]}>
+                  <Text style={styles.sideIconText}>{displayHR ? '❤️' : '💓'}</Text>
+                </View>
                 <Text style={styles.sideLabel}>Heart Rate</Text>
-                <Text style={[styles.sideSubLabel, { color: '#C8FF00' }]}>Add Sensor</Text>
+                <Text style={[
+                  styles.sideSubLabel,
+                  displayHR 
+                    ? { color: '#FF4444', fontSize: 16, fontFamily: 'Montserrat-Black', marginTop: 1 } 
+                    : { color: '#C8FF00' }
+                ]}>
+                  {displayHR ? `${displayHR} BPM` : 'Add Sensor'}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -858,7 +798,6 @@ const RunScreen = ({ navigation }: any) => {
             </View>
           )}
 
-
         </View>
       </View>
 
@@ -872,6 +811,62 @@ const RunScreen = ({ navigation }: any) => {
               <Text style={styles.modalTitle}>FINISH WORKOUT</Text>
               <View style={{ width: 24 }} />
             </View>
+
+            {/* 👇 FIX: Added the expanding chevron indicator to the right side */}
+            <TouchableOpacity 
+              style={[styles.hrSummaryBox, showHRChart && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, marginBottom: 0 }]}
+              activeOpacity={0.8}
+              onPress={() => setShowHRChart(!showHRChart)}
+            >
+              <View style={styles.hrSummaryContent}>
+                <View style={styles.hrSummaryItem}>
+                  <Text style={styles.hrSummaryLabel}>AVERAGE HR</Text>
+                  <Text style={styles.hrSummaryValue}>{sessionStats.avg} <Text style={{fontSize: 12}}>BPM</Text></Text>
+                </View>
+                <View style={styles.hrSummaryDivider} />
+                <View style={styles.hrSummaryItem}>
+                  <Text style={styles.hrSummaryLabel}>PEAK HR</Text>
+                  <Text style={[styles.hrSummaryValue, {color: '#FF4444'}]}>{sessionStats.max} <Text style={{fontSize: 12}}>BPM</Text></Text>
+                </View>
+              </View>
+              <Ionicons 
+                name={showHRChart ? "chevron-up" : "chevron-down"} 
+                size={24} 
+                color="#666" 
+                style={{ marginLeft: 8 }} 
+              />
+            </TouchableOpacity>
+
+            {showHRChart && sessionHRData.length > 0 && (
+              <View style={styles.hrChartContainer}>
+                <View style={styles.hrChartHeader}>
+                  <Text style={styles.hrChartRangeLabel}>RANGE</Text>
+                  <Text style={styles.hrChartRangeValue}>
+                    {Math.min(...sessionHRData)}–{Math.max(...sessionHRData)} <Text style={styles.hrChartBpm}>BPM</Text>
+                  </Text>
+                </View>
+                
+                <BarChart
+                  stackData={stackedData}
+                  height={150}
+                  width={chartWidth}
+                  barWidth={barWidth}
+                  spacing={safeSpacing}
+                  initialSpacing={10}
+                  hideRules={false}
+                  rulesType="solid"
+                  rulesColor="rgba(255,255,255,0.05)"
+                  yAxisTextStyle={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat-Medium' }}
+                  hideYAxisText={false}
+                  yAxisColor="transparent"
+                  xAxisColor="#333333"
+                  maxValue={Math.max(...sessionHRData, 120) + 10} 
+                  noOfSections={4}
+                />
+              </View>
+            )}
+            
+            <View style={{ height: showHRChart ? 20 : 0 }} />
 
             <TextInput
               style={styles.inputField}
@@ -898,15 +893,15 @@ const RunScreen = ({ navigation }: any) => {
                   />
                 ) : (
                   <View style={styles.mapSnapshotPlaceholder}>
-                    <Text style={styles.mapSnapshotPlaceholderText}>🗺️</Text>
+                    <Text style={{fontSize: 32}}>🗺️</Text>
                     <Text style={styles.mapSnapshotPlaceholderLabel}>Capturing...</Text>
                   </View>
                 )}
               </View>
 
               <TouchableOpacity style={styles.addPhotosBtn} onPress={handleAddPhotos}>
-                <Text style={styles.addPhotosIcon}>📷</Text>
-                <Text style={styles.addPhotosText}>Add Photos / Videos</Text>
+                <Text style={{fontSize: 24, marginBottom: 8}}>📷</Text>
+                <Text style={{color: '#1F78FF', fontSize: 12, fontFamily: 'Montserrat-SemiBold'}}>Add Photos / Videos</Text>
               </TouchableOpacity>
               
               {selectedMedia.map((media, index) => (
@@ -919,7 +914,7 @@ const RunScreen = ({ navigation }: any) => {
                     style={styles.removeMediaBtn}
                     onPress={() => removeMediaItem(index)}
                   >
-                    <Text style={styles.removeMediaText}>✕</Text>
+                    <Text style={{color: '#fff', fontSize: 18, fontWeight: 'bold'}}>✕</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -958,7 +953,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121310' },
   map: { ...StyleSheet.absoluteFillObject },
 
-  // Floating Header
   floatingHeader: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 60 : 40,
@@ -971,8 +965,30 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center'
   },
 
+  floatingRightControls: {
+    position: 'absolute',
+    right: 20,
+    bottom: 360, 
+    alignItems: 'flex-end',
+    gap: 12,
+    zIndex: 20,
+  },
+  floatingHRBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(30,30,30,0.85)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 68, 68, 0.4)',
+  },
+  floatingHRText: {
+    color: '#FF4444',
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+  },
   recenterBtn: {
-    position: 'absolute', right: 20, bottom: 280, // High enough to clear the panels
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(30,30,30,0.85)',
     alignItems: 'center', justifyContent: 'center',
@@ -989,14 +1005,12 @@ const styles = StyleSheet.create({
     borderColor: 'white',
   },
 
-  // Bottom Interface Overlay
   bottomOverlayContainer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
   },
   
-  // Floating Stats Box
   statsPanel: {
-    backgroundColor: 'rgba(30, 30, 30, 0.75)', // Glassy effect
+    backgroundColor: 'rgba(30, 30, 30, 0.75)', 
     marginHorizontal: 20,
     marginBottom: 20,
     borderRadius: 20,
@@ -1018,14 +1032,12 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.2)' },
   statDivider2: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 12 },
 
-  // Bottom Controls Background
   bottomControlsBg: {
     backgroundColor: '#121212',
     borderTopLeftRadius: 30, borderTopRightRadius: 30,
     paddingHorizontal: 24, paddingTop: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
 
-  // Idle Row
   idleControlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sideControl: { flex: 1, alignItems: 'center' },
   sideIconWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
@@ -1037,7 +1049,6 @@ const styles = StyleSheet.create({
   startIcon: { color: '#C8FF00', fontSize: 40, marginBottom: 4 },
   startLabel: { color: '#FFFFFF', fontSize: 12, fontFamily: 'Montserrat-Bold', letterSpacing: 1 },
 
-  // Running Row
   activeControlsRow: { alignItems: 'center', justifyContent: 'center' },
   restBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -1047,7 +1058,6 @@ const styles = StyleSheet.create({
   restIcon: { color: '#C8FF00', fontSize: 20, marginRight: 10 },
   restLabel: { color: '#C8FF00', fontSize: 16, fontFamily: 'Montserrat-Bold', letterSpacing: 2 },
 
-  // Paused Row
   pausedControlsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 15 },
   resumeBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -1064,14 +1074,67 @@ const styles = StyleSheet.create({
   finishSquareIcon: { width: 14, height: 14, backgroundColor: '#000', borderRadius: 2, marginRight: 8 },
   finishSplitLabel: { color: '#000', fontSize: 14, fontFamily: 'Montserrat-Bold', letterSpacing: 1 },
 
-
-  // Finish Modal Styles
   modalContainer: { flex: 1, backgroundColor: '#121212' },
   modalScroll: { padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
   modalBackIcon: { color: '#C8FF00', fontSize: 28, fontWeight: 'bold' },
   modalTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat-Black', letterSpacing: 1 },
   
+  // 👇 FIX: Adjusted layout to properly align the new indicator chevron
+  hrSummaryBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A', 
+    borderRadius: 12, 
+    padding: 16, 
+    marginBottom: 20, 
+    borderWidth: 1, 
+    borderColor: '#333' 
+  },
+  hrSummaryContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hrSummaryItem: { flex: 1, alignItems: 'center' },
+  hrSummaryLabel: { color: '#888', fontSize: 10, fontFamily: 'Montserrat-Bold', marginBottom: 4 },
+  hrSummaryValue: { color: '#FFF', fontSize: 24, fontFamily: 'Montserrat-Black' },
+  hrSummaryDivider: { width: 1, backgroundColor: '#333', marginHorizontal: 15 },
+
+  hrChartContainer: {
+    backgroundColor: '#111111',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: '#333',
+    padding: 20,
+    paddingTop: 16,
+    overflow: 'hidden',
+  },
+  hrChartHeader: {
+    alignSelf: 'flex-start',
+    marginBottom: 20,
+  },
+  hrChartRangeLabel: {
+    color: '#888',
+    fontSize: 10,
+    fontFamily: 'Montserrat-SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  hrChartRangeValue: {
+    color: '#FFF',
+    fontSize: 28,
+    fontFamily: 'Montserrat-Bold',
+  },
+  hrChartBpm: {
+    fontSize: 14,
+    color: '#888',
+    fontFamily: 'Montserrat-Medium',
+  },
+
   inputField: {
     backgroundColor: '#1A1A1A', color: '#FFF',
     borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8,
@@ -1177,4 +1240,3 @@ const styles = StyleSheet.create({
 });
 
 export default RunScreen;
-//.

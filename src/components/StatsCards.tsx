@@ -5,6 +5,9 @@ import { useHealth } from '../context/HealthContext';
 import { supabase } from '../supabase';
 import { calculateBMI } from '../utils/healthCalculations';
 
+// 👇 ADDED: Import your newly styled full-screen modal
+import HeartRateModal from './HeartRateModal'; 
+
 interface StatsCardsProps {
   onBMIPress?: () => void;
 }
@@ -13,6 +16,9 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
   const { heartRate } = useHealth();
   const [bmi, setBmi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // 👇 ADDED: State to control if the Heart Rate Modal is open or closed
+  const [hrModalVisible, setHrModalVisible] = useState(false);
 
   useEffect(() => {
     fetchBMI();
@@ -67,7 +73,12 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
       </View>
 
       {/* ── HEART RATE CARD ── */}
-      <View style={[styles.shadowWrapper, { flex: 1, backgroundColor: '#000000' }]}>
+      {/* 👇 CHANGED: Swapped View for TouchableOpacity and added onPress */}
+      <TouchableOpacity 
+        style={[styles.shadowWrapper, { flex: 1, backgroundColor: '#000000' }]}
+        onPress={() => setHrModalVisible(true)}
+        activeOpacity={0.7}
+      >
         <LinearGradient
           colors={["#290000", "#000000"]}
           start={{ x: 0, y: 0 }}
@@ -88,7 +99,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
             <Text style={styles.hrNoWatch}>No watch detected</Text>
           )}
         </LinearGradient>
-      </View>
+      </TouchableOpacity>
 
       {/* ── BMI CARD ── */}
       <TouchableOpacity 
@@ -117,6 +128,12 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
           )}
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* 👇 ADDED: Render the modal component, but keep it hidden until clicked */}
+      <HeartRateModal 
+        visible={hrModalVisible} 
+        onClose={() => setHrModalVisible(false)} 
+      />
 
     </View>
   );
@@ -149,7 +166,6 @@ const styles = StyleSheet.create({
     alignItems: "center", 
     justifyContent: "center", 
     maxHeight: 110,
-    // overflow: 'hidden' removed — clips shadow on iOS
     borderWidth: 0,
   },
   xpCard: { 
