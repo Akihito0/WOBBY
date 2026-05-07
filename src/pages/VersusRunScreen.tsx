@@ -85,8 +85,8 @@ const calcElevationGain = (coords: Coordinate[]): number => {
   if (coords.length < 2) return 0;
   let gain = 0;
   for (let i = 1; i < coords.length; i++) {
-    if (coords[i].altitude && coords[i - 1].altitude) {
-      const diff = coords[i].altitude - coords[i - 1].altitude;
+    if (coords[i].altitude !== undefined && coords[i - 1].altitude !== undefined) {
+      const diff = coords[i].altitude! - coords[i - 1].altitude!;
       if (diff > 0) gain += diff;
     }
   }
@@ -613,12 +613,6 @@ const styles = StyleSheet.create({
   },
   leadingText: {
     color: '#34D399',
-  },
-  gapText: {
-    color: '#888888',
-    fontSize: 13,
-    fontFamily: 'Barlow-Regular',
-    marginTop: 4,
   },
   gapText: {
     color: '#888888',

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -30,6 +30,9 @@ export default function MatchFoundModal({
 }: MatchFoundModalProps) {
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const [countdown, setCountdown] = useState(30);
+  const [isAccepted, setIsAccepted] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -46,11 +49,46 @@ export default function MatchFoundModal({
           useNativeDriver: true,
         }),
       ]).start();
+
+      // Start countdown timer
+      setCountdown(30);
+      setIsAccepted(false);
+      
+      timerRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            // Time expired - auto decline
+            if (timerRef.current) clearInterval(timerRef.current);
+            console.log('⏱️ [Timer] 30 seconds expired, auto-declining match');
+            setTimeout(() => onDecline(), 100);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
+      // Modal hidden - clear timer
+      if (timerRef.current) clearInterval(timerRef.current);
       scaleAnim.setValue(0.85);
       opacityAnim.setValue(0);
+      setCountdown(30);
+      setIsAccepted(false);
     }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [visible]);
+
+  const handleAccept = () => {
+    if (!isAccepted) {
+      console.log('✅ [MatchFoundModal] User accepted match');
+      setIsAccepted(true);
+      // Clear timer when accepted
+      if (timerRef.current) clearInterval(timerRef.current);
+      onAccept();
+    }
+  };
 
   // Helper to render Avatar or Placeholder
   const renderAvatar = (user: { name: string; avatar?: any }) => {
@@ -90,6 +128,13 @@ export default function MatchFoundModal({
             locations={[0, 0.5, 0.97]}
             style={styles.container}
           >
+            {/* Countdown Timer */}
+            <View style={styles.timerContainer}>
+              <Text style={[styles.timerText, { color: countdown <= 10 ? '#FF6B6B' : '#D4FF52' }]}>
+                {countdown}s
+              </Text>
+            </View>
+
             {/* Header Title Image */}
             <Image
               source={require('../assets/matchFound.png')}
@@ -129,12 +174,13 @@ export default function MatchFoundModal({
             <View style={styles.buttonsRow}>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={onAccept}
-                style={styles.imageButtonWrapper}
+                onPress={handleAccept}
+                disabled={isAccepted}
+                style={[styles.imageButtonWrapper, isAccepted && styles.buttonDisabled]}
               >
                 <Image
                   source={require('../assets/accept.png')}
-                  style={styles.buttonImage}
+                  style={[styles.buttonImage, isAccepted && { opacity: 0.5 }]}
                   resizeMode="contain"
                 />
               </TouchableOpacity>
@@ -142,11 +188,12 @@ export default function MatchFoundModal({
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={onDecline}
-                style={styles.imageButtonWrapper}
+                disabled={isAccepted}
+                style={[styles.imageButtonWrapper, isAccepted && styles.buttonDisabled]}
               >
                 <Image
                   source={require('../assets/decline.png')}
-                  style={styles.buttonImage}
+                  style={[styles.buttonImage, isAccepted && { opacity: 0.5 }]}
                   resizeMode="contain"
                 />
               </TouchableOpacity>
@@ -164,6 +211,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  timerContainer: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#D4FF52',
+  },
+  timerText: {
+    fontFamily: 'Montserrat_700Bold',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   animWrapper: {
     width: '92%',
@@ -247,6 +310,9 @@ const styles = StyleSheet.create({
     height: 60,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonImage: {
     width: '100%',

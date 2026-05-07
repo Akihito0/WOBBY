@@ -1,140 +1,102 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
+import MatchFoundModal from '../components/MatchFoundModal';
 import ExerciseModal from '../components/ExerciseModal';
 import { supabase } from '../supabase';
+import { useVersusMatchmaking } from '../services/useVersusMatchmaking';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{name: string; xp: number; avatar?: {uri: string}}>({ name: '', xp: 0, avatar: undefined });
+  const [matchFoundVisible, setMatchFoundVisible] = useState(false);
 
-  const [isFinding, setIsFinding] = useState(false);
-  
-  const handleRunPress = async () => {
-    setIsFinding(true);
-    
+  // Matchmaking hook
+  const { matchState, startMatchmaking, cancelMatchmaking, acceptMatch } = useVersusMatchmaking();
+
+  // Fetch current user profile on mount
+  useEffect(() => {
+    fetchCurrentUserProfile();
+  }, []);
+
+  const fetchCurrentUserProfile = useCallback(async () => {
     try {
-      // Get current user
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user?.id) {
-        Alert.alert('Error', 'Could not authenticate user.');
-        setIsFinding(false);
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      const userId = session.user.id;
-      const now = new Date();
-
-      // Create or update versus_match entry for this user
-      const { data: existingMatch, error: checkError } = await supabase
-        .from('versus_matches')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('status', 'waiting')
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('username, avatar_url, xp')
+        .eq('id', user.id)
         .single();
 
-      if (!existingMatch) {
-        // Create new match record - this user is now waiting
-        const { data: newMatch, error: createError } = await supabase
-          .from('versus_matches')
-          .insert([
-            {
-              user_id: userId,
-              status: 'waiting',
-              created_at: now.toISOString(),
-            }
-          ])
-          .select()
-          .single();
+      if (error) throw error;
 
-        if (createError && createError.code !== 'PGRST116') throw createError;
-      }
-
-      // Poll for opponent match every 2 seconds (max 30 seconds)
-      let matchFound = false;
-      let attempts = 0;
-      const maxAttempts = 15;
-
-      while (!matchFound && attempts < maxAttempts) {
-        attempts++;
-        
-        // Check for any other waiting user
-        const { data: opponentMatches, error: opponentError } = await supabase
-          .from('versus_matches')
-          .select('*')
-          .eq('status', 'waiting')
-          .neq('user_id', userId)
-          .order('created_at', { ascending: true })
-          .limit(1);
-
-        if (opponentError && opponentError.code !== 'PGRST116') throw opponentError;
-
-        if (opponentMatches && opponentMatches.length > 0) {
-          const opponent = opponentMatches[0];
-          
-          // Get opponent profile info
-          const { data: opponentProfile, error: profileError } = await supabase
-            .from('profiles')
-            .select('id, username, avatar_url')
-            .eq('id', opponent.user_id)
-            .single();
-
-          if (profileError && profileError.code !== 'PGRST116') throw profileError;
-
-          // Update both match records to "matched"
-          const matchIds = [
-            { user_id: userId },
-            { user_id: opponent.user_id }
-          ];
-
-          for (const matchId of matchIds) {
-            await supabase
-              .from('versus_matches')
-              .update({ 
-                status: 'matched',
-                opponent_id: matchId.user_id === userId ? opponent.user_id : userId,
-                matched_at: new Date().toISOString()
-              })
-              .eq('user_id', matchId.user_id);
-          }
-
-          matchFound = true;
-          setIsFinding(false);
-
-          // Navigate to VersusRunScreen with opponent info
-          navigation.navigate('VersusRun', {
-            opponentUsername: opponentProfile?.username || 'Runner',
-            opponentId: opponentProfile?.id || opponent.user_id,
-            matchId: opponent.id,
-          });
-
-          return;
-        }
-
-        // Wait 2 seconds before next poll
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      // No match found after 30 seconds
-      setIsFinding(false);
-      
-      // Clean up: remove this user's waiting record
-      await supabase
-        .from('versus_matches')
-        .delete()
-        .eq('user_id', userId)
-        .eq('status', 'waiting');
-
-      Alert.alert(
-        'No Opponent Found',
-        'No other users are looking for a versus run right now. Try again later!'
-      );
+      setCurrentUser({
+        name: profile?.username || 'You',
+        xp: profile?.xp || 0,
+        avatar: profile?.avatar_url ? { uri: profile.avatar_url } : undefined,
+      });
     } catch (error) {
-      console.error('Error in matchmaking:', error);
-      setIsFinding(false);
-      Alert.alert('Error', 'Failed to find opponent. Please try again.');
+      console.error('Error fetching current user:', error);
+    }
+  }, []);
+
+  // Monitor matchmaking state and show appropriate modals
+  useEffect(() => {
+    console.log('🔔 [VersusWorkout] Match state changed:', matchState);
+    
+    if (matchState.status === 'error') {
+      console.log('❌ [VersusWorkout] Error state detected:', matchState.error);
+      setMatchFoundVisible(false);
+      Alert.alert('Matchmaking Error', matchState.error || 'Unknown error');
+    } else if (matchState.status === 'found' && matchState.opponent) {
+      console.log('✅ [VersusWorkout] Match found! Showing MatchFoundModal for opponent:', matchState.opponent.username);
+      // Show the match found modal
+      setMatchFoundVisible(true);
+    } else if (matchState.status === 'both_accepted' && matchState.opponent && matchState.matchId) {
+      console.log('🎉 [VersusWorkout] Both users accepted! Navigating to VersusRun');
+      setMatchFoundVisible(false);
+      // Both users have accepted - now navigate
+      navigation.navigate('VersusRun', {
+        opponentUsername: matchState.opponent.username || 'Opponent',
+        opponentId: matchState.opponent.id,
+        opponentAvatar: matchState.opponent.avatar_url,
+        matchId: matchState.matchId,
+      });
+    } else if (matchState.status === 'searching') {
+      console.log('⏳ [VersusWorkout] Searching... Finding modal should be visible');
+    } else if (matchState.status === 'idle') {
+      console.log('🆓 [VersusWorkout] Idle state reached');
+      setMatchFoundVisible(false);
+    }
+  }, [matchState.status, matchState.error, matchState.opponent, matchState.matchId, navigation]);
+
+  const handleRunPress = async () => {
+    try {
+      // Start the matchmaking process
+      await startMatchmaking();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to start matchmaking. Please try again.');
     }
   };
+
+  const handleMatchAccept = useCallback(async () => {
+    if (!matchState.opponent || !matchState.matchId) return;
+
+    console.log('✋ [VersusWorkout] User clicked Accept - marking acceptance...');
+    
+    // Call acceptMatch to mark this user as accepted
+    // This will trigger the acceptance listener to watch for opponent
+    await acceptMatch();
+  }, [matchState.opponent, matchState.matchId, acceptMatch]);
+
+  const handleMatchDecline = useCallback(async () => {
+    setMatchFoundVisible(false);
+    await cancelMatchmaking();
+    Alert.alert('Match Declined', 'You have declined the match.');
+  }, [cancelMatchmaking]);
 
 const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
 const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
@@ -144,9 +106,10 @@ const handleRoutineSelect = (routine: any) => {
   setExerciseModalVisible(true);
 };
 
-const handleConfirmExercises = () => {
+const handleConfirmExercises = async () => {
   setExerciseModalVisible(false);
-  setIsFinding(true); // This triggers the Finding.tsx modal
+  // Start the matchmaking process
+  await startMatchmaking();
 };
 
   const routines = [
@@ -268,7 +231,19 @@ const handleConfirmExercises = () => {
   </LinearGradient>
 </TouchableOpacity>
 
-<Finding visible={isFinding} />
+<Finding visible={matchState.status === 'searching'} />
+
+<MatchFoundModal
+  visible={matchFoundVisible}
+  currentUser={currentUser}
+  opponent={matchState.opponent ? {
+    name: matchState.opponent.username || 'Opponent',
+    xp: matchState.opponent.xp || 0,
+    avatar: matchState.opponent.avatar_url ? { uri: matchState.opponent.avatar_url } : undefined,
+  } : { name: 'Opponent', xp: 0 }}
+  onAccept={handleMatchAccept}
+  onDecline={handleMatchDecline}
+/>
 
 <ExerciseModal 
   visible={exerciseModalVisible}
