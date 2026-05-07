@@ -11,7 +11,8 @@ import {
   Platform,
   ScrollView,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AuthBackground from '../components/layout/AuthBackground';
@@ -21,14 +22,19 @@ import * as Linking from 'expo-linking';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LogIn({ onNavigateToRegister, onSignIn }: { 
+export default function LogIn({ onNavigateToRegister, onSignIn, onNavigateToReset }: { 
   onNavigateToRegister: () => void;
   onSignIn: () => void;
+  onNavigateToReset?: (email: string) => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -53,6 +59,40 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
       // It will check profile completeness and route appropriately
     }
     setLoading(false);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      // Send a recovery email with a code (not a deep link)
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: undefined, // Don't use deep link, code will be sent via email
+      });
+
+      if (error) {
+        Alert.alert('Error', error.message);
+        console.error('❌ Password reset failed:', error.message);
+      } else {
+        setResetSuccess(true);
+        console.log('✅ Password reset code sent to:', resetEmail);
+      }
+    } catch (err) {
+      console.error('❌ Unexpected error:', err);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const closeForgotPasswordModal = () => {
+    setForgotPasswordModalVisible(false);
+    setResetEmail('');
+    setResetSuccess(false);
   };
 
   // Helper function to extract session from URL manually since parseRedirectUrl works inconsistently
@@ -212,7 +252,7 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => setForgotPasswordModalVisible(true)}>
                 <Text style={styles.forgotPass}>         Forgot your password?</Text>
               </TouchableOpacity>
 
@@ -267,6 +307,80 @@ export default function LogIn({ onNavigateToRegister, onSignIn }: {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ─── FORGOT PASSWORD MODAL ─── */}
+      <Modal
+        visible={forgotPasswordModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeForgotPasswordModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {!resetSuccess ? (
+              <>
+                <Text style={styles.modalTitle}>Reset Password</Text>
+                <Text style={styles.modalSubtitle}>
+                  Enter your email address and we'll send you a code to reset your password.
+                </Text>
+
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter your email"
+                  placeholderTextColor="#999"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                />
+
+                <TouchableOpacity
+                  style={[styles.resetButton, resetLoading && { opacity: 0.8 }]}
+                  onPress={handleForgotPassword}
+                  disabled={resetLoading}
+                >
+                  {resetLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.resetButtonText}>Send Reset Code</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={closeForgotPasswordModal}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Check Your Email</Text>
+                <Text style={styles.modalSubtitle}>
+                  We've sent an 8-digit reset code to {resetEmail}. Please check your email for the code.
+                </Text>
+
+                <Text style={styles.modalNote}>
+                  Use this code along with your email to reset your password in the app.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.resetButton}
+                  onPress={() => {
+                    if (onNavigateToReset) {
+                      onNavigateToReset(resetEmail);
+                      closeForgotPasswordModal();
+                    }
+                  }}
+                >
+                  <Text style={styles.resetButtonText}>Enter Code</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={closeForgotPasswordModal}>
+                  <Text style={styles.modalCancelText}>Later</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </AuthBackground>
   );
 }
@@ -438,5 +552,81 @@ const styles = StyleSheet.create({
   signUpLink: {
     fontFamily: 'Montserrat-Bold',
     color: '#000',
+  },
+  // ─── FORGOT PASSWORD MODAL STYLES ───
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 30,
+    width: '100%',
+    maxWidth: 350,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  modalTitle: {
+    fontFamily: 'Montserrat-ExtraBold',
+    fontSize: 24,
+    color: '#000',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalInput: {
+    width: '100%',
+    height: 50,
+    borderWidth: 1,
+    borderColor: '#000',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 14,
+    color: '#000',
+    backgroundColor: '#FAFAFA',
+    marginBottom: 20,
+  },
+  resetButton: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#000',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  resetButtonText: {
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 16,
+    color: '#FFF',
+  },
+  modalCancelText: {
+    fontFamily: 'Montserrat-SemiBold',
+    fontSize: 14,
+    color: '#999',
+  },
+  modalNote: {
+    fontFamily: 'Montserrat-Regular',
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 20,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
