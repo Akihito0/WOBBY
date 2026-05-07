@@ -26,8 +26,9 @@ interface ExerciseSet {
   weight: string;
   reps: number;
   status: 'START' | 'WAITING' | 'FINISHED' | 'INCOMPLETE';
-  avgHR?: number; // 👇 ADDED: To store the average HR for this specific set
-  maxHR?: number; // 👇 ADDED: To store the peak HR for this specific set
+  avgHR?: number; 
+  maxHR?: number; 
+  duration?: number; // 👇 To store the duration of the set
 }
 
 interface Exercise {
@@ -94,12 +95,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   // Back Button Confirmation
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', (e: any) => {
-      // If the action is triggered by the completion navigation (which usually uses Navigate or a specific target)
-      // we don't want to show the alert. But GO_BACK and POP usually mean the user header back button or physical back.
       if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
-        // Double check target page to ensure we aren't blocking a legitimate flow
-        // However, if discarding, we want to go back to the selection screen.
-        
         e.preventDefault();
         Alert.alert(
           'Discard Workout?',
@@ -110,12 +106,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
               text: 'Discard', 
               style: 'destructive', 
               onPress: () => {
-                // Clear persistence
                 persistedExercises = null;
                 persistedElapsedSeconds = 0;
-                
-                // Clear the navigation history and replace it with SoloWorkoutScreen
-                // This prevents the "back button" from returning to this screen
                 navigation.reset({
                   index: 1,
                   routes: [
@@ -134,7 +126,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   // Reset persistence if the routine type changed or if we want to fresh load
   useEffect(() => {
-    // If we have a fresh navigation to this routine and the routineType has changed, reset persistence
     if (persistedExercises && persistedExercises.length > 0) {
       const expectedFirstExerciseName = routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats';
       if (persistedExercises[0].name !== expectedFirstExerciseName) {
@@ -148,35 +139,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
       setExercises(exercisesData);
     }
   }, [routineType]);
-
-  // Back Button Confirmation
-  useEffect(() => {
-    const unsub = navigation.addListener('beforeRemove', (e: any) => {
-      // If we are navigating to ActiveWorkout or something within the flow, don't alert
-      // We only alert if trying to go back to Routines/Dashboard
-      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
-        e.preventDefault();
-        Alert.alert(
-          'Discard Workout?',
-          'Going back will reset your progress and timer for this routine. Are you sure?',
-          [
-            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
-            { 
-              text: 'Discard', 
-              style: 'destructive', 
-              onPress: () => {
-                // Clear persistence
-                persistedExercises = null;
-                persistedElapsedSeconds = 0;
-                navigation.dispatch(e.data.action);
-              } 
-            },
-          ]
-        );
-      }
-    });
-    return unsub;
-  }, [navigation]);
 
   // Auto-start Timer
   React.useEffect(() => {
@@ -196,8 +158,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   }, [exercises]);
 
   useEffect(() => {
-    // 👇 ADDED: Extract avgHR and maxHR passed from the camera screen
-    const { finished, incomplete, exerciseId, setId, avgHR, maxHR } = route.params || {};
+    // 👇 Included `duration` in the extraction
+    const { finished, incomplete, exerciseId, setId, avgHR, maxHR, duration } = route.params || {};
     const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
 
     if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
@@ -214,8 +176,9 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           updatedSets[setIdx] = { 
             ...updatedSets[setIdx], 
             status: incomplete ? 'INCOMPLETE' : 'FINISHED',
-            avgHR: avgHR, // 👇 Save the heart rate data!
-            maxHR: maxHR  // 👇 Save the heart rate data!
+            avgHR: avgHR,
+            maxHR: maxHR,
+            duration: duration // 👇 Saved duration here
           };
 
           const nextWaitIdx = updatedSets.findIndex(
@@ -234,7 +197,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         });
       });
 
-      navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined, avgHR: undefined, maxHR: undefined });
+      navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined, avgHR: undefined, maxHR: undefined, duration: undefined });
     }
   }, [route.params]);
 
@@ -344,7 +307,6 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
     }));
   };
 
-  // 👇 FIXED: TypeScript error resolved by making the status cycle explicitly type-safe
   const updateStatus = (exerciseId: string, setId: string) => {
     setExercises(exercises.map(ex => 
       ex.id === exerciseId 
@@ -407,10 +369,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             { transform: [{ translateX: animatedValue }] }
           ]}
         >
-          <Text style={[styles.setNumber, { flex: 0.5 }]}>{set.set}</Text>
+          {/* 👇 ADJUSTED FLEX VALUES */}
+          <Text style={[styles.setCell, { flex: 0.4 }]}>{set.set}</Text>
 
           <TextInput
-            style={[styles.editableInput, { flex: 1.2 }]}
+            style={[styles.editableInput, { flex: 1.1 }]}
             value={set.weight}
             onChangeText={(text) => {
               setSwipedRow(null);
@@ -420,7 +383,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           />
 
           <TextInput
-            style={[styles.editableInput, { flex: 0.8 }]}
+            style={[styles.editableInput, { flex: 0.6 }]}
             value={String(set.reps)}
             onChangeText={(text) => {
               setSwipedRow(null);
@@ -429,6 +392,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             keyboardType="numeric"
             placeholderTextColor="#999"
           />
+
+          {/* 👇 ADDED TIME CELL */}
+          <Text style={[styles.setCell, { flex: 0.8, color: '#999', fontSize: 11 }]}>
+            {set.duration ? formatTime(set.duration).substring(3) : '--:--'}
+          </Text>
 
           <TouchableOpacity
             style={[
@@ -476,10 +444,12 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
       {exercise.expanded && (
         <View>
+          {/* 👇 UPDATED TABLE HEADERS TO MATCH */}
           <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, { flex: 0.5 }]}>Set</Text>
-            <Text style={[styles.tableHeaderText, { flex: 1.2 }]}>Weight (kg)</Text>
-            <Text style={[styles.tableHeaderText, { flex: 0.8 }]}>Reps</Text>
+            <Text style={[styles.tableHeaderText, { flex: 0.4 }]}>Set</Text>
+            <Text style={[styles.tableHeaderText, { flex: 1.1 }]}>Wt(kg)</Text>
+            <Text style={[styles.tableHeaderText, { flex: 0.6 }]}>Reps</Text>
+            <Text style={[styles.tableHeaderText, { flex: 0.8 }]}>Time</Text>
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>Status</Text>
           </View>
 
@@ -561,11 +531,32 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         {exercises.map(ex => renderExerciseCard(ex))}
       </ScrollView>
 
-      {/* FINISH BUTTON: Notice that it passes `exercises` which now includes the HR data! */}
+      {/* 👇 ADDED: FINISH FILTERING LOGIC */}
       <TouchableOpacity
         style={styles.finishBtnWrapper}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('WorkoutSummaryScreen', { exercises, elapsedSeconds, completedSets, completedReps })}
+        onPress={() => {
+          const finishedExercises = exercises.map(ex => {
+            const finishedSets = ex.sets.filter(s => s.status === 'FINISHED');
+            return {
+              ...ex,
+              sets: finishedSets
+            };
+          }).filter(ex => ex.sets.length > 0); 
+
+          if (finishedExercises.length === 0) {
+            Alert.alert('No Completed Sets', 'You need to finish at least one set to save a workout!');
+            return;
+          }
+
+          navigation.navigate('WorkoutSummaryScreen', { 
+            exercises: finishedExercises, 
+            elapsedSeconds, 
+            completedSets, 
+            completedReps,
+            routineType 
+          });
+        }}
       >
         <LinearGradient
           colors={['#B1DD01', '#678101']}
@@ -584,6 +575,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121310',
+  },
+  setCell: {
+    color: '#d1d1d1',
+    fontSize: 12,
+    fontFamily: 'Montserrat-Regular',
+    textAlign: 'center',
   },
   headerGradient: {
     height: 134,
@@ -765,6 +762,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     marginHorizontal: 4,
+    textAlign: 'center',
   },
   statusButton: {
     paddingVertical: 6,

@@ -19,36 +19,27 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 
-
 const { width } = Dimensions.get('window');
 
 const IMAGE_WIDTH = width * 0.65;
 const IMAGE_MARGIN = 12;
 const ITEM_SIZE = IMAGE_WIDTH + IMAGE_MARGIN;
-// Padding so each item snaps centered
 const SIDE_INSET = (width - IMAGE_WIDTH) / 2;
 
-// Helper function to format duration from seconds to HH:MM format
 const formatDuration = (seconds: number): string => {
+  if (!seconds || isNaN(seconds)) return '0m';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
+  if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 };
 
-// Helper function to format date to readable format
 const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
   const date = new Date(dateString);
-  const options: Intl.DateTimeFormatOptions = {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  };
-  return date.toLocaleDateString('en-US', options);
+  return date.toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
 };
 
 interface RunData {
@@ -67,41 +58,75 @@ interface RunData {
   elevation_loss?: number;
   min_elevation?: number;
   max_elevation?: number;
-  average_elevation?: number;
   route_map_url?: string;
 }
 
-const ActivityFeed = ({ 
-  username = 'Guest', 
-  avatarUrl, 
-  runData,
-  onRefresh,
-  navigation,
-}: { 
-  username?: string; 
-  avatarUrl?: string | null; 
+interface RoutineData {
+  id: string;
+  caption: string;
+  notes?: string;
+  total_duration: number;
+  routine_type: string;
+  created_at: string;
+  media_url?: string;
+  exercises_data: any[];
+}
+
+interface ActivityFeedProps {
+  username?: string;
+  avatarUrl?: string | null;
   runData?: RunData;
+  routineData?: RoutineData;
   onRefresh?: () => void;
   navigation?: any;
-}) => {
+}
+
+export default function ActivityFeed({
+  username = 'Guest',
+  avatarUrl,
+  runData,
+  routineData,
+  onRefresh,
+  navigation,
+}: ActivityFeedProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  // Use real media from run, or fallback to placeholder images
+  const isRoutine = !!routineData;
+  const isRun = !!runData;
+
+  // Determine active data variables
+  const activeId = isRoutine ? routineData?.id : runData?.id;
+  const title = isRoutine ? routineData?.caption || `${routineData?.routine_type} Routine` : runData?.title;
+  const description = isRoutine ? routineData?.notes : runData?.description;
+  const dateStr = isRoutine ? routineData?.created_at : runData?.completed_at;
+  const duration = isRoutine ? routineData?.total_duration || 0 : runData?.duration || 0;
+  
+  // Calculate routine specific stats
+  let totalSets = 0;
+  let totalReps = 0;
+  if (isRoutine && routineData?.exercises_data) {
+    routineData.exercises_data.forEach(ex => {
+      totalSets += ex.sets?.length || 0;
+      ex.sets?.forEach((set: any) => totalReps += (Number(set.reps) || 0));
+    });
+  }
+
   const workoutGallery = useMemo(() => {
-    if (runData?.media_urls && runData.media_urls.length > 0) {
+    if (isRoutine) {
+      return routineData?.media_url ? [{ uri: routineData.media_url }] : [];
+    } else if (isRun && runData?.media_urls && runData.media_urls.length > 0) {
       return runData.media_urls.map(url => ({ uri: url }));
     }
-    // Fallback to placeholder images
     return [
       require('../assets/workout_1.png'),
       require('../assets/workout_2.png'),
       require('../assets/workout_3.png'),
     ];
-  }, [runData?.media_urls]);
+  }, [runData, routineData, isRoutine, isRun]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -109,141 +134,113 @@ const ActivityFeed = ({
     setCurrentIndex(Math.min(Math.max(index, 0), workoutGallery.length - 1));
   };
 
-  // ── DELETE POST ──
   const handleDeletePost = async () => {
-    if (!runData?.id) {
-      Alert.alert('Error', 'Post ID not found');
-      return;
-    }
+    if (!activeId) return;
 
     Alert.alert(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       [
-        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
+            setIsDeleting(true);
             try {
-              setIsDeleting(true);
-              const { error } = await supabase
-                .from('runs')
-                .delete()
-                .eq('id', runData.id);
-
-              if (error) {
-                Alert.alert('Error', `Failed to delete post: ${error.message}`);
-                return;
-              }
-
+              const table = isRoutine ? 'completed_routines' : 'runs';
+              const { error } = await supabase.from(table).delete().eq('id', activeId);
+              
+              if (error) throw error;
+              
               Alert.alert('Success', 'Post deleted successfully');
               setMenuModalVisible(false);
               onRefresh?.();
-            } catch (err) {
-              Alert.alert('Error', 'An unexpected error occurred');
-              console.error('Delete error:', err);
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to delete post');
             } finally {
               setIsDeleting(false);
             }
           },
-          style: 'destructive',
         },
       ]
     );
   };
 
-  // ── UPDATE POST ──
   const handleEditPost = () => {
-    if (!navigation) {
-      Alert.alert('Error', 'Navigation not available');
+    if (isRoutine) {
+      Alert.alert('Notice', 'Editing routine posts is not supported yet.');
       return;
     }
-
-    if (!runData?.id) {
-      Alert.alert('Error', 'Post ID not found');
-      return;
+    
+    if (runData && navigation) {
+      navigation.navigate('Workout', {
+        screen: 'RunScreen',
+        params: { isEditing: true, runDataToEdit: runData },
+      });
+      setMenuModalVisible(false);
     }
-
-    // Navigate to Run screen with edit data
-    navigation.navigate('Workout', {
-  screen: 'RunScreen',
-  params: {
-    isEditing: true,
-    runDataToEdit: runData,
-  },
-});
-
-    setMenuModalVisible(false);
   };
 
-  // If no run data, show a placeholder or hide the component
-  if (!runData) {
-    return null;
-  }
-
-  const formattedDate = formatDate(runData.completed_at);
-  const formattedDuration = formatDuration(runData.duration);
-  const runMode = runData.workout_type || 'Solo';
+  if (!isRoutine && !isRun) return null;
 
   return (
     <View style={styles.rootWrapper}>
       <Text style={styles.sectionLabel}>Activity Vault</Text>
 
       <View style={styles.container}>
-        {/* ── USER HEADER ── */}
         <View style={styles.userHeader}>
           <View style={styles.userInfo}>
             <Image source={avatarUrl ? { uri: avatarUrl } : require('../assets/user.png')} style={styles.avatar} />
             <View>
               <Text style={styles.username}>{username}</Text>
-              <Text style={styles.timestamp}>{formattedDate}</Text>
+              <Text style={styles.timestamp}>{formatDate(dateStr || '')}</Text>
             </View>
           </View>
-          <TouchableOpacity 
-            hitSlop={10}
-            onPress={() => setMenuModalVisible(true)}
-          >
+          <TouchableOpacity hitSlop={10} onPress={() => setMenuModalVisible(true)}>
             <MaterialCommunityIcons name="dots-vertical" size={22} color="#A8A8A8" />
           </TouchableOpacity>
         </View>
 
-        {/* ── WORKOUT TITLE ── */}
-        <Text style={styles.workoutTitle}>{runData.title}</Text>
+        <Text style={styles.workoutTitle}>{title}</Text>
+        {description ? <Text style={styles.workoutDescription}>{description}</Text> : null}
 
-        {/* ── STATS ROW ── */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Duration</Text>
-            <Text style={styles.statValue}>{formattedDuration}</Text>
+            <Text style={styles.statValue}>{formatDuration(duration)}</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Distance</Text>
-            <Text style={styles.statValue}>{runData.distance.toFixed(2)} km</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { textAlign: 'right' }]}>Mode</Text>
-            <Text style={[styles.statValue, { textAlign: 'right' }]}>{runMode}</Text>
-          </View>
+
+          {isRoutine ? (
+            <>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Total Sets</Text>
+                <Text style={styles.statValue}>{totalSets}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statLabel, { textAlign: 'right' }]}>Total Reps</Text>
+                <Text style={[styles.statValue, { textAlign: 'right', color: '#CCFF00' }]}>{totalReps}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Distance</Text>
+                <Text style={styles.statValue}>{runData?.distance?.toFixed(2)} km</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={[styles.statLabel, { textAlign: 'right' }]}>Pace</Text>
+                <Text style={[styles.statValue, { textAlign: 'right', color: '#CCFF00' }]}>{runData?.pace}</Text>
+              </View>
+            </>
+          )}
         </View>
 
-        {/* ── CONGRATS BANNER ── */}
-        <View style={styles.congratsBanner}>
-          <Image source={require('../assets/trophy.png')} style={styles.trophyIconImage} />
-          <Text style={styles.congratsText}>
-            🎉 Awesome run! You completed {runData.distance.toFixed(1)}km at {runData.pace} /km!
-          </Text>
-        </View>
-
-        {/* ── SEE MORE BUTTON ── */}
-        <TouchableOpacity 
-          style={styles.seeMoreBtn}
-          onPress={() => setDetailsModalVisible(true)}
-        >
-          <Text style={styles.seeMoreText}>See More Details</Text>
+        <TouchableOpacity style={styles.seeMoreBtn} onPress={() => setDetailsModalVisible(true)}>
+          <Text style={styles.seeMoreText}>See Details & Stats</Text>
           <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
         </TouchableOpacity>
 
-        {/* ── GALLERY ── */}
         {workoutGallery.length > 0 && (
           <>
             <FlatList
@@ -258,494 +255,195 @@ const ActivityFeed = ({
               onScroll={handleScroll}
               scrollEventThrottle={16}
               {...(Platform.OS === 'ios'
-                ? {
-                    contentInset: { left: SIDE_INSET, right: SIDE_INSET },
-                    contentOffset: { x: -SIDE_INSET, y: 0 },
-                  }
-                : {
-                    contentContainerStyle: { paddingHorizontal: SIDE_INSET },
-                  })}
+                ? { contentInset: { left: SIDE_INSET, right: SIDE_INSET }, contentOffset: { x: -SIDE_INSET, y: 0 } }
+                : { contentContainerStyle: { paddingHorizontal: SIDE_INSET } })}
               renderItem={({ item }: any) => (
-                <Image 
-                  source={typeof item === 'string' || (item && item.uri) ? item : item}
-                  style={styles.galleryImage}
-                />
+                <Image source={typeof item === 'string' || item.uri ? item : item} style={styles.galleryImage} />
               )}
             />
-
-            {/* ── PAGINATION ── */}
-            <View style={styles.paginationRow}>
-              {workoutGallery.map((_, index) => (
-                <View
-                  key={index}
-                  style={[styles.dot, index === currentIndex && styles.activeDot]}
-                />
-              ))}
-            </View>
+            {workoutGallery.length > 1 && (
+              <View style={styles.paginationRow}>
+                {workoutGallery.map((_, index) => (
+                  <View key={index} style={[styles.dot, index === currentIndex && styles.activeDot]} />
+                ))}
+              </View>
+            )}
           </>
         )}
 
-        {/* ── DETAILS MODAL ── */}
-        <Modal 
-          visible={detailsModalVisible}
-          animationType="slide"
-          transparent={false}
-          onRequestClose={() => setDetailsModalVisible(false)}
-        >
-          <LinearGradient
-            colors={['#001E20', '#0a0a0a']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.modalGradient}
-          >
+        {/* DETAILS MODAL */}
+        <Modal visible={detailsModalVisible} animationType="slide" transparent={false} onRequestClose={() => setDetailsModalVisible(false)}>
+          <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
-              {/* ── MODAL HEADER ── */}
+              
               <View style={styles.modalHeader}>
-                <TouchableOpacity 
-                  style={styles.modalCloseBtn}
-                  onPress={() => setDetailsModalVisible(false)}
-                >
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailsModalVisible(false)}>
                   <MaterialCommunityIcons name="close" size={28} color="#FFF" />
                 </TouchableOpacity>
-                <Text style={styles.modalTitle}>RUN DETAILS</Text>
+                <Text style={styles.modalTitle}>{isRoutine ? `${routineData?.routine_type} ROUTINE` : 'RUN DETAILS'}</Text>
                 <View style={{ width: 28 }} />
               </View>
 
-              {/* ── MAP THUMBNAIL ── */}
-              {runData.route_map_url && (
-                <Image 
-                  source={{ uri: runData.route_map_url }}
-                  style={styles.modalMapImage}
-                />
-              )}
+              <Text style={styles.modalRunTitle}>{title}</Text>
 
-              {/* ── TITLE ── */}
-              <Text style={styles.modalRunTitle}>{runData.title}</Text>
-
-              {/* ── MAIN STATS ── */}
-              <View style={styles.modalStatsGrid}>
-                <View style={styles.modalStatBox}>
-                  <Text style={styles.modalStatLabel}>Distance</Text>
-                  <Text style={styles.modalStatValue}>{runData.distance.toFixed(2)}</Text>
-                  <Text style={styles.modalStatUnit}>km</Text>
-                </View>
-                <View style={styles.modalStatBox}>
-                  <Text style={styles.modalStatLabel}>Duration</Text>
-                  <Text style={styles.modalStatValue}>{formattedDuration}</Text>
-                </View>
-                <View style={styles.modalStatBox}>
-                  <Text style={styles.modalStatLabel}>Pace</Text>
-                  <Text style={styles.modalStatValue}>{runData.pace}</Text>
-                  <Text style={styles.modalStatUnit}>/km</Text>
-                </View>
-                <View style={styles.modalStatBox}>
-                  <Text style={styles.modalStatLabel}>Mode</Text>
-                  <Text style={styles.modalStatValue}>{runMode}</Text>
-                </View>
-              </View>
-
-              {/* ── ELEVATION SECTION ── */}
-              {(runData.elevation_gain !== undefined && runData.elevation_gain > 0) && (
+              {isRoutine && routineData ? (
                 <>
-                  <Text style={styles.modalSectionLabel}>Elevation</Text>
                   <View style={styles.modalStatsGrid}>
                     <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Gain</Text>
-                      <Text style={styles.modalStatValue}>{runData.elevation_gain || 0}</Text>
-                      <Text style={styles.modalStatUnit}>m</Text>
+                      <Text style={styles.modalStatLabel}>Total Duration</Text>
+                      <Text style={styles.modalStatValue}>{formatDuration(duration)}</Text>
                     </View>
                     <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Loss</Text>
-                      <Text style={styles.modalStatValue}>{runData.elevation_loss || 0}</Text>
-                      <Text style={styles.modalStatUnit}>m</Text>
+                      <Text style={styles.modalStatLabel}>Completed Sets</Text>
+                      <Text style={styles.modalStatValue}>{totalSets}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.modalSectionLabel}>Exercises Breakdown</Text>
+                  {routineData.exercises_data.map((ex: any, i: number) => (
+                    <View key={i} style={styles.exerciseBreakdownCard}>
+                      <Text style={styles.exerciseBreakdownTitle}>{ex.name}</Text>
+                      <Text style={styles.exerciseBreakdownStats}>
+                        {ex.sets.length} Sets  |  {ex.sets.reduce((r: number, s: any) => r + s.reps, 0)} Total Reps
+                      </Text>
+                      
+                      <View style={styles.setRowHeader}>
+                        <Text style={styles.setRowHeaderText}>Set</Text>
+                        <Text style={styles.setRowHeaderText}>Weight</Text>
+                        <Text style={styles.setRowHeaderText}>Reps</Text>
+                      </View>
+                      
+                      {ex.sets.map((set: any, j: number) => (
+                        <View key={j} style={styles.setRow}>
+                          <Text style={styles.setRowText}>{set.set}</Text>
+                          <Text style={styles.setRowText}>{set.weight}</Text>
+                          <Text style={styles.setRowText}>{set.reps}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </>
+              ) : runData ? (
+                <>
+                  {runData.route_map_url && <Image source={{ uri: runData.route_map_url }} style={styles.modalMapImage} />}
+                  
+                  <View style={styles.modalStatsGrid}>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Distance</Text>
+                      <Text style={styles.modalStatValue}>{runData.distance.toFixed(2)}</Text>
+                      <Text style={styles.modalStatUnit}>km</Text>
                     </View>
                     <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Min</Text>
-                      <Text style={styles.modalStatValue}>{runData.min_elevation || 0}</Text>
-                      <Text style={styles.modalStatUnit}>m</Text>
+                      <Text style={styles.modalStatLabel}>Duration</Text>
+                      <Text style={styles.modalStatValue}>{formatDuration(duration)}</Text>
                     </View>
                     <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Max</Text>
-                      <Text style={styles.modalStatValue}>{runData.max_elevation || 0}</Text>
-                      <Text style={styles.modalStatUnit}>m</Text>
+                      <Text style={styles.modalStatLabel}>Pace</Text>
+                      <Text style={styles.modalStatValue}>{runData.pace}</Text>
+                      <Text style={styles.modalStatUnit}>/km</Text>
+                    </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Mode</Text>
+                      <Text style={styles.modalStatValue}>{runData.workout_type || 'Solo'}</Text>
                     </View>
                   </View>
                 </>
-              )}
+              ) : null}
 
-              {/* ── HEART RATE SECTION ── */}
-              {(runData.average_bpm && runData.average_bpm > 0) && (
+              {description && (
                 <>
-                  <Text style={styles.modalSectionLabel}>Heart Rate</Text>
-                  <View style={styles.modalStatsGrid}>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Average</Text>
-                      <Text style={styles.modalStatValue}>{runData.average_bpm}</Text>
-                      <Text style={styles.modalStatUnit}>BPM</Text>
-                    </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Peak</Text>
-                      <Text style={[styles.modalStatValue, { color: '#FF4444' }]}>{runData.max_bpm || 0}</Text>
-                      <Text style={styles.modalStatUnit}>BPM</Text>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* ── DESCRIPTION ── */}
-              {runData.description && runData.description.trim() && (
-                <>
-                  <Text style={styles.modalSectionLabel}>Description</Text>
+                  <Text style={styles.modalSectionLabel}>Notes</Text>
                   <View style={styles.modalDescriptionBox}>
-                    <Text style={styles.modalDescriptionText}>{runData.description}</Text>
+                    <Text style={styles.modalDescriptionText}>{description}</Text>
                   </View>
                 </>
               )}
-
-              {/* ── DATE ── */}
-              <Text style={styles.modalDateText}>{formattedDate}</Text>
             </ScrollView>
           </LinearGradient>
         </Modal>
 
-        {/* ── MENU MODAL (Edit/Delete) ── */}
-        <Modal
-          visible={menuModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setMenuModalVisible(false)}
-        >
-          <TouchableOpacity
-            style={styles.menuBackdrop}
-            activeOpacity={1}
-            onPress={() => setMenuModalVisible(false)}
-          >
+        {/* MENU MODAL */}
+        <Modal visible={menuModalVisible} transparent animationType="fade" onRequestClose={() => setMenuModalVisible(false)}>
+          <TouchableOpacity style={styles.menuBackdrop} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
             <View style={styles.menuContainer}>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={handleEditPost}
-              >
-                <MaterialCommunityIcons name="pencil" size={20} color="#C8FF00" />
-                <Text style={styles.menuItemText}>Edit Post</Text>
-              </TouchableOpacity>
+              
+              {!isRoutine && (
+                <>
+                  <TouchableOpacity style={styles.menuItem} onPress={handleEditPost}>
+                    <MaterialCommunityIcons name="pencil" size={20} color="#C8FF00" />
+                    <Text style={styles.menuItemText}>Edit Post</Text>
+                  </TouchableOpacity>
+                  <View style={styles.menuDivider} />
+                </>
+              )}
 
-              <View style={styles.menuDivider} />
-
-              <TouchableOpacity
-                style={[styles.menuItem, styles.menuItemDanger]}
-                onPress={handleDeletePost}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color="#FF4444" />
-                ) : (
-                  <MaterialCommunityIcons name="trash-can" size={20} color="#FF4444" />
-                )}
-                <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>
-                  Delete Post
-                </Text>
+              <TouchableOpacity style={[styles.menuItem, styles.menuItemDanger]} onPress={handleDeletePost} disabled={isDeleting}>
+                {isDeleting ? <ActivityIndicator size="small" color="#FF4444" /> : <MaterialCommunityIcons name="trash-can" size={20} color="#FF4444" />}
+                <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>Delete Post</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </Modal>
+
       </View>
     </View>
   );
-};
-
-export default ActivityFeed;
+}
 
 const styles = StyleSheet.create({
-  rootWrapper: {
-    marginBottom: 20,
-  },
-  sectionLabel: {
-    fontFamily: 'Montserrat_800ExtraBold',
-    fontSize: 16,
-    color: '#fff',
-    textTransform: 'uppercase',
-    marginLeft: 20,
-    marginBottom: 15,
-  },
-  container: {
-    backgroundColor: '#191916',
-    paddingVertical: 18,
-    borderRadius: 2,
-  },
-  userHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-  },
-  username: {
-    color: '#FFFFFF',
-    fontFamily: 'Montserrat_800ExtraBold',
-    fontSize: 12,
-  },
-  timestamp: {
-    color: '#666',
-    fontSize: 10,
-    marginTop: 1,
-  },
-  workoutTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Montserrat_900Black',
-    paddingHorizontal: 20,
-    marginBottom: 18,
-    marginTop: 7,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  statItem: {
-    flex: 1,
-  },
-  statLabel: {
-    color: '#888',
-    fontSize: 11,
-    fontFamily: 'Montserrat_600SemiBold',
-    marginBottom: 4,
-  },
-  statValue: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: 'Montserrat_800ExtraBold',
-  },
-  xpContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  gemIcon: {
-    width: 16,
-    height: 16,
-    marginLeft: 2,
-  },
-  congratsBanner: {
-    backgroundColor: '#797979',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginHorizontal: 20,
-    borderRadius: 8,
-    marginBottom: 25,
-  },
-  trophyIconImage: {
-    width: 30,
-    height: 30,
-    marginRight: 15,
-    resizeMode: 'contain',
-  },
-  congratsText: {
-    color: '#EAEAEA',
-    fontSize: 12,
-    flex: 1,
-    fontFamily: 'Montserrat_200Regular',
-    lineHeight: 18,
-  },
-  galleryImage: {
-    width: IMAGE_WIDTH,
-    height: 290,
-    borderRadius: 10,
-    marginRight: IMAGE_MARGIN,
-  },
-  paginationRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 5,
-    marginTop: 20,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#333',
-  },
-  activeDot: {
-    backgroundColor: '#EEE',
-    width: 12,
-  },
+  rootWrapper: { marginBottom: 20 },
+  sectionLabel: { fontFamily: 'Montserrat_800ExtraBold', fontSize: 16, color: '#fff', textTransform: 'uppercase', marginLeft: 20, marginBottom: 15 },
+  container: { backgroundColor: '#191916', paddingVertical: 18, borderRadius: 2 },
+  userHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
+  userInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  avatar: { width: 42, height: 42, borderRadius: 10 },
+  username: { color: '#FFFFFF', fontFamily: 'Montserrat_800ExtraBold', fontSize: 12 },
+  timestamp: { color: '#666', fontSize: 10, marginTop: 1 },
+  workoutTitle: { color: '#FFFFFF', fontSize: 18, fontFamily: 'Montserrat_900Black', paddingHorizontal: 20, marginTop: 7 },
+  workoutDescription: { color: '#AAAAAA', fontSize: 12, fontFamily: 'Montserrat_500Medium', paddingHorizontal: 20, marginTop: 4, marginBottom: 10 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginVertical: 15 },
+  statItem: { flex: 1 },
+  statLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 },
+  statValue: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat_800ExtraBold' },
+  galleryImage: { width: IMAGE_WIDTH, height: 290, borderRadius: 10, marginRight: IMAGE_MARGIN },
+  paginationRow: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 20 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#333' },
+  activeDot: { backgroundColor: '#EEE', width: 12 },
+  seeMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8, backgroundColor: 'rgba(200, 255, 0, 0.05)' },
+  seeMoreText: { color: '#C8FF00', fontSize: 13, fontFamily: 'Montserrat_700Bold', marginRight: 8 },
   
-  // ── SEE MORE BUTTON ──
-  seeMoreBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#C8FF00',
-    borderRadius: 8,
-    backgroundColor: 'rgba(200, 255, 0, 0.05)',
-  },
-  seeMoreText: {
-    color: '#C8FF00',
-    fontSize: 13,
-    fontFamily: 'Montserrat_700Bold',
-    marginRight: 8,
-  },
+  // MODAL
+  modalGradient: { flex: 1 },
+  modalContent: { paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 50 : 30, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
+  modalCloseBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { color: '#FFF', fontSize: 18, fontFamily: 'Montserrat_800ExtraBold', letterSpacing: 1 },
+  modalRunTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat_900Black', paddingHorizontal: 20, marginTop: 20, marginBottom: 25 },
+  modalStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },
+  modalStatBox: { flex: 1, minWidth: '48%', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
+  modalStatLabel: { color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 },
+  modalStatValue: { color: '#C8FF00', fontSize: 18, fontFamily: 'Montserrat_900Black' },
+  modalStatUnit: { color: '#666', fontSize: 9, fontFamily: 'Montserrat_500Medium', marginTop: 2 },
+  modalSectionLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 20, marginTop: 25, marginBottom: 12 },
+  modalDescriptionBox: { backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 16, marginHorizontal: 20, borderWidth: 1, borderColor: '#333' },
+  modalDescriptionText: { color: '#DDD', fontSize: 13, lineHeight: 20, fontFamily: 'Montserrat_400Regular' },
+  modalMapImage: { width: '100%', height: 200, marginBottom: 20 },
 
-  // ── MODAL STYLES ──
-  modalGradient: {
-    flex: 1,
-  },
-  modalContent: {
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
-  modalCloseBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    color: '#FFF',
-    fontSize: 18,
-    fontFamily: 'Montserrat_800ExtraBold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  modalMapImage: {
-    width: '100%',
-    height: 200,
-    marginTop: 20,
-  },
-  modalRunTitle: {
-    color: '#FFF',
-    fontSize: 20,
-    fontFamily: 'Montserrat_900Black',
-    paddingHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 25,
-  },
-  modalSectionLabel: {
-    color: '#888',
-    fontSize: 11,
-    fontFamily: 'Montserrat_700Bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    paddingHorizontal: 20,
-    marginTop: 25,
-    marginBottom: 12,
-  },
-  modalStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  modalStatBox: {
-    flex: 1,
-    minWidth: '48%',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#333',
-    alignItems: 'center',
-  },
-  modalStatLabel: {
-    color: '#888',
-    fontSize: 10,
-    fontFamily: 'Montserrat_600SemiBold',
-    marginBottom: 4,
-  },
-  modalStatValue: {
-    color: '#C8FF00',
-    fontSize: 18,
-    fontFamily: 'Montserrat_900Black',
-  },
-  modalStatUnit: {
-    color: '#666',
-    fontSize: 9,
-    fontFamily: 'Montserrat_500Medium',
-    marginTop: 2,
-  },
-  modalDescriptionBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 10,
-    padding: 16,
-    marginHorizontal: 20,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  modalDescriptionText: {
-    color: '#DDD',
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: 'Montserrat_400Regular',
-  },
-  modalDateText: {
-    color: '#666',
-    fontSize: 11,
-    fontFamily: 'Montserrat_500Medium',
-    textAlign: 'center',
-    marginTop: 30,
-    marginBottom: 10,
-  },
+  // Exercise Breakdown (Routines)
+  exerciseBreakdownCard: { backgroundColor: '#1A1A1A', marginHorizontal: 20, borderRadius: 10, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: '#333' },
+  exerciseBreakdownTitle: { color: '#FFF', fontFamily: 'Montserrat_800ExtraBold', fontSize: 16, marginBottom: 4 },
+  exerciseBreakdownStats: { color: '#CCFF00', fontFamily: 'Montserrat_600SemiBold', fontSize: 11, marginBottom: 15 },
+  setRowHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#333', paddingBottom: 6, marginBottom: 8 },
+  setRowHeaderText: { flex: 1, color: '#888', fontFamily: 'Montserrat_600SemiBold', fontSize: 10, textAlign: 'center' },
+  setRow: { flexDirection: 'row', paddingVertical: 6 },
+  setRowText: { flex: 1, color: '#DDD', fontFamily: 'Montserrat_500Medium', fontSize: 12, textAlign: 'center' },
 
-  // ── MENU MODAL STYLES ──
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  menuContainer: {
-    backgroundColor: '#191916',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
-    paddingTop: 10,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  menuItemDanger: {
-    opacity: 0.9,
-  },
-  menuItemText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Montserrat_600SemiBold',
-  },
-  menuItemTextDanger: {
-    color: '#FF4444',
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#333',
-    marginHorizontal: 20,
-  },
+  // MENU
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'flex-end' },
+  menuContainer: { backgroundColor: '#191916', borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: Platform.OS === 'ios' ? 30 : 20, paddingTop: 10 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
+  menuItemDanger: { opacity: 0.9 },
+  menuItemText: { color: '#FFFFFF', fontSize: 16, fontFamily: 'Montserrat_600SemiBold' },
+  menuItemTextDanger: { color: '#FF4444' },
+  menuDivider: { height: 1, backgroundColor: '#333', marginHorizontal: 20 },
 });

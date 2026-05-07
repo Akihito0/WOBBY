@@ -1,6 +1,4 @@
-import 'dotenv/config';
-
-export default {
+module.exports = {
   expo: {
     name: "Wobby",
     slug: "Wobby",
@@ -16,7 +14,7 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: process.env.EXPO_PUBLIC_IOS_BUNDLE_ID || "com.tweetie.wobby", // <-- DYNAMIC ID MAGIC!
+      bundleIdentifier: process.env.EXPO_PUBLIC_IOS_BUNDLE_ID || "com.tweetie.wobby",
       entitlements: {
         "com.apple.developer.healthkit": true
       },
@@ -30,7 +28,7 @@ export default {
     },
     android: {
       package: "com.tweetie.wobby",
-      targetSdkVersion: 35,
+      // Removed minSdkVersion and targetSdkVersion from here!
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./src/assets/android-icon-foreground.png"
@@ -59,6 +57,16 @@ export default {
         "@rnmapbox/maps",
         {
           RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN
+        }
+      ],
+      // Add the build properties plugin down here instead!
+      [
+        "expo-build-properties",
+        {
+          android: {
+            minSdkVersion: 26,
+            targetSdkVersion: 35
+          }
         }
       ]
     ],

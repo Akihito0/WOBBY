@@ -25,12 +25,14 @@ import { supabase } from "../supabase";
 
 // ─── COMPONENT ─────────────────────────────────────────────────────────────
 export default function UserDashboard() {
-  const [activeSession, setActiveSession] = useState<string | null>(null);
   const [bmiModalVisible, setBmiModalVisible] = useState(false);
   const [refreshStats, setRefreshStats] = useState(0);
   const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  
+  // State for both runs and routines
   const [latestRun, setLatestRun] = useState<any>(null);
+  const [latestRoutine, setLatestRoutine] = useState<any>(null);
   const navigation = useNavigation<any>();
 
   const [fontsLoaded] = useFonts({
@@ -60,12 +62,13 @@ export default function UserDashboard() {
     }
   }, []);
 
-  const fetchLatestRun = useCallback(async () => {
+  const fetchLatestActivity = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      // 1. Fetch latest run
+      const { data: runData, error: runError } = await supabase
         .from('runs')
         .select('*')
         .eq('user_id', user.id)
@@ -73,19 +76,43 @@ export default function UserDashboard() {
         .limit(1)
         .single();
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setLatestRun(data || null);
+      if (runError && runError.code !== 'PGRST116') console.log(runError);
+
+      // 2. Fetch latest routine
+      const { data: routineData, error: routineError } = await supabase
+        .from('completed_routines')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (routineError && routineError.code !== 'PGRST116') console.log(routineError);
+
+      // 3. Compare timestamps
+      const runTime = runData ? new Date(runData.completed_at).getTime() : 0;
+      const routineTime = routineData ? new Date(routineData.created_at).getTime() : 0;
+
+      if (runTime > routineTime) {
+        setLatestRun(runData);
+        setLatestRoutine(null);
+      } else if (routineTime > runTime) {
+        setLatestRoutine(routineData);
+        setLatestRun(null);
+      } else {
+        setLatestRun(null);
+        setLatestRoutine(null);
+      }
     } catch (error: any) {
-      console.log('Error fetching latest run:', error.message);
-      setLatestRun(null);
+      console.log('Error fetching latest activity:', error.message);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
-      fetchLatestRun();
-    }, [fetchProfile, fetchLatestRun])
+      fetchLatestActivity();
+    }, [fetchProfile, fetchLatestActivity])
   );
 
   if (!fontsLoaded) return null;
@@ -126,28 +153,26 @@ export default function UserDashboard() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ════════ STREAK — always shown ════════ */}
         <StreakCalendar navigation={navigation} />
 
-        {/* ════════ STATS CARDS — always shown ════════ */}
         <View style={styles.separator}>
           <StatsCards onBMIPress={() => setBmiModalVisible(true)} />
         </View>
 
-        {latestRun ? (
-          // ── USER HAS A POST ──────────────────────────────────────────
+        {/* Pass either runData OR routineData */}
+        {latestRun || latestRoutine ? (
           <>
             <ActivityFeed
               username={username}
               avatarUrl={avatarUrl}
               runData={latestRun}
-              onRefresh={fetchLatestRun}
+              routineData={latestRoutine}
+              onRefresh={fetchLatestActivity}
               navigation={navigation}
             />
             <LeaderboardPodium />
           </>
         ) : (
-          // ── USER HAS NO POST ─────────────────────────────────────────
           <>
             <MotivationBanner />
             <TargetedSessions />
@@ -157,7 +182,6 @@ export default function UserDashboard() {
         )}
       </ScrollView>
 
-      {/* BMI Modal */}
       <BMIModal
         isVisible={bmiModalVisible}
         onClose={() => setBmiModalVisible(false)}
@@ -169,7 +193,6 @@ export default function UserDashboard() {
   );
 }
 
-// ─── STYLES ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#121310" },
   scroll: {
@@ -178,7 +201,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: { paddingBottom: 48 },
 
-  // HEADER
   header: {
     position: "absolute", top: 0, left: 0, right: 0, zIndex: 100,
     backgroundColor: "#000",
@@ -234,31 +256,6 @@ const styles = StyleSheet.create({
     right: 5,
     borderWidth: 1,
     borderColor: "#000",
-  },
-
-  // SHARED
-  sectionLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 15,
-    color: "#fff",
-    textTransform: "uppercase",
-    marginLeft: 16,
-    marginBottom: 12,
-  },
-  seeAll: {
-    fontFamily: "Barlow_400Regular",
-    fontSize: 13,
-    color: "#84cc16",
-    fontWeight: "600",
-  },
-  hrule: {
-    height: 1,
-    backgroundColor: "#1e1e1e",
-  },
-  section: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 8,
   },
   separator: {
     marginTop: 20,

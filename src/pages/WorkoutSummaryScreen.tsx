@@ -7,27 +7,58 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-
-// 👇 ADDED: Import BarChart for the vertical Apple Health style
 import { BarChart } from 'react-native-gifted-charts';
+import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../supabase';
+import { uploadRunMedia } from '../services/runUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Helper to convert image URI to base64 for uploading
+const uriToBase64 = async (uri: string): Promise<string | null> => {
+  try {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error('Failed to read blob as data URL'));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(xhr.response);
+      };
+      xhr.onerror = reject;
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+  } catch (error) {
+    console.error('Error in uriToBase64:', error);
+    return null;
+  }
+};
 
 export default function WorkoutSummaryScreen({ route, navigation }: any) {
   const [workoutTitle, setWorkoutTitle] = useState('Chest Day!');
   const [workoutNotes, setWorkoutNotes] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Receives the live exercises array with the newly injected HR data
-  const exercises = route.params?.exercises || [
-    { name: 'Push ups', duration: '30 minutes', reps: 115, sets: 3, avgWeight: 'None' },
-    { name: 'Bench Press', duration: '30 minutes', reps: 115, sets: 3, avgWeight: 'None' },
-    { name: 'Tricep Dips', duration: '30 minutes', reps: 115, sets: 3, avgWeight: 'None' },
-  ];
+  // Extract navigation params
+  const routineType = route.params?.routineType || 'Workout';
+  const elapsedSeconds = route.params?.elapsedSeconds || 0;
+  const exercises = route.params?.exercises || [];
 
-  // 👇 ADDED: Extract and aggregate HR data into stacked vertical bars
   const { stackedData, workoutStats } = useMemo(() => {
     let dataPoints: any[] = [];
     let sum = 0;
@@ -43,7 +74,6 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
             if (hr > max) max = hr;
             if (hr < min) min = hr;
 
-            // Force a minimum pill height of 8 so flat data never renders as dots
             const pillHeight = 8;
             const baseValue = Math.max(0, hr - pillHeight);
 
@@ -52,7 +82,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
                 { value: baseValue, color: 'transparent' },
                 { value: pillHeight, color: '#FF4444', borderRadius: 4, marginBottom: 2 }
               ],
-              rawHR: hr // Store raw value for the tooltip
+              rawHR: hr
             });
           }
         });
@@ -69,14 +99,12 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     };
   }, [exercises]);
 
-  // Precise math to prevent the right-side overflow of the chart container
   const chartWidth = SCREEN_WIDTH - 80;
   const barWidth = 6;
   const numBars = stackedData.length || 1;
-  const availableWidth = chartWidth - 30; // Buffer to stop the right edge from clipping
+  const availableWidth = chartWidth - 30;
   const safeSpacing = numBars > 1 ? (availableWidth - (numBars * barWidth)) / (numBars - 1) : 0;
 
-  // 👇 ADDED: Memorized pointer config for the tooltip
   const chartPointerConfig = useMemo(() => ({
     pointerStripHeight: 150,
     pointerStripColor: '#FF4444',
@@ -89,7 +117,6 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     autoAdjustPointerLabelPosition: true,
     pointerLabelComponent: (items: any) => {
       if (!items || !items[0]) return null;
-      // Pull the rawHR we injected to ensure the tooltip shows the correct total BPM
       const val = items[0].rawHR || items[0].value;
       return (
         <View style={styles.tooltipContainer}>
@@ -99,6 +126,24 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     },
   }), []);
 
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow access to your photos to add one.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
   const handleDiscard = () => {
     navigation.reset({
       index: 0,
@@ -106,12 +151,63 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     });
   };
 
-  const handleSave = () => {
-    // TODO: Create logic to push this workout payload to the Dashboard (Home) feed
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'WorkoutMain' }],
-    });
+  const handleSave = async () => {
+    if (!workoutTitle.trim()) {
+      Alert.alert('Title Required', 'Please enter a title for your workout.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user?.id) {
+        Alert.alert('Error', 'Could not authenticate user. Please log in again.');
+        setIsSaving(false);
+        return;
+      }
+
+      let uploadedImageUrl = null;
+
+      // 1. Upload image if the user selected one
+      if (selectedImage) {
+        const base64Data = await uriToBase64(selectedImage);
+        if (base64Data) {
+          const fileName = `routine-${Date.now()}.jpg`;
+          uploadedImageUrl = await uploadRunMedia(session.user.id, base64Data, fileName, 'image/jpeg');
+        }
+      }
+
+      // 2. Save everything to completed_routines
+      const { error } = await supabase.from('completed_routines').insert([
+        {
+          user_id: session.user.id,
+          routine_type: routineType,
+          caption: workoutTitle.trim(),
+          notes: workoutNotes.trim(),
+          media_url: uploadedImageUrl,
+          total_duration: elapsedSeconds,
+          exercises_data: exercises,
+        }
+      ]);
+
+      if (error) {
+        Alert.alert('Error', `Failed to save workout: ${error.message}`);
+        setIsSaving(false);
+        return;
+      }
+
+      Alert.alert('Success! 💪', 'Your workout has been saved to your vault.');
+      setIsSaving(false);
+      
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'AppTabs', params: { screen: 'Home' } }], // Navigate to dashboard
+      });
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'An unexpected error occurred while saving.');
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -156,9 +252,15 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         </View>
 
         {/* MEDIA UPLOAD BOX */}
-        <TouchableOpacity style={styles.uploadBox} activeOpacity={0.7}>
-          <Ionicons name="camera-outline" size={32} color="#00BFFF" />
-          <Text style={styles.uploadText}>Add Photos/Videos</Text>
+        <TouchableOpacity style={styles.uploadBox} activeOpacity={0.7} onPress={handlePickImage}>
+          {selectedImage ? (
+            <Image source={{ uri: selectedImage }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
+          ) : (
+            <>
+              <Ionicons name="camera-outline" size={32} color="#00BFFF" />
+              <Text style={styles.uploadText}>Add Photo</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* EXERCISES LIST */}
@@ -199,10 +301,6 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
                 
                 <View style={styles.exerciseStatsRow}>
                   <View style={styles.statCol}>
-                    <Text style={styles.statLabel}>Duration</Text>
-                    <Text style={styles.statValue}>{item.duration || '-'}</Text>
-                  </View>
-                  <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Reps</Text>
                     <Text style={styles.statValue}>
                       {Array.isArray(item.sets) ? item.sets.reduce((acc: number, s: any) => acc + (Number(s.reps) || 0), 0) : (item.reps || 0)}
@@ -237,7 +335,6 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
                         <Text style={[styles.statValue, {color: '#FF4444'}]}>{exerciseMaxHR} <Text style={{fontSize: 10, color: '#888'}}>BPM</Text></Text>
                       </View>
                       <View style={styles.statCol} /> 
-                      <View style={styles.statCol} /> 
                     </View>
                   </>
                 )}
@@ -247,7 +344,6 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           );
         })}
 
-        {/* 👇 ADDED: Global Workout Heart Rate Trend Chart moved to the bottom */}
         {stackedData.length > 0 && (
           <View style={styles.hrChartContainer}>
             <View style={styles.hrChartHeader}>
@@ -287,16 +383,22 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           style={styles.discardButton} 
           onPress={handleDiscard} 
           activeOpacity={0.8}
+          disabled={isSaving}
         >
           <Text style={styles.discardText}>Discard</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={styles.saveButton} 
+          style={[styles.saveButton, isSaving && { opacity: 0.7 }]} 
           onPress={handleSave} 
           activeOpacity={0.8}
+          disabled={isSaving}
         >
-          <Text style={styles.saveText}>Save Workout</Text>
+          {isSaving ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text style={styles.saveText}>Save Workout</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -429,8 +531,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 12,
   },
-
-  // 👇 ADDED: Styles for the global HR Chart
   hrChartContainer: {
     backgroundColor: '#111111',
     borderRadius: 12,
@@ -479,7 +579,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Montserrat-Bold',
   },
-
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',

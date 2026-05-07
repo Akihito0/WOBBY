@@ -15,25 +15,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
 import Modal from 'react-native-modal';
 
-// 👇 ADDED: Import the health context and native module
+// Health context and native module
 import { useHealth } from '../context/HealthContext';
 import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// List of potential server IPs to try
-// 192.168.44.13: Your current Wi-Fi IP
-// 192.168.137.1: Standard Windows Hotspot/Shared connection IP
-const SERVER_IPS = [
-  '192.168.1.18',
-  '192.168.44.13',
-  '192.168.137.1',
-  '192.168.1.15',
-  '10.124.14.51', 
-  '10.26.208.51', 
-  '192.168.1.58', 
-  'localhost']; 
-const PORT = '8765';
 
 type Point = { x: number; y: number; conf: number };
 export type Pose = {
@@ -61,7 +47,7 @@ const COLLAPSED_HEIGHT = 140;
 const EXPANDED_HEIGHT = 190;
 
 export default function ActiveWorkoutScreen({ navigation, route }: any) {
-  // 👇 ADDED: Heart Rate States
+  // Heart Rate States
   const { heartRate: contextHR } = useHealth();
   const [activeHR, setActiveHR] = useState<number | null>(null);
   const [sessionHRData, setSessionHRData] = useState<number[]>([]);
@@ -89,7 +75,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const ws = useRef<WebSocket | null>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
 
-  // 👇 ADDED: Aggressive 2-second Polling for Live Heart Rate
+  // Aggressive 2-second Polling for Live Heart Rate
   useEffect(() => {
     let hrIntervalId: ReturnType<typeof setInterval>;
 
@@ -122,7 +108,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const displayHR = activeHR !== null ? activeHR : contextHR;
 
-  // 👇 ADDED: Calculate session stats for the finish screen
+  // Calculate session stats for the finish screen
   const sessionStats = {
     avg: sessionHRData.length > 0 ? Math.round(sessionHRData.reduce((a, b) => a + b, 0) / sessionHRData.length) : 0,
     max: sessionHRData.length > 0 ? Math.max(...sessionHRData) : 0,
@@ -151,91 +137,71 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         audio: false,
         video: { 
           facingMode: isFront ? 'user' : 'environment', 
-          frameRate: 20, // Lowered from 30 to reduce bandwidth on hotspot
-          width: 480,    // Lowered from 640 for less data processing
-          height: 360    // Lowered from 480
+          frameRate: 20, 
+          width: 480,    
+          height: 360    
         }
       });
       setLocalStream(stream);
 
-      // Attempt to connect to potential server IPs
-      let connected = false;
-      for (const ip of SERVER_IPS) {
-        if (connected) break;
+      // Connect directly using Environment Variables (ngrok or Wi-Fi)
+      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.18:8765';
+      console.log(`Connecting instantly to signaling server at: ${serverUrl}`);
+      
+      const socket = new WebSocket(serverUrl);
+      ws.current = socket;
+
+      socket.onopen = async () => {
+        setIsConnected(true);
+        console.log("WebSocket Connected!");
         
-        console.log(`Connecting to ${ip}...`);
-        const socket = new WebSocket(`ws://${ip}:${PORT}`);
+        pc.current = new RTCPeerConnection({ iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          ]
+        }) as any; 
         
-        const connectionTimeout = setTimeout(() => {
-          if (socket.readyState !== WebSocket.OPEN) {
-            socket.close();
+        if (!pc.current) return;
+        
+        (pc.current as any).onicecandidate = (event: any) => {
+          if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+              type: 'ice-candidate',
+              candidate: event.candidate,
+            }));
           }
-        }, 3000);
+        };
 
-        await new Promise<void>((resolve) => {
-          socket.onopen = async () => {
-            clearTimeout(connectionTimeout);
-            ws.current = socket;
-            connected = true;
-            setIsConnected(true);
-            
-            pc.current = new RTCPeerConnection({ iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              ]
-            }) as any; 
-            
-            if (!pc.current) return;
-            
-            (pc.current as any).onicecandidate = (event: any) => {
-              if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({
-                  type: 'ice-candidate',
-                  candidate: event.candidate,
-                }));
-              }
-            };
+        stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
 
-            stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
-
-            const offer = await pc.current.createOffer({});
-            await pc.current.setLocalDescription(offer);
-            
-            const sendSDP = () => {
-                if(ws.current?.readyState === WebSocket.OPEN) {
-                    ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-                }
-            };
-
-            if (pc.current.iceGatheringState === 'complete') {
-                sendSDP();
-            } else {
-                // @ts-ignore: React Native WebRTC types are missing onicegatheringstatechange
-                pc.current.onicegatheringstatechange = () => {
-                    if (pc.current?.iceGatheringState === 'complete') sendSDP();
-                };
+        const offer = await pc.current.createOffer({});
+        await pc.current.setLocalDescription(offer);
+        
+        const sendSDP = () => {
+            if(ws.current?.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
             }
-            resolve();
-          };
+        };
 
-          socket.onerror = () => {
-            clearTimeout(connectionTimeout);
-            resolve();
-          };
-          
-          socket.onclose = () => {
-            clearTimeout(connectionTimeout);
-            resolve();
-          };
-        });
-      }
+        if (pc.current.iceGatheringState === 'complete') {
+            sendSDP();
+        } else {
+            // @ts-ignore
+            pc.current.onicegatheringstatechange = () => {
+                if (pc.current?.iceGatheringState === 'complete') sendSDP();
+            };
+        }
+      };
 
-      if (!ws.current) {
-        console.error("Failed to connect to any server IP");
-        return;
-      }
+      socket.onerror = (e) => {
+        console.log('WebSocket Error:', e);
+      };
+      
+      socket.onclose = () => {
+        setIsConnected(false);
+      };
 
-      ws.current.onmessage = async (e) => {
+      socket.onmessage = async (e) => {
         const data = JSON.parse(e.data);
         if (data.type === 'answer') {
           await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
@@ -292,7 +258,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         }
       };
 
-      ws.current.onclose = () => setIsConnected(false);
     } catch (err) {
       console.log('WebRTC Error:', err);
     }
@@ -305,9 +270,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', (e: any) => {
-      // If the workout has started and we haven't reached target reps, and we aren't already showing a modal
       if (isWorkoutStarted && reps < targetReps && !showIncompleteModal && !showFinishedModal) {
-        // Only block if it's a back action
         if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
             e.preventDefault();
             setShowIncompleteModal(true);
@@ -339,7 +302,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   );
 
   const isLegVisible = (pose: any) => {
-    // Check if at least one leg set (hip to knee) is visible enough
     if (!pose) return false;
     const leftLeg = pose.leftHip?.conf > 0.3 && pose.leftKnee?.conf > 0.3;
     const rightLeg = pose.rightHip?.conf > 0.3 && pose.rightKnee?.conf > 0.3;
@@ -352,13 +314,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
     const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
 
-    // If we can't see the specific parts for the exercise, warn the user
     if (leftElbowAngle === null && rightElbowAngle === null) {
       setFormFeedback(prev => prev !== 'Arms not visible' ? 'Arms not visible' : prev);
       return;
     }
 
-    // Use whichever arm is visible, or the average if both are
     let avgElbowAngle = 0;
     if (leftElbowAngle !== null && rightElbowAngle !== null) {
       avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
@@ -387,18 +347,15 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       setFormFeedback(prev => prev !== msg ? msg : prev);
     };
 
-    // LEG VISIBILITY WARNING (Critical for horizontal exercises like Pushups)
     if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
        updateFeedback('Move back - show legs');
-       // We still try to count if arms are visible, but warn user
     }
 
-    // Relaxed symmetry check: if one arm is missing, we still count based on the other
     const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null) 
       ? Math.abs(leftElbowAngle - rightElbowAngle) 
       : 0;
     
-    const goodForm = elbowSymmetry < 45; // Increased tolerance
+    const goodForm = elbowSymmetry < 45; 
 
     if (goodForm) {
       consecutiveGoodFormFrames.current += 1;
@@ -410,7 +367,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     if (consecutiveGoodFormFrames.current < 2) return;
 
     if (isPushExercise) {
-      // PUSH LOGIC (Bench/Pushup/Dips)
       if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
         exercisePhaseRef.current = 'down';
         updateFeedback('Go lower! ✓');
@@ -420,13 +376,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         exercisePhaseRef.current = 'up';
         updateFeedback('Rep counted! ✓');
         
-        // Check if target is reached
         if (targetReps > 0 && newReps >= targetReps) {
           setShowFinishedModal(true);
         }
       }
     } else {
-      // PULL LOGIC (Curls)
       if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
         exercisePhaseRef.current = 'up';
         updateFeedback('Up position! ✓');
@@ -436,7 +390,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         exercisePhaseRef.current = 'down';
         updateFeedback('Rep counted! ✓');
 
-        // Check if target is reached
         if (targetReps > 0 && newReps >= targetReps) {
           setShowFinishedModal(true);
         }
@@ -463,9 +416,9 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           incomplete: isIncomplete, 
           exerciseId, 
           setId,
-          // 👇 ADDED: Pass the captured stats safely back to the next screen!
           avgHR: sessionStats.avg,
-          maxHR: sessionStats.max
+          maxHR: sessionStats.max,
+          duration: time,
         },
         merge: true,
       });
@@ -597,8 +550,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                         incomplete: isIncomplete, 
                         exerciseId, 
                         setId,
-                        avgHR: sessionStats.avg, // Passed
-                        maxHR: sessionStats.max  // Passed
+                        avgHR: sessionStats.avg, 
+                        maxHR: sessionStats.max  
                       },
                       merge: true,
                     });
@@ -669,8 +622,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                         incomplete: isIncomplete, 
                         exerciseId, 
                         setId,
-                        avgHR: sessionStats.avg, // Passed
-                        maxHR: sessionStats.max  // Passed
+                        avgHR: sessionStats.avg, 
+                        maxHR: sessionStats.max  
                       },
                       merge: true,
                     });
@@ -728,7 +681,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           <View style={styles.darkStatsCard}>
             <View style={{flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 15}}>
               
-              {/* 👇 ADDED: Live Heart Rate UI */}
+              {/* Live Heart Rate UI */}
               <View style={{ position: 'absolute', left: 0, top: 0, flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
                 <Text style={{ color: '#FF4444', fontSize: 12, fontFamily: 'Barlow-Bold' }}>
