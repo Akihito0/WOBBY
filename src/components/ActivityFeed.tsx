@@ -12,9 +12,13 @@ import {
   Platform,
   Modal,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
+
 
 const { width } = Dimensions.get('window');
 
@@ -48,6 +52,7 @@ const formatDate = (dateString: string): string => {
 };
 
 interface RunData {
+  id?: string;
   title: string;
   description?: string;
   distance: number;
@@ -66,9 +71,23 @@ interface RunData {
   route_map_url?: string;
 }
 
-const ActivityFeed = ({ username = 'Guest', avatarUrl, runData }: { username?: string; avatarUrl?: string | null; runData?: RunData }) => {
+const ActivityFeed = ({ 
+  username = 'Guest', 
+  avatarUrl, 
+  runData,
+  onRefresh,
+  navigation,
+}: { 
+  username?: string; 
+  avatarUrl?: string | null; 
+  runData?: RunData;
+  onRefresh?: () => void;
+  navigation?: any;
+}) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [menuModalVisible, setMenuModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   // Use real media from run, or fallback to placeholder images
@@ -90,6 +109,73 @@ const ActivityFeed = ({ username = 'Guest', avatarUrl, runData }: { username?: s
     setCurrentIndex(Math.min(Math.max(index, 0), workoutGallery.length - 1));
   };
 
+  // ── DELETE POST ──
+  const handleDeletePost = async () => {
+    if (!runData?.id) {
+      Alert.alert('Error', 'Post ID not found');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        {
+          text: 'Delete',
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+              const { error } = await supabase
+                .from('runs')
+                .delete()
+                .eq('id', runData.id);
+
+              if (error) {
+                Alert.alert('Error', `Failed to delete post: ${error.message}`);
+                return;
+              }
+
+              Alert.alert('Success', 'Post deleted successfully');
+              setMenuModalVisible(false);
+              onRefresh?.();
+            } catch (err) {
+              Alert.alert('Error', 'An unexpected error occurred');
+              console.error('Delete error:', err);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
+  // ── UPDATE POST ──
+  const handleEditPost = () => {
+    if (!navigation) {
+      Alert.alert('Error', 'Navigation not available');
+      return;
+    }
+
+    if (!runData?.id) {
+      Alert.alert('Error', 'Post ID not found');
+      return;
+    }
+
+    // Navigate to Run screen with edit data
+    navigation.navigate('Workout', {
+  screen: 'RunScreen',
+  params: {
+    isEditing: true,
+    runDataToEdit: runData,
+  },
+});
+
+    setMenuModalVisible(false);
+  };
+
   // If no run data, show a placeholder or hide the component
   if (!runData) {
     return null;
@@ -107,13 +193,16 @@ const ActivityFeed = ({ username = 'Guest', avatarUrl, runData }: { username?: s
         {/* ── USER HEADER ── */}
         <View style={styles.userHeader}>
           <View style={styles.userInfo}>
-            <Image source={avatarUrl ? { uri: avatarUrl } : require('../assets/cashew.png')} style={styles.avatar} />
+            <Image source={avatarUrl ? { uri: avatarUrl } : require('../assets/user.png')} style={styles.avatar} />
             <View>
               <Text style={styles.username}>{username}</Text>
               <Text style={styles.timestamp}>{formattedDate}</Text>
             </View>
           </View>
-          <TouchableOpacity hitSlop={10}>
+          <TouchableOpacity 
+            hitSlop={10}
+            onPress={() => setMenuModalVisible(true)}
+          >
             <MaterialCommunityIcons name="dots-vertical" size={22} color="#A8A8A8" />
           </TouchableOpacity>
         </View>
@@ -317,6 +406,47 @@ const ActivityFeed = ({ username = 'Guest', avatarUrl, runData }: { username?: s
               <Text style={styles.modalDateText}>{formattedDate}</Text>
             </ScrollView>
           </LinearGradient>
+        </Modal>
+
+        {/* ── MENU MODAL (Edit/Delete) ── */}
+        <Modal
+          visible={menuModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.menuBackdrop}
+            activeOpacity={1}
+            onPress={() => setMenuModalVisible(false)}
+          >
+            <View style={styles.menuContainer}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={handleEditPost}
+              >
+                <MaterialCommunityIcons name="pencil" size={20} color="#C8FF00" />
+                <Text style={styles.menuItemText}>Edit Post</Text>
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuItemDanger]}
+                onPress={handleDeletePost}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#FF4444" />
+                ) : (
+                  <MaterialCommunityIcons name="trash-can" size={20} color="#FF4444" />
+                )}
+                <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>
+                  Delete Post
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </Modal>
       </View>
     </View>
@@ -580,5 +710,42 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 30,
     marginBottom: 10,
+  },
+
+  // ── MENU MODAL STYLES ──
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: '#191916',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingTop: 10,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  menuItemDanger: {
+    opacity: 0.9,
+  },
+  menuItemText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Montserrat_600SemiBold',
+  },
+  menuItemTextDanger: {
+    color: '#FF4444',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#333',
+    marginHorizontal: 20,
   },
 });

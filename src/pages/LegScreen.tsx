@@ -5,9 +5,6 @@ import {
   TextInput, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AddExerciseModal from '../components/AddExerciseModal';
-
-const { width } = Dimensions.get('window');
 
 type Set = { id: number; weight: string; reps: string };
 type Exercise = { id: number; name: string; sets: Set[]; expanded: boolean };
@@ -139,12 +136,7 @@ const LegScreen = ({ navigation }: any) => {
     );
   };
 
-  // Opens the name modal instead of immediately adding
-  const promptAddExercise = () => {
-    setNewExerciseName('');
-    setNameModalVisible(true);
-  };
-
+  
   const confirmAddExercise = () => {
     const trimmed = newExerciseName.trim();
     if (!trimmed) {
@@ -166,28 +158,6 @@ const LegScreen = ({ navigation }: any) => {
     );
   };
 
-  const confirmDelete = () => {
-    if (selectedToDelete.length === 0) {
-      setEditMode(false);
-      return;
-    }
-    Alert.alert(
-      'Delete Exercise',
-      'Are you sure you want to delete the selected exercise(s)?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setExercises(prev => prev.filter(ex => !selectedToDelete.includes(ex.id)));
-            setSelectedToDelete([]);
-            setEditMode(false);
-          },
-        },
-      ]
-    );
-  };
 
   // Start editing a cell
   const startEditCell = (exerciseId: number, setId: number, field: 'weight' | 'reps', currentValue: string) => {
@@ -236,22 +206,6 @@ const LegScreen = ({ navigation }: any) => {
         {/* Your Exercises Row */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Your Exercises</Text>
-          <TouchableOpacity onPress={() => {
-            if (editMode) {
-              confirmDelete();
-            } else {
-              setEditMode(true);
-              setSelectedToDelete([]);
-            }
-          }}>
-            {editMode ? (
-              <Text style={styles.deleteConfirmText}>
-                {selectedToDelete.length > 0 ? 'Delete' : 'Done'}
-              </Text>
-            ) : (
-              <Image source={require('../assets/pencil.png')} style={styles.pencilIcon} />
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* Exercise Cards */}
@@ -393,27 +347,8 @@ const LegScreen = ({ navigation }: any) => {
           </View>
         ))}
 
-        {/* Add Exercise Button */}
-        <TouchableOpacity style={styles.addExWrapper} onPress={promptAddExercise}>
-          <LinearGradient colors={['#2F4128', '#2F4128']} style={styles.addExBtn}>
-            <View>
-              <Image source={require('../assets/addd1.png')} style={styles.addIcon} />
-            </View>
-            <Text style={styles.addExText}>ADD EXERCISE</Text>
-          </LinearGradient>
-        </TouchableOpacity>
 
       </ScrollView>
-
-      {/* ── Add Exercise Modal ── */}
-      <AddExerciseModal
-        visible={nameModalVisible}
-        onClose={() => setNameModalVisible(false)}
-        onConfirm={confirmAddExercise}
-        value={newExerciseName}
-        onChangeText={setNewExerciseName}
-      />
-
     </View>
   );
 };
