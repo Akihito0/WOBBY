@@ -9,14 +9,12 @@ import {
     Animated,
     Easing,
     Platform,
-    PermissionsAndroid,
     Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BleManager, Device } from 'react-native-ble-plx';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// 👇 ADDED: Import your custom module instead of the old library
 import { requestPermissions } from '../../modules/wobby-health';
 
 interface DiscoveredDevice {
@@ -42,6 +40,7 @@ export default function AddDeviceModal({
     const [ripple2Value] = useState(new Animated.Value(0));
     const [ripple3Value] = useState(new Animated.Value(0));
     const [error, setError] = useState<string | null>(null);
+    
     const bleManager = useMemo(() => {
         try {
             return new BleManager();
@@ -51,7 +50,6 @@ export default function AddDeviceModal({
         }
     }, []);
 
-    // Cleanup BleManager on unmount
     useEffect(() => {
         return () => {
             if (bleManager) {
@@ -63,57 +61,27 @@ export default function AddDeviceModal({
     // Animate ripples
     useEffect(() => {
         if (visible && modalState === 'searching') {
-            // Ripple 1
             Animated.loop(
                 Animated.sequence([
-                    Animated.timing(ripple1Value, {
-                        toValue: 1,
-                        duration: 1500,
-                        easing: Easing.linear,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(ripple1Value, {
-                        toValue: 0,
-                        duration: 0,
-                        useNativeDriver: true,
-                    }),
+                    Animated.timing(ripple1Value, { toValue: 1, duration: 1500, easing: Easing.linear, useNativeDriver: true }),
+                    Animated.timing(ripple1Value, { toValue: 0, duration: 0, useNativeDriver: true }),
                 ])
             ).start();
 
-            // Ripple 2 - delayed start
             const timer2 = setTimeout(() => {
                 Animated.loop(
                     Animated.sequence([
-                        Animated.timing(ripple2Value, {
-                            toValue: 1,
-                            duration: 1500,
-                            easing: Easing.linear,
-                            useNativeDriver: true,
-                        }),
-                        Animated.timing(ripple2Value, {
-                            toValue: 0,
-                            duration: 0,
-                            useNativeDriver: true,
-                        }),
+                        Animated.timing(ripple2Value, { toValue: 1, duration: 1500, easing: Easing.linear, useNativeDriver: true }),
+                        Animated.timing(ripple2Value, { toValue: 0, duration: 0, useNativeDriver: true }),
                     ])
                 ).start();
             }, 500);
 
-            // Ripple 3 - more delayed start
             const timer3 = setTimeout(() => {
                 Animated.loop(
                     Animated.sequence([
-                        Animated.timing(ripple3Value, {
-                            toValue: 1,
-                            duration: 1500,
-                            easing: Easing.linear,
-                            useNativeDriver: true,
-                        }),
-                        Animated.timing(ripple3Value, {
-                            toValue: 0,
-                            duration: 0,
-                            useNativeDriver: true,
-                        }),
+                        Animated.timing(ripple3Value, { toValue: 1, duration: 1500, easing: Easing.linear, useNativeDriver: true }),
+                        Animated.timing(ripple3Value, { toValue: 0, duration: 0, useNativeDriver: true }),
                     ])
                 ).start();
             }, 1000);
@@ -125,7 +93,6 @@ export default function AddDeviceModal({
         }
     }, [visible, modalState, ripple1Value, ripple2Value, ripple3Value]);
 
-    // Search for available devices
     useEffect(() => {
         if (visible && modalState === 'searching') {
             searchForDevices();
@@ -135,46 +102,34 @@ export default function AddDeviceModal({
     const searchForDevices = async () => {
         try {
             setError(null);
-            const discoveredDevicesList: DiscoveredDevice[] = [];
-            const deviceMap = new Map<string, DiscoveredDevice>();
 
-            // Check platform
+            // 👇 PATH B: Android Health Connect Route 👇
             if (Platform.OS === 'android') {
-                // Request Bluetooth permissions on Android
-                try {
-                    const permissions = await PermissionsAndroid.requestMultiple([
-                        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-                        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-                        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                // Skip Bluetooth permissions completely. 
+                // Show the searching animation for 2.5 seconds, then display Health Connect.
+                setTimeout(() => {
+                    setDiscoveredDevices([
+                        { id: 'health-connect', name: 'Android Health Connect', icon: 'fitness' }
                     ]);
-
-                    if (
-                        permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] !==
-                        PermissionsAndroid.RESULTS.GRANTED
-                    ) {
-                        setError('Bluetooth permissions required');
-                        setModalState('found');
-                        return;
-                    }
-                } catch (err) {
-                    console.error('Permission error:', err);
-                    setError('Failed to request Bluetooth permissions');
                     setModalState('found');
-                    return;
-                }
+                }, 2500);
+                return; // Exit early so Android doesn't run iOS BLE code
             }
 
-            // If BleManager is not available, fall back to showing Apple Watch only
+            // 👇 PATH B: iOS Route 👇
             if (!bleManager) {
                 console.log('BleManager not available, falling back to Apple Watch');
-                setDiscoveredDevices([
-                    { id: 'apple-watch', name: 'Apple Watch', icon: 'watch' },
-                ]);
-                setModalState('found');
+                setTimeout(() => {
+                    setDiscoveredDevices([
+                        { id: 'apple-watch', name: 'Apple Watch', icon: 'watch' },
+                    ]);
+                    setModalState('found');
+                }, 2500);
                 return;
             }
 
-            // Start BLE scan
+            const deviceMap = new Map<string, DiscoveredDevice>();
+
             bleManager.startDeviceScan(null, null, (error: any, device: Device | null) => {
                 if (error) {
                     console.error('Scan error:', error);
@@ -186,30 +141,14 @@ export default function AddDeviceModal({
                     let icon: keyof typeof Ionicons.glyphMap = 'bluetooth';
                     let displayName = device.name;
 
-                    // Identify device type based on name patterns
-                    if (
-                        deviceName.includes('apple watch') ||
-                        deviceName.includes('watch')
-                    ) {
+                    if (deviceName.includes('apple watch') || deviceName.includes('watch')) {
                         icon = 'watch';
-                        displayName = device.name;
-                    } else if (
-                        deviceName.includes('airpods') ||
-                        deviceName.includes('beats')
-                    ) {
+                    } else if (deviceName.includes('airpods') || deviceName.includes('beats')) {
                         icon = 'headset';
-                        displayName = device.name;
-                    } else if (
-                        deviceName.includes('fitbit') ||
-                        deviceName.includes('garmin') ||
-                        deviceName.includes('polar') ||
-                        deviceName.includes('whoop')
-                    ) {
+                    } else if (deviceName.includes('fitbit') || deviceName.includes('garmin') || deviceName.includes('polar') || deviceName.includes('whoop')) {
                         icon = 'fitness';
-                        displayName = device.name;
                     }
 
-                    // Avoid duplicates
                     if (!deviceMap.has(device.id)) {
                         const discoveredDevice: DiscoveredDevice = {
                             id: device.id,
@@ -221,18 +160,16 @@ export default function AddDeviceModal({
                 }
             });
 
-            // Scan for 3 seconds
             setTimeout(() => {
                 bleManager.stopDeviceScan();
-
                 const devices = Array.from(deviceMap.values());
 
                 if (devices.length === 0) {
-                    setError('No devices found. Make sure your devices are nearby, turned on, and Bluetooth is enabled.');
+                    // Fallback just in case nothing is found on iOS
+                    setDiscoveredDevices([{ id: 'apple-watch', name: 'Apple Watch', icon: 'watch' }]);
                 } else {
                     setDiscoveredDevices(devices);
                 }
-
                 setModalState('found');
             }, 3000);
         } catch (err) {
@@ -258,9 +195,26 @@ export default function AddDeviceModal({
                 bleManager.stopDeviceScan();
             }
 
-            // Check if it's an Apple Watch
-            if (device.name.toLowerCase().includes('apple watch') || device.name.toLowerCase().includes('watch')) {
-                // 👇 UPDATED: Use your new custom module for permissions
+            // 👇 Handle Android Health Connect Pairing 👇
+            if (device.id === 'health-connect') {
+                try {
+                    console.log("Triggering Health Connect Bridge...");
+                    const success = await requestPermissions();
+                    if (success) {
+                        onPairDevice(device);
+                        handleClose();
+                    } else {
+                         setError('Failed to initialize Health Connect. Ensure it is installed.');
+                    }
+                } catch (error) {
+                    console.log('[ERROR] Cannot trigger Health Connect via custom module!', error);
+                    setError('Failed to connect to Health Connect.');
+                }
+                return;
+            }
+
+            // 👇 Handle Apple Watch Pairing 👇
+            if (device.id === 'apple-watch' || device.name.toLowerCase().includes('apple watch') || device.name.toLowerCase().includes('watch')) {
                 try {
                     const success = await requestPermissions();
                     if (success) {
@@ -274,11 +228,9 @@ export default function AddDeviceModal({
                     setError('Failed to connect Apple Watch. HealthKit might not be available.');
                 }
             } else if (bleManager) {
-                // Handle other BLE devices
                 try {
                     const peripheralDevice = await bleManager.connectToDevice(device.id);
                     await peripheralDevice.discoverAllServicesAndCharacteristics();
-
                     console.log(`Successfully paired with ${device.name}`);
                     onPairDevice(device);
                     handleClose();
@@ -287,7 +239,6 @@ export default function AddDeviceModal({
                     setError(`Failed to connect to ${device.name}. Please try again.`);
                 }
             } else {
-                // BleManager not available
                 onPairDevice(device);
                 handleClose();
             }
@@ -311,7 +262,6 @@ export default function AddDeviceModal({
                         end={{ x: 0.3, y: 0.5 }}
                         style={styles.container}
                       >
-                    {/* Header */}
                     <View style={styles.header}>
                         <TouchableOpacity
                                 onPress={handleClose}
@@ -323,78 +273,14 @@ export default function AddDeviceModal({
                                 />
                             </TouchableOpacity>
                             <Text style={styles.headerTitle}>Add New Device</Text>
-                            
-                        </View>
+                    </View>
                     
-
-                    {/* Content */}
                     {modalState === 'searching' ? (
                         <View style={styles.searchingContainer}>
                             <View style={styles.centerContainer}>
-                                {/* Ripple 1 */}
-                                <Animated.View
-                                    style={[
-                                        styles.ripple,
-                                        {
-                                            opacity: ripple1Value.interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [1, 0],
-                                            }),
-                                            transform: [
-                                                {
-                                                    scale: ripple1Value.interpolate({
-                                                        inputRange: [0, 1],
-                                                        outputRange: [0.6, 1.6],
-                                                    }),
-                                                },
-                                            ],
-                                        },
-                                    ]}
-                                />
-
-                                {/* Ripple 2 */}
-                                <Animated.View
-                                    style={[
-                                        styles.ripple,
-                                        {
-                                            opacity: ripple2Value.interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [1, 0],
-                                            }),
-                                            transform: [
-                                                {
-                                                    scale: ripple2Value.interpolate({
-                                                        inputRange: [0, 1],
-                                                        outputRange: [0.6, 1.6],
-                                                    }),
-                                                },
-                                            ],
-                                        },
-                                    ]}
-                                />
-
-                                {/* Ripple 3 */}
-                                <Animated.View
-                                    style={[
-                                        styles.ripple,
-                                        {
-                                            opacity: ripple3Value.interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [1, 0],
-                                            }),
-                                            transform: [
-                                                {
-                                                    scale: ripple3Value.interpolate({
-                                                        inputRange: [0, 1],
-                                                        outputRange: [0.6, 1.6],
-                                                    }),
-                                                },
-                                            ],
-                                        },
-                                    ]}
-                                />
-
-                                {/* Center search icon */}
+                                <Animated.View style={[styles.ripple, { opacity: ripple1Value.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: ripple1Value.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.6] }) }] }]} />
+                                <Animated.View style={[styles.ripple, { opacity: ripple2Value.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: ripple2Value.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.6] }) }] }]} />
+                                <Animated.View style={[styles.ripple, { opacity: ripple3Value.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: ripple3Value.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.6] }) }] }]} />
                                 <View style={styles.searchIconContainer}>
                                     <Ionicons name="search" size={40} color="#7A9900" />
                                 </View>
@@ -402,10 +288,7 @@ export default function AddDeviceModal({
                             <Text style={styles.searchingText}>Searching for devices...</Text>
                         </View>
                     ) : (
-                        <ScrollView
-                            contentContainerStyle={styles.devicesListContent}
-                            showsVerticalScrollIndicator={false}
-                        >
+                        <ScrollView contentContainerStyle={styles.devicesListContent} showsVerticalScrollIndicator={false}>
                             {error ? (
                                 <View style={styles.emptyState}>
                                     <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
@@ -454,7 +337,6 @@ export default function AddDeviceModal({
                             )}
                         </ScrollView>
                     )}
-                
                 </LinearGradient>
             </View>
         </Modal>
@@ -477,7 +359,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
     },
     header: {
-        //flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,

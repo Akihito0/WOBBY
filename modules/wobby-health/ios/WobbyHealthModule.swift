@@ -3,9 +3,12 @@ import HealthKit
 
 public class WobbyHealthModule: Module {
   let healthStore = HKHealthStore()
+  private var heartRateObserverQuery: HKObserverQuery?
 
   public func definition() -> ModuleDefinition {
     Name("WobbyHealth")
+
+    Events("onHeartRateUpdate")
 
     // ─── 1. ASK FOR PERMISSIONS ─────────────────────────────────────────
     AsyncFunction("requestPermissions") { (promise: Promise) in
@@ -109,5 +112,66 @@ public class WobbyHealthModule: Module {
 
       self.healthStore.execute(query)
     }
+
+    // ─── 4. START LIVE HEART RATE OBSERVER ──────────────────────────────
+    AsyncFunction("startHeartRateObserver") { (promise: Promise) in
+      guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else {
+        promise.reject("TYPE_ERROR", "Heart rate type is not available.")
+        return
+      }
+
+      if let existing = self.heartRateObserverQuery {
+        self.healthStore.stop(existing)
+        self.heartRateObserverQuery = nil
+      }
+
+      let query = HKObserverQuery(sampleType: heartRateType, predicate: nil) { [weak self] _, completionHandler, error in
+        guard let self = self else {
+          completionHandler()
+          return
+        }
+        if let error = error {
+          print("[WobbyHealth] Observer error: \(error.localizedDescription)")
+          completionHandler()
+          return
+        }
+        self.fetchLatestAndEmit(heartRateType: heartRateType) {
+          completionHandler()
+        }
+      }
+
+      self.healthStore.execute(query)
+      self.heartRateObserverQuery = query
+
+      self.healthStore.enableBackgroundDelivery(for: heartRateType, frequency: .immediate) { _, _ in }
+
+      self.fetchLatestAndEmit(heartRateType: heartRateType) {}
+
+      promise.resolve(true)
+    }
+
+    // ─── 5. STOP LIVE HEART RATE OBSERVER ───────────────────────────────
+    AsyncFunction("stopHeartRateObserver") { (promise: Promise) in
+      if let existing = self.heartRateObserverQuery {
+        self.healthStore.stop(existing)
+        self.heartRateObserverQuery = nil
+      }
+      if let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) {
+        self.healthStore.disableBackgroundDelivery(for: heartRateType) { _, _ in }
+      }
+      promise.resolve(true)
+    }
+  }
+
+  private func fetchLatestAndEmit(heartRateType: HKQuantityType, completion: @escaping () -> Void) {
+    let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+    let query = HKSampleQuery(sampleType: heartRateType, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { [weak self] _, results, _ in
+      defer { completion() }
+      guard let self = self else { return }
+      guard let samples = results as? [HKQuantitySample], let latest = samples.first else { return }
+      let bpm = latest.quantity.doubleValue(for: HKUnit(from: "count/min"))
+      self.sendEvent("onHeartRateUpdate", ["bpm": bpm])
+    }
+    self.healthStore.execute(query)
   }
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, ActivityIndicator, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // 👇 Added Async Storage
 import AddDeviceModal from '../components/AddDeviceModal';
 import { useHealth } from '../context/HealthContext';
 
@@ -23,53 +24,105 @@ interface Device {
   heartRate?: number | null;
 }
 
+const STORAGE_KEY = '@wobby_linked_devices'; // 🔑 Our permanent save file name
+
 export default function LinkedDevices({ navigation }: Props) {
   const { heartRate, isAuthorized, refreshHeartRate } = useHealth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Initialize Apple Watch device only when actually authorized/connected
+  // 👇 1. Load saved devices from the phone's hard drive when the screen opens
   useEffect(() => {
-    if (isAuthorized) {
-      setDevices([
-        {
-          id: 'apple-watch',
-          name: 'Apple Watch',
-          icon: 'watch',
-          lastSync: heartRate ? 'Just now' : 'Recently',
-          isConnected: true,
-          heartRate: heartRate,
-        },
-      ]);
-    } else {
-      setDevices([]);
-    }
+    const loadDevices = async () => {
+      try {
+        const storedDevices = await AsyncStorage.getItem(STORAGE_KEY);
+        if (storedDevices) {
+          setDevices(JSON.parse(storedDevices));
+        }
+      } catch (error) {
+        console.error('Failed to load devices from storage', error);
+      }
+    };
+    loadDevices();
+  }, []);
+
+  // 👇 2. Auto-add the platform health device once authorized, and keep its live data fresh
+  useEffect(() => {
+    setDevices(currentDevices => {
+      const platformDeviceId = Platform.OS === 'ios' ? 'apple-watch' : 'health-connect';
+      const platformDeviceName = Platform.OS === 'ios' ? 'Apple Watch' : 'Android Health Connect';
+      const platformDeviceIcon: keyof typeof Ionicons.glyphMap = Platform.OS === 'ios' ? 'watch' : 'fitness';
+
+      const hasPlatformDevice = currentDevices.some(d => d.id === platformDeviceId);
+
+      let nextDevices = currentDevices.map(device => {
+        if (device.id === 'apple-watch' || device.id === 'health-connect') {
+          return {
+            ...device,
+            isConnected: isAuthorized,
+            heartRate: heartRate,
+            lastSync: heartRate ? 'Just now' : device.lastSync,
+          };
+        }
+        return device;
+      });
+
+      if (isAuthorized && !hasPlatformDevice) {
+        nextDevices = [
+          ...nextDevices,
+          {
+            id: platformDeviceId,
+            name: platformDeviceName,
+            icon: platformDeviceIcon,
+            lastSync: heartRate ? 'Just now' : 'Just connected',
+            isConnected: true,
+            heartRate: heartRate,
+          },
+        ];
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextDevices)).catch(error =>
+          console.error('Failed to persist auto-added device', error)
+        );
+      }
+
+      return nextDevices;
+    });
   }, [isAuthorized, heartRate]);
 
   const handleAddDevice = () => setModalVisible(true);
 
-  const handlePairDevice = (device: Omit<Device, 'lastSync' | 'isConnected' | 'heartRate'>) => {
-    // Check if Apple Watch was already paired
-    if (device.id === 'apple-watch') {
-      // Already handled by HealthContext, just close modal
-      setModalVisible(false);
-      return;
-    }
-
-    // For other devices, add to list
+  // 👇 3. Save to hard drive when pairing a new device
+  const handlePairDevice = async (device: Omit<Device, 'lastSync' | 'isConnected' | 'heartRate'>) => {
     const newDevice: Device = {
       ...device,
       lastSync: 'Just connected',
       isConnected: true,
       heartRate: null,
     };
-    setDevices([...devices, newDevice]);
+
+    // Filter out duplicates just in case, then add the new device
+    const updatedDevices = [...devices.filter(d => d.id !== device.id), newDevice];
+    
+    setDevices(updatedDevices);
     setModalVisible(false);
+
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDevices));
+    } catch (error) {
+      console.error('Failed to save device to storage', error);
+    }
   };
 
-  const handleRemoveDevice = (id: string) => {
-    setDevices(devices.filter(device => device.id !== id));
+  // 👇 4. Remove from hard drive when deleting a device
+  const handleRemoveDevice = async (id: string) => {
+    const updatedDevices = devices.filter(device => device.id !== id);
+    setDevices(updatedDevices);
+    
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDevices));
+    } catch (error) {
+      console.error('Failed to remove device from storage', error);
+    }
   };
 
   const handleRefreshAppleWatch = async () => {

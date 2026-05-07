@@ -24,7 +24,15 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // List of potential server IPs to try
 // 192.168.44.13: Your current Wi-Fi IP
 // 192.168.137.1: Standard Windows Hotspot/Shared connection IP
-const SERVER_IPS = ['192.168.44.13', '192.168.137.1', '10.124.14.51', '10.26.208.51', '192.168.1.58', 'localhost']; 
+const SERVER_IPS = [
+  '192.168.1.18',
+  '192.168.44.13',
+  '192.168.137.1',
+  '192.168.1.15',
+  '10.124.14.51', 
+  '10.26.208.51', 
+  '192.168.1.58', 
+  'localhost']; 
 const PORT = '8765';
 
 type Point = { x: number; y: number; conf: number };

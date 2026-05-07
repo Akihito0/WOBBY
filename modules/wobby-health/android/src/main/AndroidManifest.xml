@@ -1,2 +1,12 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="expo.modules.wobbyhealth">
+
+    <!-- Permission to read heart rate from Health Connect -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
+
+    <!-- Required to check if Health Connect is installed on the device -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
 </manifest>
