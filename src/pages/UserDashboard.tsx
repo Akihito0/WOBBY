@@ -73,7 +73,7 @@ export default function UserDashboard() {
         .limit(1)
         .single();
 
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
+      if (error && error.code !== 'PGRST116') throw error;
       setLatestRun(data || null);
     } catch (error: any) {
       console.log('Error fetching latest run:', error.message);
@@ -107,8 +107,10 @@ export default function UserDashboard() {
               <Text style={styles.username}>{username || 'Guest'}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.bellWrap}
-            onPress={() => navigation.navigate("Notifications")}>
+          <TouchableOpacity
+            style={styles.bellWrap}
+            onPress={() => navigation.navigate("Notifications")}
+          >
             <Image
               source={require("../assets/notif_bell.png")}
               style={styles.bellImage}
@@ -124,29 +126,35 @@ export default function UserDashboard() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ════════ STREAK ════════ */}
-        <StreakCalendar navigation={navigation}/>
+        {/* ════════ STREAK — always shown ════════ */}
+        <StreakCalendar navigation={navigation} />
 
-        {/* ════════ STATS CARDS ════════ */}
+        {/* ════════ STATS CARDS — always shown ════════ */}
         <View style={styles.separator}>
-        <StatsCards onBMIPress={() => setBmiModalVisible(true)} />
+          <StatsCards onBMIPress={() => setBmiModalVisible(true)} />
         </View>
 
-        {/* ════════ ACTIVITY FEED ════════ */}
-        {latestRun && <ActivityFeed username={username} avatarUrl={avatarUrl} runData={latestRun} />}
-
-        {/* ════════ MOTIVATION BANNER ════════ */}
-        <MotivationBanner/>
-
-        {/* ════════ TARGETED SESSIONS ════════ */}     
-        <TargetedSessions/>     
-
-        {/* ════════ ONLINE CHALLENGERS ════════ */}
-        <ChallengersCarousel />
-
-        {/* ════════ LEADERBOARDS ════════ */}
-        <LeaderboardPodium />
-
+        {latestRun ? (
+          // ── USER HAS A POST ──────────────────────────────────────────
+          <>
+            <ActivityFeed
+              username={username}
+              avatarUrl={avatarUrl}
+              runData={latestRun}
+              onRefresh={fetchLatestRun}
+              navigation={navigation}
+            />
+            <LeaderboardPodium />
+          </>
+        ) : (
+          // ── USER HAS NO POST ─────────────────────────────────────────
+          <>
+            <MotivationBanner />
+            <TargetedSessions />
+            <ChallengersCarousel />
+            <LeaderboardPodium />
+          </>
+        )}
       </ScrollView>
 
       {/* BMI Modal */}
@@ -169,6 +177,7 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === "ios" ? 108 : 88,
   },
   scrollContent: { paddingBottom: 48 },
+
   // HEADER
   header: {
     position: "absolute", top: 0, left: 0, right: 0, zIndex: 100,
@@ -178,83 +187,81 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1, borderBottomColor: "#1a1a1a",
   },
-
-  headerRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "space-between" 
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  avatarRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 12 
+  avatarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
-  avatarImage: { 
-    width: 39, 
-    height: 39, 
-    borderRadius: 10, 
-    marginRight: 4 
+  avatarImage: {
+    width: 39,
+    height: 39,
+    borderRadius: 10,
+    marginRight: 4,
   },
-  greetLabel: { 
-    fontFamily: "Montserrat_800ExtraBold", 
-    fontSize: 12, 
-    color: "#A8A8A8", 
-    marginTop: 7 
+  greetLabel: {
+    fontFamily: "Montserrat_800ExtraBold",
+    fontSize: 12,
+    color: "#A8A8A8",
+    marginTop: 7,
   },
-  username:   { 
-    fontFamily: "Montserrat_800ExtraBold", 
-    fontSize: 18, 
-    color: "#FFFFFF", 
-    marginTop: -3
+  username: {
+    fontFamily: "Montserrat_800ExtraBold",
+    fontSize: 18,
+    color: "#FFFFFF",
+    marginTop: -3,
   },
-  bellWrap:   { 
-    position: "relative", 
-    padding: 4 
+  bellWrap: {
+    position: "relative",
+    padding: 4,
   },
-  bellImage:  { 
-    width: 25, 
-    height: 25, 
-    tintColor: "#fff" 
+  bellImage: {
+    width: 25,
+    height: 25,
+    tintColor: "#fff",
   },
-  notifDot:   { 
-    width: 8, 
-    height: 8, 
-    borderRadius: 5, 
-    backgroundColor: "#ff4444", 
-    position: "absolute", 
-    top: 5, 
-    right: 5, 
-    borderWidth: 1, 
-    borderColor: "#000" },
+  notifDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 5,
+    backgroundColor: "#ff4444",
+    position: "absolute",
+    top: 5,
+    right: 5,
+    borderWidth: 1,
+    borderColor: "#000",
+  },
 
   // SHARED
   sectionLabel: {
-    fontFamily: "Montserrat_600SemiBold", 
-    fontSize: 15, 
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
     color: "#fff",
     textTransform: "uppercase",
-    marginLeft: 16, 
+    marginLeft: 16,
     marginBottom: 12,
   },
-  seeAll: { 
-    fontFamily: "Barlow_400Regular", 
-    fontSize: 13, 
-    color: "#84cc16", 
-    fontWeight: "600", 
+  seeAll: {
+    fontFamily: "Barlow_400Regular",
+    fontSize: 13,
+    color: "#84cc16",
+    fontWeight: "600",
   },
-  hrule:  { 
-    height: 1, 
-    backgroundColor: "#1e1e1e" 
+  hrule: {
+    height: 1,
+    backgroundColor: "#1e1e1e",
   },
-  section: { 
-    paddingHorizontal: 16, 
-    paddingTop: 18, 
-    paddingBottom: 8 
+  section: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
   separator: {
     marginTop: 20,
     marginBottom: 10,
   },
-  
-  
 });

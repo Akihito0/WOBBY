@@ -2,12 +2,10 @@ import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   ScrollView, Animated, PanResponder, Alert,
-  TextInput, Dimensions,
+  TextInput, 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AddExerciseModal from '../components/AddExerciseModal';
 
-const { width } = Dimensions.get('window');
 
 type Set = { id: number; weight: string; reps: string };
 type Exercise = { id: number; name: string; sets: Set[]; expanded: boolean };
@@ -72,10 +70,6 @@ const PushScreen = ({ navigation }: any) => {
   const [selectedToDelete, setSelectedToDelete] = useState<number[]>([]);
   const [swipeOffsets] = useState<{ [key: string]: Animated.Value }>({});
 
-  // Name exercise modal
-  const [nameModalVisible, setNameModalVisible] = useState(false);
-  const [newExerciseName, setNewExerciseName] = useState('');
-
   // Editing a specific set cell
   const [editingCell, setEditingCell] = useState<{
     exerciseId: number;
@@ -139,53 +133,9 @@ const PushScreen = ({ navigation }: any) => {
     );
   };
 
-  // Opens the name modal instead of immediately adding
-  const promptAddExercise = () => {
-    setNewExerciseName('');
-    setNameModalVisible(true);
-  };
-
-  const confirmAddExercise = () => {
-    const trimmed = newExerciseName.trim();
-    if (!trimmed) {
-      Alert.alert('Name required', 'Please enter a name for the exercise.');
-      return;
-    }
-    const newId = exercises.length > 0 ? Math.max(...exercises.map(e => e.id)) + 1 : 1;
-    setExercises(prev => [
-      ...prev,
-      { id: newId, name: trimmed, sets: [], expanded: true },
-    ]);
-    setNameModalVisible(false);
-    setNewExerciseName('');
-  };
-
   const toggleSelectDelete = (id: number) => {
     setSelectedToDelete(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const confirmDelete = () => {
-    if (selectedToDelete.length === 0) {
-      setEditMode(false);
-      return;
-    }
-    Alert.alert(
-      'Delete Exercise',
-      'Are you sure you want to delete the selected exercise(s)?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setExercises(prev => prev.filter(ex => !selectedToDelete.includes(ex.id)));
-            setSelectedToDelete([]);
-            setEditMode(false);
-          },
-        },
-      ]
     );
   };
 
@@ -236,22 +186,6 @@ const PushScreen = ({ navigation }: any) => {
         {/* Your Exercises Row */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Your Exercises</Text>
-          <TouchableOpacity onPress={() => {
-            if (editMode) {
-              confirmDelete();
-            } else {
-              setEditMode(true);
-              setSelectedToDelete([]);
-            }
-          }}>
-            {editMode ? (
-              <Text style={styles.deleteConfirmText}>
-                {selectedToDelete.length > 0 ? 'Delete' : 'Done'}
-              </Text>
-            ) : (
-              <Image source={require('../assets/pencil.png')} style={styles.pencilIcon} />
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* Exercise Cards */}
@@ -393,27 +327,8 @@ const PushScreen = ({ navigation }: any) => {
           </View>
         ))}
 
-        {/* Add Exercise Button */}
-        <TouchableOpacity style={styles.addExWrapper} onPress={promptAddExercise}>
-          <LinearGradient colors={['#2F4128', '#2F4128']} style={styles.addExBtn}>
-            <View>
-              <Image source={require('../assets/addd1.png')} style={styles.addIcon} />
-            </View>
-            <Text style={styles.addExText}>ADD EXERCISE</Text>
-          </LinearGradient>
-        </TouchableOpacity>
 
       </ScrollView>
-
-      {/* ── Add Exercise Modal ── */}
-      <AddExerciseModal
-        visible={nameModalVisible}
-        onClose={() => setNameModalVisible(false)}
-        onConfirm={confirmAddExercise}
-        value={newExerciseName}
-        onChangeText={setNewExerciseName}
-      />
-
     </View>
   );
 };
