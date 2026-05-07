@@ -1,50 +1,55 @@
 package expo.modules.wobbyhealth
 
+import android.content.Context
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.HeartRateRecord
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import java.net.URL
+import expo.modules.kotlin.Promise
+import android.util.Log
 
 class WobbyHealthModule : Module() {
-  // Each module class must implement the definition function. The definition consists of components
-  // that describes the module's functionality and behavior.
-  // See https://docs.expo.dev/modules/module-api for more details about available components.
+  
   override fun definition() = ModuleDefinition {
-    // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-    // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-    // The module will be accessible from `requireNativeModule('WobbyHealth')` in JavaScript.
     Name("WobbyHealth")
 
-    // Defines constant property on the module.
-    Constant("PI") {
-      Math.PI
-    }
+    AsyncFunction("requestPermissions") { promise: Promise ->
+      val context = appContext.reactContext
 
-    // Defines event names that the module can send to JavaScript.
-    Events("onChange")
-
-    // Defines a JavaScript synchronous function that runs the native code on the JavaScript thread.
-    Function("hello") {
-      "Hello world! 👋"
-    }
-
-    // Defines a JavaScript function that always returns a Promise and whose native code
-    // is by default dispatched on the different thread than the JavaScript runtime runs on.
-    AsyncFunction("setValueAsync") { value: String ->
-      // Send an event to JavaScript.
-      sendEvent("onChange", mapOf(
-        "value" to value
-      ))
-    }
-
-    // Enables the module to be used as a native view. Definition components that are accepted as part of
-    // the view definition: Prop, Events.
-    View(WobbyHealthView::class) {
-      // Defines a setter for the `url` prop.
-      Prop("url") { view: WobbyHealthView, url: URL ->
-        view.webView.loadUrl(url.toString())
+      if (context == null) {
+        Log.e("WobbyHealth", "React Context is null")
+        promise.resolve(false)
+        return@AsyncFunction
       }
-      // Defines an event that the view can send to JavaScript.
-      Events("onLoad")
+
+      // 1. Check if Health Connect is installed and available on the phone
+      val availabilityStatus = HealthConnectClient.getSdkStatus(context)
+      if (availabilityStatus == HealthConnectClient.SDK_UNAVAILABLE) {
+        Log.e("WobbyHealth", "Health Connect is not available on this device")
+        promise.resolve(false)
+        return@AsyncFunction
+      }
+
+      // 2. Initialize the client
+      val healthConnectClient = HealthConnectClient.getOrCreate(context)
+      Log.d("WobbyHealth", "Health Connect Client initialized successfully!")
+
+      // Note: Launching the actual Android permission dialog requires an Activity Result Contract.
+      // For this step, we are resolving true to confirm the client connects.
+      promise.resolve(true)
+    }
+
+    AsyncFunction("getLatestHeartRate") { promise: Promise ->
+      // TODO: Implement Health Connect Read Logic
+      Log.d("WobbyHealth", "getLatestHeartRate called")
+      promise.resolve(null)
+    }
+
+    AsyncFunction("getHeartRateHistory") { daysBack: Int, promise: Promise ->
+      // TODO: Implement Health Connect History Read Logic
+      Log.d("WobbyHealth", "getHeartRateHistory called for $daysBack days")
+      promise.resolve(emptyList<Map<String, Any>>())
     }
   }
 }

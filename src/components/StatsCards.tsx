@@ -5,7 +5,6 @@ import { useHealth } from '../context/HealthContext';
 import { supabase } from '../supabase';
 import { calculateBMI } from '../utils/healthCalculations';
 
-// 👇 ADDED: Import your newly styled full-screen modal
 import HeartRateModal from './HeartRateModal'; 
 
 interface StatsCardsProps {
@@ -13,11 +12,11 @@ interface StatsCardsProps {
 }
 
 const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
-  const { heartRate } = useHealth();
+  // 👇 ADDED: Pulled in 'isAuthorized' from useHealth
+  const { heartRate, isAuthorized } = useHealth();
   const [bmi, setBmi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 👇 ADDED: State to control if the Heart Rate Modal is open or closed
   const [hrModalVisible, setHrModalVisible] = useState(false);
 
   useEffect(() => {
@@ -40,7 +39,6 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
         return;
       }
 
-      // Calculate BMI using utility function
       const bmiResult = calculateBMI(profile.weight, profile.height);
       setBmi(bmiResult.bmi);
     } catch (error) {
@@ -73,7 +71,6 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
       </View>
 
       {/* ── HEART RATE CARD ── */}
-      {/* 👇 CHANGED: Swapped View for TouchableOpacity and added onPress */}
       <TouchableOpacity 
         style={[styles.shadowWrapper, { flex: 1, backgroundColor: '#000000' }]}
         onPress={() => setHrModalVisible(true)}
@@ -90,9 +87,10 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
             style={styles.hrImageCenter}
             resizeMode="contain"
           />
-          {heartRate !== null ? (
+          {/* 👇 CHANGED: Logic now checks if authorized first, then displays heart rate or dashes */}
+          {isAuthorized ? (
             <>
-              <Text style={styles.hrNum}>{heartRate}</Text>
+              <Text style={styles.hrNum}>{heartRate !== null ? heartRate : '--'}</Text>
               <Text style={styles.hrUnit}>BPM</Text>
             </>
           ) : (
@@ -129,7 +127,6 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* 👇 ADDED: Render the modal component, but keep it hidden until clicked */}
       <HeartRateModal 
         visible={hrModalVisible} 
         onClose={() => setHrModalVisible(false)} 
@@ -151,12 +148,10 @@ const styles = StyleSheet.create({
   },
   shadowWrapper: {
     borderRadius: 20,
-    // iOS
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 4,
-    // Android
     elevation: 8,
   },
   statCard: { 

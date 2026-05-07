@@ -23,3 +23,23 @@ export type HeartRateSample = {
 export async function getHeartRateHistory(daysBack: number): Promise<HeartRateSample[]> {
   return await WobbyHealthModule.getHeartRateHistory(daysBack);
 }
+
+// 4. Live heart rate observer (iOS only — Android falls back to polling)
+export type HeartRateUpdate = { bpm: number };
+export type HeartRateSubscription = { remove: () => void };
+
+export async function startHeartRateObserver(): Promise<boolean> {
+  if (typeof WobbyHealthModule.startHeartRateObserver !== 'function') return false;
+  return await WobbyHealthModule.startHeartRateObserver();
+}
+
+export async function stopHeartRateObserver(): Promise<boolean> {
+  if (typeof WobbyHealthModule.stopHeartRateObserver !== 'function') return false;
+  return await WobbyHealthModule.stopHeartRateObserver();
+}
+
+export function addHeartRateListener(
+  listener: (event: HeartRateUpdate) => void
+): HeartRateSubscription {
+  return WobbyHealthModule.addListener('onHeartRateUpdate', listener);
+}
