@@ -69,6 +69,7 @@ import TroubleShooting from './src/pages/TroubleShooting';
 import PullScreen from './src/pages/PullScreen';
 import LegScreen from './src/pages/LegScreen';
 import VersusRunScreen from './src/pages/VersusRunScreen';
+import ResetPasswordScreen from './src/pages/ResetPasswordScreen';
 import { HealthProvider } from './src/context/HealthContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -103,6 +104,7 @@ type ScreenName =
   | 'entry'
   | 'login'
   | 'register'
+  | 'resetPassword'
   | 'username'
   | 'avatarSelect'
   | 'welcome'
@@ -206,6 +208,7 @@ function AppTabs() {
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenName>('splash');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [resetPasswordEmail, setResetPasswordEmail] = useState<string>('');
 
   const [fontsLoaded] = useFonts({
     'Montserrat-Regular': Montserrat_400Regular,
@@ -628,6 +631,22 @@ export default function App() {
         <Login 
           onNavigateToRegister={() => setCurrentScreen('register')}
           onSignIn={() => {}} 
+          onNavigateToReset={(email: string) => {
+            setResetPasswordEmail(email);
+            setCurrentScreen('resetPassword');
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (currentScreen === 'resetPassword') {
+    return (
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+        <ResetPasswordScreen 
+          onDone={() => setCurrentScreen('login')}
+          onCancel={() => setCurrentScreen('login')}
+          prefillEmail={resetPasswordEmail}
         />
       </View>
     );
