@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, Modal, Image, TouchableOpacity } from 'react-native';
 
 interface FindingProps {
   visible: boolean;
+  onCancel: () => void; // 👇 ADDED THIS
 }
 
-const Finding: React.FC<FindingProps> = ({ visible }) => {
+const Finding: React.FC<FindingProps> = ({ visible, onCancel }) => {
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.overlay}>
@@ -16,6 +17,11 @@ const Finding: React.FC<FindingProps> = ({ visible }) => {
             resizeMode="contain"
           />
           <Text style={styles.text}>FINDING A WORKOUT BUDDY</Text>
+          
+          {/* 👇 ADDED CANCEL BUTTON */}
+          <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
+            <Text style={styles.cancelText}>CANCEL</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -25,13 +31,13 @@ const Finding: React.FC<FindingProps> = ({ visible }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)', // Slightly darker for focus
+    backgroundColor: 'rgba(0, 0, 0, 0.8)', 
     justifyContent: 'center',
     alignItems: 'center',
   },
   container: {
     width: 320,
-    height: 220,
+    height: 280, // Increased height to fit the button
     backgroundColor: '#0f0f0f', 
     borderRadius: 30,
     borderWidth: 1.5,
@@ -53,10 +59,24 @@ const styles = StyleSheet.create({
   text: {
     color: '#8c8c8c',
     fontSize: 14,
-    fontFamily: 'Barlow-Bold',
+    fontFamily: 'Montserrat-Bold',
     letterSpacing: 1,
     textAlign: 'center',
+    marginBottom: 25,
   },
+  cancelBtn: {
+    backgroundColor: '#333',
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#555'
+  },
+  cancelText: {
+    color: '#FFF',
+    fontFamily: 'Montserrat-Bold',
+    fontSize: 14,
+  }
 });
 
 export default Finding;
