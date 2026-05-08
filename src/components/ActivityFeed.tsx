@@ -186,8 +186,6 @@ export default function ActivityFeed({
 
   return (
     <View style={styles.rootWrapper}>
-      <Text style={styles.sectionLabel}>Activity Vault</Text>
-
       <View style={styles.container}>
         <View style={styles.userHeader}>
           <View style={styles.userInfo}>
@@ -255,8 +253,13 @@ export default function ActivityFeed({
               onScroll={handleScroll}
               scrollEventThrottle={16}
               {...(Platform.OS === 'ios'
-                ? { contentInset: { left: SIDE_INSET, right: SIDE_INSET }, contentOffset: { x: -SIDE_INSET, y: 0 } }
-                : { contentContainerStyle: { paddingHorizontal: SIDE_INSET } })}
+                ? {
+                    contentInset: { left: SIDE_INSET, right: SIDE_INSET },
+                    contentOffset: { x: -SIDE_INSET, y: 0 },
+                  }
+                : {
+                    contentContainerStyle: { paddingHorizontal: SIDE_INSET },
+                  })}
               renderItem={({ item }: any) => (
                 <Image source={typeof item === 'string' || item.uri ? item : item} style={styles.galleryImage} />
               )}
