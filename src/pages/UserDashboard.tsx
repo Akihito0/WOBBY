@@ -29,10 +29,10 @@ export default function UserDashboard() {
   const [refreshStats, setRefreshStats] = useState(0);
   const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  
-  // State for both runs and routines
-  const [latestRun, setLatestRun] = useState<any>(null);
-  const [latestRoutine, setLatestRoutine] = useState<any>(null);
+
+  // Merged list of runs and routines, sorted newest-first.
+  // Each entry: { kind: 'run' | 'routine', data, timestamp }
+  const [posts, setPosts] = useState<Array<{ kind: 'run' | 'routine'; data: any; timestamp: number }>>([]);
   const navigation = useNavigation<any>();
 
   const [fontsLoaded] = useFonts({
@@ -67,44 +67,40 @@ export default function UserDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Fetch latest run
-      const { data: runData, error: runError } = await supabase
-        .from('runs')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('completed_at', { ascending: false })
-        .limit(1)
-        .single();
+      const [runsResult, routinesResult] = await Promise.all([
+        supabase
+          .from('runs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('completed_at', { ascending: false }),
+        supabase
+          .from('completed_routines')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (runError && runError.code !== 'PGRST116') console.log(runError);
+      if (runsResult.error && runsResult.error.code !== 'PGRST116') console.log(runsResult.error);
+      if (routinesResult.error && routinesResult.error.code !== 'PGRST116') console.log(routinesResult.error);
 
-      // 2. Fetch latest routine
-      const { data: routineData, error: routineError } = await supabase
-        .from('completed_routines')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      const runEntries = (runsResult.data || []).map((r: any) => ({
+        kind: 'run' as const,
+        data: r,
+        timestamp: new Date(r.completed_at).getTime(),
+      }));
+      const routineEntries = (routinesResult.data || []).map((r: any) => ({
+        kind: 'routine' as const,
+        data: r,
+        timestamp: new Date(r.created_at).getTime(),
+      }));
 
-      if (routineError && routineError.code !== 'PGRST116') console.log(routineError);
-
-      // 3. Compare timestamps
-      const runTime = runData ? new Date(runData.completed_at).getTime() : 0;
-      const routineTime = routineData ? new Date(routineData.created_at).getTime() : 0;
-
-      if (runTime > routineTime) {
-        setLatestRun(runData);
-        setLatestRoutine(null);
-      } else if (routineTime > runTime) {
-        setLatestRoutine(routineData);
-        setLatestRun(null);
-      } else {
-        setLatestRun(null);
-        setLatestRoutine(null);
-      }
+      const merged = [...runEntries, ...routineEntries].sort(
+        (a, b) => b.timestamp - a.timestamp
+      );
+      setPosts(merged);
     } catch (error: any) {
       console.log('Error fetching latest activity:', error.message);
+      setPosts([]);
     }
   }, []);
 
@@ -159,17 +155,20 @@ export default function UserDashboard() {
           <StatsCards onBMIPress={() => setBmiModalVisible(true)} />
         </View>
 
-        {/* Pass either runData OR routineData */}
-        {latestRun || latestRoutine ? (
+        {posts.length > 0 ? (
           <>
-            <ActivityFeed
-              username={username}
-              avatarUrl={avatarUrl}
-              runData={latestRun}
-              routineData={latestRoutine}
-              onRefresh={fetchLatestActivity}
-              navigation={navigation}
-            />
+            <Text style={styles.activityVaultLabel}>Activity Vault</Text>
+            {posts.map((post) => (
+              <ActivityFeed
+                key={`${post.kind}-${post.data.id}`}
+                username={username}
+                avatarUrl={avatarUrl}
+                runData={post.kind === 'run' ? post.data : undefined}
+                routineData={post.kind === 'routine' ? post.data : undefined}
+                onRefresh={fetchLatestActivity}
+                navigation={navigation}
+              />
+            ))}
             <LeaderboardPodium />
           </>
         ) : (
@@ -260,5 +259,13 @@ const styles = StyleSheet.create({
   separator: {
     marginTop: 20,
     marginBottom: 10,
+  },
+  activityVaultLabel: {
+    fontFamily: 'Montserrat_800ExtraBold',
+    fontSize: 16,
+    color: '#fff',
+    textTransform: 'uppercase',
+    marginLeft: 20,
+    marginBottom: 15,
   },
 });
