@@ -1,116 +1,198 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
-import MatchFoundModal from '../components/MatchFoundModal';
 import ExerciseModal from '../components/ExerciseModal';
 import { supabase } from '../supabase';
-import { useVersusMatchmaking } from '../services/useVersusMatchmaking';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{name: string; xp: number; avatar?: {uri: string}}>({ name: '', xp: 0, avatar: undefined });
-  const [matchFoundVisible, setMatchFoundVisible] = useState(false);
+  const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
+  const [isFinding, setIsFinding] = useState(false);
+  const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
 
-  // Matchmaking hook
-  const { matchState, startMatchmaking, cancelMatchmaking, acceptMatch } = useVersusMatchmaking();
+  // 👇 ADDED: Refs to hold the selected rules and track cancellation
+  const matchRulesRef = useRef<{ exercise: string; sets: number; reps: number } | null>(null);
+  const isCancelledRef = useRef<boolean>(false);
+  const myMatchIdRef = useRef<string | null>(null);
 
-  // Fetch current user profile on mount
+  // ─── MATCHMAKING LOGIC ───
+  // We use a useEffect that triggers when `isFinding` becomes true.
+  // This allows React to render the Finding modal BEFORE the heavy database work begins.
   useEffect(() => {
-    fetchCurrentUserProfile();
-  }, []);
+    if (isFinding && matchRulesRef.current) {
+      isCancelledRef.current = false; // Reset cancel flag
+      startMatchmaking(matchRulesRef.current.exercise, matchRulesRef.current.sets, matchRulesRef.current.reps);
+    }
+  }, [isFinding]);
 
-  const fetchCurrentUserProfile = useCallback(async () => {
+  const startMatchmaking = async (exercise: string, sets: number, reps: number) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user?.id) {
+        Alert.alert('Error', 'Could not authenticate user.');
+        setIsFinding(false);
+        return;
+      }
 
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('username, avatar_url, xp')
-        .eq('id', user.id)
+      const userId = session.user.id;
+
+      // 1. Search for a waiting match with the EXACT SAME RULES
+      const { data: waitingMatches, error: searchError } = await supabase
+        .from('versus_battles')
+        .select('*')
+        .eq('status', 'waiting')
+        .eq('exercise_name', exercise)
+        .eq('target_sets', sets)
+        .eq('target_reps', reps)
+        .neq('player1_id', userId) // Don't match with ourselves
+        .limit(1);
+
+      if (searchError) throw searchError;
+
+      // If user clicked cancel during the network request, abort.
+      if (isCancelledRef.current) return;
+
+      if (waitingMatches && waitingMatches.length > 0) {
+        // 🎉 MATCH FOUND! We are Player 2. Join the match!
+        const match = waitingMatches[0];
+        
+        const { error: updateError } = await supabase
+          .from('versus_battles')
+          .update({
+            player2_id: userId,
+            status: 'matched' 
+          })
+          .eq('id', match.id);
+
+        if (updateError) throw updateError;
+        
+        setIsFinding(false);
+        Alert.alert('Match Found!', 'Get ready to workout!');
+        
+        // TODO: 
+        navigation.navigate('LiveVersusRoutine', { matchId: match.id, isPlayer1: false });
+        return;
+      }
+
+      // 2. NO MATCH FOUND. We are Player 1. Create a new room and wait.
+      const { data: newMatch, error: createError } = await supabase
+        .from('versus_battles')
+        .insert([{
+          player1_id: userId,
+          exercise_name: exercise,
+          target_sets: sets,
+          target_reps: reps,
+          status: 'waiting'
+        }])
+        .select()
         .single();
 
-      if (error) throw error;
+      if (createError) throw createError;
+      
+      // Save ID so we can delete it if we cancel
+      myMatchIdRef.current = newMatch.id; 
 
-      setCurrentUser({
-        name: profile?.username || 'You',
-        xp: profile?.xp || 0,
-        avatar: profile?.avatar_url ? { uri: profile.avatar_url } : undefined,
-      });
+      // 3. Poll for an opponent for 30 seconds
+      let matchFound = false;
+      let attempts = 0;
+      const maxAttempts = 15; 
+
+      while (!matchFound && attempts < maxAttempts) {
+        // Break the loop instantly if user hit cancel
+        if (isCancelledRef.current) {
+           await cleanUpMyMatch();
+           return;
+        }
+
+        attempts++;
+        
+        const { data: checkMatch } = await supabase
+          .from('versus_battles')
+          .select('status, player2_id')
+          .eq('id', newMatch.id)
+          .single();
+
+        if (checkMatch && checkMatch.status === 'matched' && checkMatch.player2_id) {
+          matchFound = true;
+          setIsFinding(false);
+          Alert.alert('Challenger Approaching!', 'Get ready to workout!');
+          
+          // TODO: 
+          navigation.navigate('LiveVersusRoutine', { matchId: newMatch.id, isPlayer1: true });
+          return;
+        }
+
+        // Wait 2 seconds before checking again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // 4. Timeout reached. Nobody joined.
+      if (!isCancelledRef.current) {
+        setIsFinding(false);
+        await cleanUpMyMatch();
+        Alert.alert(
+          'No Opponent Found',
+          `Nobody is looking to do ${sets} sets of ${reps} ${exercise} right now. Try different rules or try again later!`
+        );
+      }
+
     } catch (error) {
-      console.error('Error fetching current user:', error);
-    }
-  }, []);
-
-  // Monitor matchmaking state and show appropriate modals
-  useEffect(() => {
-    console.log('🔔 [VersusWorkout] Match state changed:', matchState);
-    
-    if (matchState.status === 'error') {
-      console.log('❌ [VersusWorkout] Error state detected:', matchState.error);
-      setMatchFoundVisible(false);
-      Alert.alert('Matchmaking Error', matchState.error || 'Unknown error');
-    } else if (matchState.status === 'found' && matchState.opponent) {
-      console.log('✅ [VersusWorkout] Match found! Showing MatchFoundModal for opponent:', matchState.opponent.username);
-      // Show the match found modal
-      setMatchFoundVisible(true);
-    } else if (matchState.status === 'both_accepted' && matchState.opponent && matchState.matchId) {
-      console.log('🎉 [VersusWorkout] Both users accepted! Navigating to VersusRun');
-      setMatchFoundVisible(false);
-      // Both users have accepted - now navigate
-      navigation.navigate('VersusRun', {
-        opponentUsername: matchState.opponent.username || 'Opponent',
-        opponentId: matchState.opponent.id,
-        opponentAvatar: matchState.opponent.avatar_url,
-        matchId: matchState.matchId,
-      });
-    } else if (matchState.status === 'searching') {
-      console.log('⏳ [VersusWorkout] Searching... Finding modal should be visible');
-    } else if (matchState.status === 'idle') {
-      console.log('🆓 [VersusWorkout] Idle state reached');
-      setMatchFoundVisible(false);
-    }
-  }, [matchState.status, matchState.error, matchState.opponent, matchState.matchId, navigation]);
-
-  const handleRunPress = async () => {
-    try {
-      // Start the matchmaking process
-      await startMatchmaking();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to start matchmaking. Please try again.');
+      console.error('Matchmaking error:', error);
+      if (!isCancelledRef.current) {
+        setIsFinding(false);
+        Alert.alert('Error', 'Matchmaking failed. Please try again.');
+      }
     }
   };
 
-  const handleMatchAccept = useCallback(async () => {
-    if (!matchState.opponent || !matchState.matchId) return;
+  // Helper to delete the empty room
+  const cleanUpMyMatch = async () => {
+    if (myMatchIdRef.current) {
+      await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
+      myMatchIdRef.current = null;
+    }
+  };
 
-    console.log('✋ [VersusWorkout] User clicked Accept - marking acceptance...');
+  // ─── UI HANDLERS ───
+
+  const handleRoutineSelect = (routine: any) => {
+    setSelectedRoutine({ type: routine.type, exercises: routine.exercises });
+    setExerciseModalVisible(true);
+  };
+
+  // When user hits "Find Match" on the Exercise Modal
+  const handleConfirmExercises = (exercise: string, sets: number, reps: number) => {
+    setExerciseModalVisible(false);
     
-    // Call acceptMatch to mark this user as accepted
-    // This will trigger the acceptance listener to watch for opponent
-    await acceptMatch();
-  }, [matchState.opponent, matchState.matchId, acceptMatch]);
+    // Store rules and trigger the useEffect
+    matchRulesRef.current = { exercise, sets, reps };
+    setIsFinding(true); 
+  };
 
-  const handleMatchDecline = useCallback(async () => {
-    setMatchFoundVisible(false);
-    await cancelMatchmaking();
-    Alert.alert('Match Declined', 'You have declined the match.');
-  }, [cancelMatchmaking]);
+  // When user hits "Cancel" on the Finding Loader Modal
+  const handleCancelFinding = () => {
+    Alert.alert(
+      'Cancel Matchmaking?',
+      'Are you sure you want to stop looking for an opponent?',
+      [
+        { text: 'No, keep waiting', style: 'cancel' },
+        { 
+          text: 'Yes, stop', 
+          style: 'destructive',
+          onPress: () => {
+            isCancelledRef.current = true; // Instantly breaks the while loop
+            setIsFinding(false);           // Closes the modal
+            cleanUpMyMatch();              // Deletes the room from Supabase
+          }
+        }
+      ]
+    );
+  };
 
-const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
-const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
-
-const handleRoutineSelect = (routine: any) => {
-  setSelectedRoutine({ type: routine.type, exercises: routine.exercises });
-  setExerciseModalVisible(true);
-};
-
-const handleConfirmExercises = async () => {
-  setExerciseModalVisible(false);
-  // Start the matchmaking process
-  await startMatchmaking();
-};
+  const handleRunPress = async () => {
+    Alert.alert("Coming Soon", "Versus Run logic is currently under construction.");
+  };
 
   const routines = [
     { type: 'PUSH', sub: 'Chest, Shoulders, Triceps', icon: require('../assets/push.png'), exercises: ['Push Ups', 'Bench Press', 'Tricep Dips']},
@@ -120,7 +202,6 @@ const handleConfirmExercises = async () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-
       {/* Header */}
       <LinearGradient
         colors={['#432B16', '#000000']}
@@ -155,103 +236,89 @@ const handleConfirmExercises = async () => {
         </View>
       </LinearGradient>
 
-      {/* Choose Mode */}
       <Text style={styles.chooseModeTitle}>Choose Mode</Text>
 
       {/* WORKOUT Button */}
-<TouchableOpacity
-  activeOpacity={0.85}
-  onPress={() => setWorkoutExpanded(!workoutExpanded)}
-  style={styles.modeButtonWrapper}
->
-  <LinearGradient
-    colors={['#000000', '#0F4933']}
-    start={{ x: 0.8, y: 0.5 }}
-    end={{ x: 0.27, y: 0.5 }}
-    style={styles.modeButton}
-  >
-    {/* Top row: title + arrow */}
-    <View style={styles.modeButtonTopRow}>
-      <Text style={styles.modeButtonText}>WORKOUT</Text>
-      <Image
-        source={
-          workoutExpanded
-            ? require('../assets/down.png')
-            : require('../assets/gooo.png')
-        }
-        style={styles.modeButtonIcon}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => setWorkoutExpanded(!workoutExpanded)}
+        style={styles.modeButtonWrapper}
+      >
+        <LinearGradient
+          colors={['#000000', '#0F4933']}
+          start={{ x: 0.8, y: 0.5 }}
+          end={{ x: 0.27, y: 0.5 }}
+          style={styles.modeButton}
+        >
+          <View style={styles.modeButtonTopRow}>
+            <Text style={styles.modeButtonText}>WORKOUT</Text>
+            <Image
+              source={
+                workoutExpanded
+                  ? require('../assets/down.png')
+                  : require('../assets/gooo.png')
+              }
+              style={styles.modeButtonIcon}
+            />
+          </View>
+
+          {workoutExpanded && (
+            <View style={styles.dropdownInner}>
+              <Text style={styles.dropdownLabel}>Select your routine</Text>
+              <View style={styles.routinesRow}>
+                {routines.map((routine) => (
+                  <TouchableOpacity 
+                    key={routine.type} 
+                    style={styles.routineCardWrapper}
+                    onPress={() => handleRoutineSelect(routine)} 
+                  >
+                    <LinearGradient
+                      colors={['#180020', '#000000']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.routineCard}
+                    >
+                      <Image source={routine.icon} style={styles.routineIcon} />
+                      <Text style={styles.routineTitle}>{routine.type}</Text>
+                      <Text style={styles.routineSub}>{routine.sub}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* RUN Button */}
+      <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleRunPress}
+          style={styles.modeButtonWrapper}
+        >
+        <LinearGradient
+          colors={['#000000', '#193845']}
+          start={{ x: 0.8, y: 0.5 }}
+          end={{ x: 0.27, y: 0.5 }}
+          style={styles.modeButton}
+        >
+          <View style={styles.modeButtonTopRow}>
+            <Text style={styles.modeButtonText}>RUN</Text>
+            <Image source={require('../assets/gooo.png')} style={styles.modeButtonIcon} />
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* 👇 PASS THE onCancel PROP! */}
+      <Finding visible={isFinding} onCancel={handleCancelFinding} />
+
+      <ExerciseModal 
+        visible={exerciseModalVisible}
+        routineType={selectedRoutine.type}
+        exercises={selectedRoutine.exercises}
+        onClose={() => setExerciseModalVisible(false)} 
+        onConfirm={handleConfirmExercises} 
       />
-    </View>
-
-    {/* Expanded dropdown INSIDE the card */}
-    {workoutExpanded && (
-      <View style={styles.dropdownInner}>
-        <Text style={styles.dropdownLabel}>Select your routine</Text>
-        <View style={styles.routinesRow}>
-          {routines.map((routine) => (
-  <TouchableOpacity 
-    key={routine.type} 
-    style={styles.routineCardWrapper}
-    onPress={() => handleRoutineSelect(routine)} // Click triggers ExerciseModal
-  >
-              <LinearGradient
-                colors={['#180020', '#000000']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.routineCard}
-              >
-                <Image source={routine.icon} style={styles.routineIcon} />
-                <Text style={styles.routineTitle}>{routine.type}</Text>
-                <Text style={styles.routineSub}>{routine.sub}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    )}
-  </LinearGradient>
-</TouchableOpacity>
-
-{/* RUN Button */}
-<TouchableOpacity
-    activeOpacity={0.85}
-    onPress={handleRunPress}
-    style={styles.modeButtonWrapper}
-  >
-  <LinearGradient
-    colors={['#000000', '#193845']}
-    start={{ x: 0.8, y: 0.5 }}
-    end={{ x: 0.27, y: 0.5 }}
-    style={styles.modeButton}
-  >
-    <View style={styles.modeButtonTopRow}>
-      <Text style={styles.modeButtonText}>RUN</Text>
-      <Image source={require('../assets/gooo.png')} style={styles.modeButtonIcon} />
-    </View>
-  </LinearGradient>
-</TouchableOpacity>
-
-<Finding visible={matchState.status === 'searching'} />
-
-<MatchFoundModal
-  visible={matchFoundVisible}
-  currentUser={currentUser}
-  opponent={matchState.opponent ? {
-    name: matchState.opponent.username || 'Opponent',
-    xp: matchState.opponent.xp || 0,
-    avatar: matchState.opponent.avatar_url ? { uri: matchState.opponent.avatar_url } : undefined,
-  } : { name: 'Opponent', xp: 0 }}
-  onAccept={handleMatchAccept}
-  onDecline={handleMatchDecline}
-/>
-
-<ExerciseModal 
-  visible={exerciseModalVisible}
-  routineType={selectedRoutine.type}
-  exercises={selectedRoutine.exercises}
-  onClose={() => setExerciseModalVisible(false)} // Closes on Cancel
-  onConfirm={handleConfirmExercises} // Opens Finding.tsx on Confirm
-/>
     </ScrollView>
   );
 };
@@ -362,7 +429,6 @@ modeButtonIcon: {
   resizeMode: 'contain',
   left: -15,
 },
-
 
   // Dropdown INSIDE the card
 dropdownInner: {
