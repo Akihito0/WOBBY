@@ -17,6 +17,7 @@ interface MatchFoundModalProps {
   visible: boolean;
   currentUser: { name: string; xp: number; avatar?: any };
   opponent: { name: string; xp: number; avatar?: any };
+  targetDistance?: number;
   onAccept: () => void;
   onDecline: () => void;
 }
@@ -25,6 +26,7 @@ export default function MatchFoundModal({
   visible,
   currentUser,
   opponent,
+  targetDistance = 1,
   onAccept,
   onDecline,
 }: MatchFoundModalProps) {
@@ -141,6 +143,12 @@ export default function MatchFoundModal({
               style={styles.headerImage}
               resizeMode="contain"
             />
+
+            {/* Target Distance */}
+            <View style={styles.distanceContainer}>
+              <Text style={styles.distanceLabel}>RACE DISTANCE</Text>
+              <Text style={styles.distanceValue}>{targetDistance} KM</Text>
+            </View>
 
             {/* Players Row */}
             <View style={styles.vsContainer}>
@@ -318,5 +326,26 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     marginBottom: -60,
+  },
+  distanceContainer: {
+    alignItems: 'center',
+    marginVertical: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(212, 255, 82, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D4FF52',
+  },
+  distanceLabel: {
+    color: '#888888',
+    fontSize: 12,
+    fontFamily: 'Montserrat_700Bold',
+    marginBottom: 4,
+  },
+  distanceValue: {
+    color: '#D4FF52',
+    fontSize: 24,
+    fontFamily: 'Montserrat_700Bold',
   },
 });

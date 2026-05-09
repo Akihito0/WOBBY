@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } fr
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
 import ExerciseModal from '../components/ExerciseModal';
+import DistanceSelectionModal from '../components/DistanceSelectionModal';
 import { supabase } from '../supabase';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {

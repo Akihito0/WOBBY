@@ -97,6 +97,8 @@ interface PostRunModalProps {
     route_map_url?: string | null;
     pace?: string | null;
   };
+  initialTitle?: string;
+  initialDescription?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -110,6 +112,8 @@ export default function PostRunModal({
   isEditing = false,
   editingPostId,
   editingPostData,
+  initialTitle,
+  initialDescription,
 }: PostRunModalProps) {
   const [workoutTitle, setWorkoutTitle] = useState('');
   const [workoutDesc, setWorkoutDesc] = useState('');
@@ -128,13 +132,13 @@ export default function PostRunModal({
           setSelectedMedia(editingPostData.media_urls.map((url: string) => ({ uri: url })));
         }
       } else if (!isEditing) {
-        // We are starting a fresh save: Clear fields
-        setWorkoutTitle('');
-        setWorkoutDesc('');
+        // We are starting a fresh save: set initial title/description or clear
+        setWorkoutTitle(initialTitle || '');
+        setWorkoutDesc(initialDescription || '');
         setSelectedMedia([]);
       }
     }
-  }, [visible, isEditing, editingPostData]);
+  }, [visible, isEditing, editingPostData, initialTitle, initialDescription]);
   const { distance, elapsed, routeCoords, elevationMetrics, sessionStats, sessionHRData, workoutType } = runData;
 
   const handleAddPhotos = async () => {
