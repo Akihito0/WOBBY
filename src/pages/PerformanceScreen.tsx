@@ -383,39 +383,34 @@ const PerformanceScreen = () => {
           setChallengeModalVisible(true);
         }}
       >
-        <LinearGradient
-          colors={isVictory ? ['#000000', '#324727'] : ['#000000', '#3F1C1C']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={styles.logCard}
-        >
-          {/* Profile Image - B&W/Tinted if Lose */}
-          <View style={styles.imageContainer}>
-            <Image 
-              source={item.oppAvatar ? { uri: item.oppAvatar } : require('../assets/5.png')} 
-              style={[
-                styles.logProfile, 
-                !isVictory && { tintColor: 'gray', opacity: 0.7 } 
-              ]} 
-            />
+        <View style={styles.logCard}>
+          {/* Left Result Banner */}
+          <View style={[
+            styles.resultBanner, 
+            { backgroundColor: isVictory ? '#416F00' : '#740000' }
+          ]}>
+            <Text style={styles.resultText}>
+              {isVictory ? 'WIN' : 'LOSE'}
+            </Text>
           </View>
 
           {/* Info Section */}
           <View style={styles.logInfo}>
-            <Text style={styles.logExerciseText}>{item.name}</Text>
-            <Text style={styles.logStatsText}>
-              {item.s === '' ? item.r : `${item.r} reps | ${item.s} sets`}
-            </Text>
+            <Text style={styles.logExerciseText} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.logStatsText}>{item.r} reps</Text>
+            {item.s !== '' && <Text style={styles.logStatsText}>{item.s} sets</Text>}
           </View>
 
-          {/* Slanted Result Banner */}
-          <View style={[
-            styles.slantedBanner, 
-            { backgroundColor: isVictory ? '#416F00' : '#740000' }
-          ]}>
-            <Text style={styles.resultText}>{item.status}</Text>
+          {/* Opponent Section */}
+          <View style={styles.opponentSection}>
+            <Text style={styles.opponentLabel}>OPPONENT</Text>
+            <Image 
+              source={item.oppAvatar ? { uri: item.oppAvatar } : require('../assets/5.png')} 
+              style={styles.opponentAvatar} 
+            />
+            <Text style={styles.opponentName} numberOfLines={1}>{item.opp}</Text>
           </View>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     );
   }) : (
@@ -844,59 +839,79 @@ challengeLogsTitle: {
     paddingBottom: 20,
   },
   logWrapper: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    height: 105,
+    backgroundColor: '#0D0E09', // Dark base color from image
+    borderRadius: 22,
+    height: 125,
     marginBottom: 15,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
   },
   logCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
   },
-  imageContainer: {
-    borderRadius: 15,
-    overflow: 'hidden',
-    backgroundColor: '#222',
-  },
-  logProfile: {
-    width: 75,
-    height: 75,
-    resizeMode: 'cover',
-  },
-  logInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  logExerciseText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontFamily: 'Montserrat-Bold', // Montserrat for title
-    textTransform: 'uppercase',
-  },
-  logStatsText: {
-    color: '#CCCCCC',
-    fontSize: 14,
-    fontFamily: 'Barlow-Medium', // Barlow for stats
-    marginTop: -2,
-  },
-  slantedBanner: {
-    position: 'absolute',
-    right: -17, // Overhang to hide the skew edge
-    top: 0,
-    bottom: 0,
-    width: '35%',
+  resultBanner: {
+    width: '30%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    transform: [{ skewX: '-25deg' }], // Sharper slant to save space at the top
+    left: -25, 
+    paddingLeft: 25,
   },
   resultText: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontFamily: 'Barlow-SemiBold', // Barlow for the status
-    transform: [{ skewX: '20deg' }], // Counter-skew to keep text upright
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
+    transform: [{ skewX: '25deg' }], // Un-skew text
     textAlign: 'center',
-    marginRight: 15,
+  },
+  logInfo: {
+    flex: 1,
+    marginLeft: 10,
+    justifyContent: 'center',
+  },
+  logExerciseText: {
+    color: '#FFFFFF',
+    fontSize: 22, // Reduced size to fit better
+    fontFamily: 'Montserrat-Bold',
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
+  },
+  logStatsText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Barlow-Medium',
+    marginTop: -2,
+  },
+  opponentSection: {
+    width: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  opponentLabel: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontFamily: 'Montserrat-Bold',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    opacity: 0.8,
+  },
+  opponentAvatar: {
+    width: 62,
+    height: 62,
+    borderRadius: 14,
+    backgroundColor: '#222',
+  },
+  opponentName: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: 'Barlow-Bold',
+    marginTop: 5,
+    opacity: 0.9,
   },
 });
 
