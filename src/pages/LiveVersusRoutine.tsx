@@ -66,7 +66,6 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
   const handleStartSet = () => {
     // We will build ActiveVersusScreen in Step 4!
     Alert.alert("Coming Next!", "This will open the live AI camera.");
-    /*
     navigation.navigate('ActiveVersusScreen', {
       matchId,
       isPlayer1,
@@ -75,7 +74,6 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
       targetSets: matchData.target_sets,
       currentSet: mySets + 1
     });
-    */
   };
 
   if (loading || !matchData) {
