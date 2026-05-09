@@ -12,9 +12,9 @@ interface StatsCardsProps {
 }
 
 const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
-  // 👇 ADDED: Pulled in 'isAuthorized' from useHealth
   const { heartRate, isAuthorized } = useHealth();
   const [bmi, setBmi] = useState<number | null>(null);
+  const [xp, setXp] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   const [hrModalVisible, setHrModalVisible] = useState(false);
@@ -30,9 +30,13 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
 
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('weight, height')
+        .select('weight, height, xp')
         .eq('id', user.id)
         .single();
+
+      if (profile?.xp !== undefined) {
+        setXp(profile.xp || 0);
+      }
 
       if (error || !profile?.weight || !profile?.height) {
         setBmi(null);
@@ -65,7 +69,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ onBMIPress }) => {
             style={styles.gemImage} 
             resizeMode="contain"
           />
-          <Text style={styles.xpNum}>0 XP</Text>
+          <Text style={styles.xpNum}>{xp} XP</Text>
           <Text style={styles.xpSub}>Every move counts.{"\n"}Complete sessions to earn more!</Text>
         </LinearGradient>
       </View>

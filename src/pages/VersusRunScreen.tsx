@@ -17,6 +17,7 @@ import MapboxGL from '@rnmapbox/maps';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { uploadMapSnapshot } from '../services/runUpload';
+import PostRunScreen from './PostRunScreen';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -155,6 +156,9 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const [opponentReachedTarget, setOpponentReachedTarget] = useState(false);
   const [opponentFinished, setOpponentFinished] = useState(false);
   const [raceResult, setRaceResult] = useState<{winner: string; reason: string} | null>(null);
+  
+  const [showPostRun, setShowPostRun] = useState(false);
+  const [mapSnapshot, setMapSnapshot] = useState<string | null>(null);
 
   const locationSubscriptionRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -378,7 +382,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const userAhead = userMetrics.distance > opponentMetrics.distance;
   const distanceDiff = Math.abs(userMetrics.distance - opponentMetrics.distance);
 
-  const buildRaceNotificationMessage = (isWinner: boolean, reachedTargetDist: boolean) => {
+  const buildRaceNotificationMessage = (isWinner: boolean, reachedTargetDist: boolean, isTie: boolean) => {
+    if (isTie) {
+      return reachedTargetDist 
+        ? `You tied the ${targetDistance}km versus run.` 
+        : `You tied the versus run with equal distance.`;
+    }
+
     if (isWinner) {
       return reachedTargetDist
         ? `You won the ${targetDistance}km versus run.`
@@ -387,7 +397,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
     return reachedTargetDist
       ? `You finished the ${targetDistance}km versus run, but your opponent was faster.`
-      : `You forfeited the versus run and your opponent won.`;
+      : `You ended the run early, and your opponent won by distance.`;
   };
 
   const handleFinishRun = async () => {
@@ -431,7 +441,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       const userId = session.user.id;
       const now = new Date();
 
-      let uploadedMapUrl = null;
+      let localBase64Map = null;
       if (userCoordinates.length >= 2) {
         const bounds = getBounds(userCoordinates);
         cameraRef.current?.fitBounds(bounds[0], bounds[1], 80, 800);
@@ -443,11 +453,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             if (snapshotUri && typeof snapshotUri === 'string') {
               const base64Data = await uriToBase64(snapshotUri);
               if (base64Data) {
-                uploadedMapUrl = await uploadMapSnapshot(
-                  userId,
-                  base64Data,
-                  `vs-map-${Date.now()}.png`
-                );
+                localBase64Map = base64Data;
               }
             }
           }
@@ -472,8 +478,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         winnerId = userMetrics.time < opponentTime ? userId : route.params?.opponentId;
         winnerReason = winnerId === userId ? `Won ${targetDistance}km race by time!` : 'Opponent won by time';
       } else {
-        winnerId = userDistance > opponentDistance ? userId : route.params?.opponentId;
-        winnerReason = winnerId === userId ? 'Won with more distance' : 'Opponent won with more distance';
+        if (Math.abs(userDistance - opponentDistance) < 0.001) {
+          winnerId = null;
+          winnerReason = 'Tie';
+        } else {
+          winnerId = userDistance > opponentDistance ? userId : route.params?.opponentId;
+          winnerReason = winnerId === userId ? 'Won with more distance' : 'Opponent won with more distance';
+        }
       }
 
       let { data: resultRow } = await supabase
@@ -506,45 +517,33 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         .update(updatePayload)
         .eq('match_id', route.params?.matchId);
 
-      const runData = {
+      // Note: We no longer insert into `runs` here. PostRunScreen will handle that if the user saves.
+      // But we still insert notifications and update `versus_run_results`.
+
+      const { error: userNotifError } = await supabase.from('notifications').insert([{
         user_id: userId,
-        title: `${targetDistance}km Versus Run`,
-        description: `Raced against ${route.params?.opponentUsername || 'Runner_Pro'}`,
-        distance: userDistance,
-        duration: userMetrics.time,
-        pace: userMetrics.pace,
-        elevation_gain: userMetrics.elevation.gain,
-        route_coordinates: userCoordinates,
-        route_map_url: uploadedMapUrl,
-        workout_type: 'versus_run',
-        started_at: new Date(now.getTime() - userMetrics.time * 1000).toISOString(),
-        completed_at: now.toISOString(),
-      };
-
-      await supabase.from('runs').insert([runData]);
-
-      const notificationRows = [
-        {
-          user_id: userId,
-          title: 'Versus Run Result',
-          message: buildRaceNotificationMessage(winnerId === userId, userReachedTargetDist),
-          metadata: {
-            match_id: route.params?.matchId,
-            opponent_id: route.params?.opponentId,
-            winner_id: winnerId,
-            reached_target: userReachedTargetDist,
-            final_distance: userDistance,
-            final_time: userMetrics.time,
-          },
-          is_read: false,
+        title: 'Versus Run Result',
+        message: buildRaceNotificationMessage(winnerId === userId, userReachedTargetDist, winnerId === null),
+        metadata: {
+          match_id: route.params?.matchId,
+          opponent_id: route.params?.opponentId,
+          winner_id: winnerId,
+          reached_target: userReachedTargetDist,
+          final_distance: userDistance,
+          final_time: userMetrics.time,
         },
-      ];
+        is_read: false,
+      }]);
+
+      if (userNotifError) {
+        console.error('Failed to insert user notification:', userNotifError);
+      }
 
       if (route.params?.opponentId) {
-        notificationRows.push({
+        const { error: oppNotifError } = await supabase.from('notifications').insert([{
           user_id: route.params.opponentId,
           title: 'Versus Run Result',
-          message: buildRaceNotificationMessage(winnerId === route.params.opponentId, opponentReachedTarget),
+          message: buildRaceNotificationMessage(winnerId === route.params.opponentId, opponentReachedTarget, winnerId === null),
           metadata: {
             match_id: route.params?.matchId,
             opponent_id: userId,
@@ -554,10 +553,12 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             final_time: opponentTime,
           },
           is_read: false,
-        });
+        }]);
+        
+        if (oppNotifError) {
+          console.warn('Could not insert opponent notification (likely RLS restricted):', oppNotifError);
+        }
       }
-
-      await supabase.from('notifications').insert(notificationRows);
 
       // Broadcast finish event to opponent
       if (realtimeChannelRef.current) {
@@ -575,14 +576,15 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       }
       
       setRaceResult({
-        winner: winnerId === userId ? 'You' : 'Opponent',
+        winner: winnerId === userId ? 'You' : (winnerId === null ? 'Tie' : 'Opponent'),
         reason: winnerReason,
       });
       
       setIsSaving(false);
-
-      Alert.alert('Run Finished ✅', 'Result will be sent to your notifications');
-      setTimeout(() => navigation.goBack(), 1500);
+      setMapSnapshot(localBase64Map);
+      setShowPostRun(true);
+      
+      // Removed automatic goBack; we wait for PostRunScreen to handle finish
     } catch (error) {
       setIsSaving(false);
     }
@@ -756,6 +758,35 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           </>
         )}
       </View>
+
+      <PostRunScreen 
+        visible={showPostRun}
+        onDiscard={() => {
+          setShowPostRun(false);
+          navigation.goBack();
+        }}
+        onBackToPaused={() => {
+          setShowPostRun(false);
+          setRunState('paused');
+        }}
+        onSaveSuccess={() => {
+          setShowPostRun(false);
+          navigation.goBack();
+        }}
+        mapSnapshot={mapSnapshot}
+        runData={{
+          distance: userMetrics.distance,
+          elapsed: userMetrics.time,
+          routeCoords: userCoordinates,
+          elevationMetrics: { gain: userMetrics.elevation.gain, loss: userMetrics.elevation.loss, min: 0, max: 0 },
+          sessionStats: { avg: 0, max: 0 },
+          sessionHRData: [],
+          workoutType: 'versus_run',
+          isWinner: raceResult?.winner === 'You'
+        }}
+        initialTitle={`${targetDistance}km Versus Run`}
+        initialDescription={`Raced against ${route.params?.opponentUsername || 'Runner_Pro'}`}
+      />
     </View>
   );
 };

@@ -79,6 +79,7 @@ interface RunData {
   sessionStats: { avg: number; max: number };
   sessionHRData: number[];
   workoutType: string;
+  isWinner?: boolean;
 }
 
 interface PostRunModalProps {
@@ -324,6 +325,52 @@ if (isEditing && editingPostId) {
         setIsSaving(false);
         return;
       }
+
+      // ─── XP LOGIC ───
+      try {
+        // 1. Get today's start and end in UTC matching local day
+        const nowLocal = new Date();
+        const startOfDay = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate()).toISOString();
+        const endOfDay = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), 23, 59, 59, 999).toISOString();
+
+        // 2. Fetch runs for today to get previous total distance
+        const { data: todaysRuns } = await supabase
+          .from('runs')
+          .select('distance')
+          .eq('user_id', userId)
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay);
+
+        const prevDistance = (todaysRuns || []).reduce((sum, run) => sum + Number(run.distance || 0), 0);
+        const totalDistance = prevDistance + distance;
+
+        // 3. Calculate XP for prev and total using the tiered formula
+        const calcBaseXp = (dist: number) => Math.floor(dist >= 1 ? 100 + (dist - 1) * 50 : dist * 100);
+        
+        const xpForPrev = calcBaseXp(prevDistance);
+        const xpForTotal = calcBaseXp(totalDistance);
+        
+        let earnedXp = xpForTotal - xpForPrev;
+
+        if (workoutType === 'versus_run' && runData.isWinner && distance >= 1) {
+          earnedXp += 100;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('xp')
+          .eq('id', userId)
+          .single();
+        
+        const currentXp = profile?.xp || 0;
+        await supabase
+          .from('profiles')
+          .update({ xp: currentXp + earnedXp })
+          .eq('id', userId);
+      } catch (xpError) {
+        console.warn('Failed to update XP:', xpError);
+      }
+      // ────────────────
 
       Alert.alert('Success! 🏃', 'Your workout has been saved to your profile.');
       
