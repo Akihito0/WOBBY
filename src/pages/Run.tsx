@@ -124,10 +124,26 @@ const calcElevationMetrics = (coords: Coordinate[]): { gain: number; loss: numbe
 const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] => {
   const lats = coords.map(c => c.latitude);
   const lngs = coords.map(c => c.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
+  let minLat = Math.min(...lats);
+  let maxLat = Math.max(...lats);
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+
+  // Enforce a minimum bounding box size for short runs
+  // This prevents Mapbox from failing to zoom or glitching on tiny routes
+  const MIN_DELTA = 0.005; // Adjust this to tweak the maximum zoom-in level
+  
+  if (maxLat - minLat < MIN_DELTA) {
+    const centerLat = (maxLat + minLat) / 2;
+    minLat = centerLat - (MIN_DELTA / 2);
+    maxLat = centerLat + (MIN_DELTA / 2);
+  }
+  if (maxLng - minLng < MIN_DELTA) {
+    const centerLng = (maxLng + minLng) / 2;
+    minLng = centerLng - (MIN_DELTA / 2);
+    maxLng = centerLng + (MIN_DELTA / 2);
+  }
+
   return [[maxLng, maxLat], [minLng, minLat]];
 };
 
@@ -306,7 +322,8 @@ const RunScreen = ({ navigation, route }: any) => {
           if (!gpsReady) setGpsReady(true);
 
           if (runState === 'running') {
-            const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy < 20;
+            // INCREASED THRESHOLD: 40 meters is a much more realistic cutoff for mobile GPS
+            const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 40;
             
             if (hasGoodAccuracy) {
               setRouteCoords(prev => {
@@ -378,7 +395,9 @@ const RunScreen = ({ navigation, route }: any) => {
     
     if (routeCoords.length >= 2) {
       const bounds = getBounds(routeCoords);
-      cameraRef.current?.fitBounds(bounds[0], bounds[1], 60, 500); 
+      // Increased padding to 80 to keep the route away from the edges
+      // Increased animation duration to 800ms for a smoother transition
+      cameraRef.current?.fitBounds(bounds[0], bounds[1], 80, 800); 
 
       try {
         const MAX_WAYPOINTS = 100;
@@ -391,26 +410,28 @@ const RunScreen = ({ navigation, route }: any) => {
             coordsToSnap.push(routeCoords[routeCoords.length - 1]);
           }
         }
-  
+ 
         const snapped = await snapRouteToRoads(coordsToSnap);
         setSnappedRoute(snapped);
       } catch (error) {
         setSnappedRoute(null);
       }
     }
-  
+ 
     captureAndStoreMapSnapshot();
   };
 
   const captureAndStoreMapSnapshot = async () => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-  
+      // Increased timeout to 2000ms. 
+      // This ensures the camera animation finishes AND Mapbox downloads the high-res map tiles for the new zoom level.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+ 
       if (!mapViewRef.current) {
         setMapSnapshot(null);
         return;
       }
-  
+ 
       let snapshotUri: string | null = null;
       
       try {
@@ -419,14 +440,14 @@ const RunScreen = ({ navigation, route }: any) => {
         setMapSnapshot(null);
         return;
       }
-  
+ 
       if (!snapshotUri || typeof snapshotUri !== 'string') {
         setMapSnapshot(null);
         return;
       }
-  
+ 
       const base64Data = await uriToBase64(snapshotUri);
-  
+ 
       if (base64Data && base64Data.length > 0) {
         setMapSnapshot(base64Data);
       } else {

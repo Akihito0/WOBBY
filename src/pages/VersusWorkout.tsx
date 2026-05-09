@@ -1,16 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
 import ExerciseModal from '../components/ExerciseModal';
+import DistanceSelectionModal from '../components/DistanceSelectionModal';
+import MatchFoundModal from '../components/MatchFoundModal';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { useVersusMatchmaking } from '../services/useVersusMatchmaking';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
   const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
   const [isFinding, setIsFinding] = useState(false);
+  const [distanceModalVisible, setDistanceModalVisible] = useState(false);
+  const [isRunFinding, setIsRunFinding] = useState(false);
   const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
+
+  const { matchState, startMatchmaking: startRunMatchmaking, cancelMatchmaking: cancelRunMatchmaking, acceptMatch } = useVersusMatchmaking();
+  const [matchModalVisible, setMatchModalVisible] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState<{ name: string; xp: number; avatar?: any }>({ name: 'You', xp: 0 });
 
   // Refs to manage our network connections so we can cancel them cleanly
   const realtimeSubRef = useRef<RealtimeChannel | null>(null);
@@ -168,9 +177,75 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
     );
   };
 
-  const handleRunPress = async () => {
-    Alert.alert("Coming Soon", "Versus Run logic is currently under construction.");
+  const handleRunPress = () => {
+    // Open the distance selector modal first
+    setDistanceModalVisible(true);
   };
+
+  const handleDistanceSelect = async (distance: 1 | 3 | 5) => {
+    setDistanceModalVisible(false);
+    setIsRunFinding(true);
+    try {
+      await startRunMatchmaking(distance);
+    } catch (err) {
+      console.error('Run matchmaking start error:', err);
+      setIsRunFinding(false);
+      Alert.alert('Error', 'Failed to start run matchmaking. Please try again.');
+    }
+  };
+
+  const handleDistanceCancel = () => setDistanceModalVisible(false);
+
+  useEffect(() => {
+    // When a match is found, show the MatchFoundModal and fetch current user profile
+    if (matchState.status === 'found' && matchState.opponent && matchState.matchId) {
+      setIsRunFinding(false);
+      setMatchModalVisible(true);
+
+      (async () => {
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError || !session?.user?.id) return;
+          const userId = session.user.id;
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('username, xp, avatar_url')
+            .eq('id', userId)
+            .single();
+          if (!error && profile) {
+            setCurrentProfile({ name: profile.username || 'You', xp: profile.xp || 0, avatar: profile.avatar_url });
+          }
+        } catch (err) {
+          console.error('Error fetching current profile for match modal:', err);
+        }
+      })();
+    }
+
+    if (matchState.status === 'error') {
+      setIsRunFinding(false);
+      setMatchModalVisible(false);
+      Alert.alert('Error', matchState.error || 'Matchmaking failed.');
+    }
+  }, [matchState]);
+
+  // Navigate only after both users accepted the match
+  useEffect(() => {
+    // Only navigate when both have accepted AND the local user has accepted.
+    if (
+      matchState.status === 'both_accepted' &&
+      matchState.opponent &&
+      matchState.matchId &&
+      matchState.userAccepted === true
+    ) {
+      setMatchModalVisible(false);
+      navigation.navigate('VersusRun', {
+        opponentUsername: matchState.opponent.username || 'Runner',
+        opponentId: matchState.opponent.id,
+        matchId: matchState.matchId,
+        targetDistance: matchState.targetDistance,
+      });
+    }
+  }, [matchState]);
 
   const routines = [
     { type: 'PUSH', sub: 'Chest, Shoulders, Triceps', icon: require('../assets/push.png'), exercises: ['Push Ups', 'Bench Press', 'Tricep Dips']},
@@ -289,6 +364,47 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
       {/* PASS THE onCancel PROP! */}
       <Finding visible={isFinding} onCancel={handleCancelFinding} />
+
+      {/* Distance selector for RUN mode */}
+      <DistanceSelectionModal
+        visible={distanceModalVisible}
+        onSelect={handleDistanceSelect}
+        onCancel={handleDistanceCancel}
+      />
+
+      {/* Finding modal for run matchmaking */}
+      <Finding
+        visible={isRunFinding}
+        onCancel={async () => {
+          await cancelRunMatchmaking();
+          setIsRunFinding(false);
+        }}
+      />
+
+      {/* Match found acceptance modal */}
+      <MatchFoundModal
+        visible={matchModalVisible}
+        currentUser={{ name: currentProfile.name, xp: currentProfile.xp, avatar: currentProfile.avatar }}
+        opponent={{ name: matchState.opponent?.username || 'Opponent', xp: matchState.opponent?.xp || 0, avatar: matchState.opponent?.avatar_url }}
+        targetDistance={matchState.targetDistance}
+        onAccept={async () => {
+          try {
+            await acceptMatch();
+          } catch (err) {
+            console.error('Accept match error:', err);
+            Alert.alert('Error', 'Failed to accept match.');
+          }
+        }}
+        onDecline={async () => {
+          try {
+            await cancelRunMatchmaking();
+          } catch (err) {
+            console.error('Decline match error:', err);
+          }
+          setMatchModalVisible(false);
+          setIsRunFinding(false);
+        }}
+      />
 
       <ExerciseModal 
         visible={exerciseModalVisible}
