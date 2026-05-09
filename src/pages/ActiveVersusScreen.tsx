@@ -160,7 +160,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         const data = JSON.parse(e.data);
         if (data.type === 'answer') {
           await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
-          if (!isServerReady) setIsServerReady(true); // AI Server accepted stream and is ready!
+          if (!isServerReady) setIsServerReady(true); // Wobby Spotter accepted stream and is ready!
         } else if (data.type === 'pose' && data.landmarks?.length >= 33) {
           const lm = data.landmarks;
           const parsePoint = (i: number) => ({
@@ -563,7 +563,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       {!isServerReady && (
         <View style={styles.countdownOverlay}>
           <ActivityIndicator size="large" color="#CCFF00" />
-          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Connecting to AI Server...</Text>
+          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Activating Wobby Spotter...</Text>
+          <Text style={{ color: '#888', fontSize: 12, fontFamily: 'Montserrat-Medium', marginTop: 10 }}>Your form tracker is warming up</Text>
         </View>
       )}
 

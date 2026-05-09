@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -196,12 +196,52 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         return;
       }
 
-      Alert.alert('Success! 💪', 'Your workout has been saved to your vault.');
+      // 💰 CALCULATE & AWARD XP
+      let totalRepsCompleted = 0;
+      let totalSetsCompleted = 0;
+      let totalTargetReps = 0;
+
+      exercises.forEach((ex: any) => {
+        if (Array.isArray(ex.sets)) {
+          ex.sets.forEach((s: any) => {
+            totalRepsCompleted += Number(s.reps) || 0;
+            totalSetsCompleted += 1;
+            totalTargetReps += Number(s.reps) || 0; // All finished sets count as target met
+          });
+        }
+      });
+
+      const baseXP = 50;
+      const repXP = totalRepsCompleted * 5;
+      const setXP = totalSetsCompleted * 25;
+      const durationBonus = elapsedSeconds > 300 ? 50 : 0; // >5 min
+      const perfectBonus = totalRepsCompleted >= totalTargetReps && totalSetsCompleted > 0 ? 100 : 0;
+      const earnedXP = baseXP + repXP + setXP + durationBonus + perfectBonus;
+
+      // Save XP to profile
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('xp')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          await supabase
+            .from('profiles')
+            .update({ xp: (profile.xp || 0) + earnedXP })
+            .eq('id', session.user.id);
+        }
+      } catch (xpErr) {
+        console.log('XP save error (non-critical):', xpErr);
+      }
+
+      Alert.alert('Workout Saved! 💪', `You earned +${earnedXP} XP!\n\n🏋️ ${totalRepsCompleted} reps × ${totalSetsCompleted} sets`);
       setIsSaving(false);
       
       navigation.reset({
         index: 0,
-        routes: [{ name: 'AppTabs', params: { screen: 'Home' } }], // Navigate to dashboard
+        routes: [{ name: 'AppTabs', params: { screen: 'Home' } }],
       });
     } catch (error) {
       console.error(error);
