@@ -21,6 +21,7 @@ interface WeekDay {
   day: number;
   state: DayState;
   isSameMonth: boolean;
+  dateStr: string;
 }
 
 const getCurrentWeek = (): WeekDay[] => {
@@ -143,6 +144,8 @@ interface Styles {
   circleBase: ViewStyle;
   circlePast: ViewStyle;
   circleToday: ViewStyle;
+  circleStreak: ViewStyle;
+  circleFreeze: ViewStyle;
   numBase: TextStyle;
   numPast: TextStyle;
   numToday: TextStyle;
