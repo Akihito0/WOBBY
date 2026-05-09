@@ -16,7 +16,58 @@ import * as Location from 'expo-location';
 import MapboxGL from '@rnmapbox/maps';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { uploadMapSnapshot } from '../services/runUpload';
+const uriToBase64 = async (uri: string): Promise<string | null> => {
+  try {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error("Failed to read blob as data URL"));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(xhr.response);
+      };
+      xhr.onerror = reject;
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+  } catch (error) {
+    console.error('Error in uriToBase64:', error);
+    return null;
+  }
+};
 
+const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] => {
+  const lats = coords.map(c => c.latitude);
+  const lngs = coords.map(c => c.longitude);
+  let minLat = Math.min(...lats);
+  let maxLat = Math.max(...lats);
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+
+  // Enforce a minimum bounding box size for short runs
+  const MIN_DELTA = 0.005; 
+  
+  if (maxLat - minLat < MIN_DELTA) {
+    const centerLat = (maxLat + minLat) / 2;
+    minLat = centerLat - (MIN_DELTA / 2);
+    maxLat = centerLat + (MIN_DELTA / 2);
+  }
+  if (maxLng - minLng < MIN_DELTA) {
+    const centerLng = (maxLng + minLng) / 2;
+    minLng = centerLng - (MIN_DELTA / 2);
+    maxLng = centerLng + (MIN_DELTA / 2);
+  }
+
+  return [[maxLng, maxLat], [minLng, minLat]];
+};
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Set your Mapbox public token here
@@ -112,6 +163,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const opponentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const mapViewRef = useRef<MapboxGL.MapView>(null);
 
   // Initialize location tracking and realtime subscription
   useEffect(() => {
@@ -273,6 +325,14 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           distanceInterval: 10,
         },
         (location) => {
+          // ADDED FILTER: Ignore wildly inaccurate GPS spikes during races
+          const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 40;
+          
+          if (!hasGoodAccuracy) {
+             console.warn('⚠️ Versus GPS accuracy too low, skipping:', location.coords.accuracy);
+             return; // Skip this bad coordinate
+          }
+
           const coord: Coordinate = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -280,6 +340,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           };
           console.debug('Location update:', coord);
           setUserCoordinates(prev => [...prev, coord]);
+          
           // Publish location for opponent to see in real-time
           publishUserLocation(coord).catch(err => console.error('publishUserLocation error:', err));
         }
@@ -324,7 +385,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
 
 
-  const handleFinishRun = async () => {
+ const handleFinishRun = async () => {
     setIsSaving(true);
     setRunState('finished');
     
@@ -339,7 +400,39 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
       const userId = session.user.id;
       const now = new Date();
-      
+
+      // ─── NEW SNAPSHOT LOGIC ───
+      let uploadedMapUrl = null;
+      if (userCoordinates.length >= 2) {
+        // 1. Frame the map using our new getBounds logic
+        const bounds = getBounds(userCoordinates);
+        cameraRef.current?.fitBounds(bounds[0], bounds[1], 80, 800);
+        
+        try {
+          // 2. Wait for animation and map tiles to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          if (mapViewRef.current) {
+            // 3. Take the snapshot
+            const snapshotUri = await mapViewRef.current.takeSnap(true);
+            if (snapshotUri && typeof snapshotUri === 'string') {
+              // 4. Convert and upload to Supabase
+              const base64Data = await uriToBase64(snapshotUri);
+              if (base64Data) {
+                uploadedMapUrl = await uploadMapSnapshot(
+                  userId,
+                  base64Data,
+                  `vs-map-${Date.now()}.png`
+                );
+              }
+            }
+          }
+        } catch (snapErr) {
+          console.error('Failed to capture or upload map snapshot:', snapErr);
+        }
+      }
+      // ──────────────────────────
+
       const userDistance = calcDistance(userCoordinates);
       const opponentDistance = calcDistance(opponentCoordinates);
 
@@ -506,7 +599,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         max_elevation: 0,
         average_elevation: 0,
         route_coordinates: userCoordinates,
-        route_map_url: null,
+        route_map_url: uploadedMapUrl, // INJECT THE URL HERE
         media_urls: [],
         workout_type: 'versus_run',
         started_at: new Date(now.getTime() - userMetrics.time * 1000).toISOString(),
@@ -706,12 +799,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     </View>
 
     <MapboxGL.MapView
+      ref={mapViewRef} // ADD THE REF HERE
       style={[styles.map, mapExpanded && styles.mapExpanded]}
       styleURL={MapboxGL.StyleURL.Dark}
       compassEnabled={false}
       logoEnabled={false}
       attributionEnabled={false}
-            >
+    >
               <MapboxGL.Camera
                 ref={cameraRef}
                 zoomLevel={16}
