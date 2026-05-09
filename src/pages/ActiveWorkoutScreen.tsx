@@ -145,7 +145,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       setLocalStream(stream);
 
       // Connect directly using Environment Variables (ngrok or Wi-Fi)
-      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.18:8765';
+      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
       console.log(`Connecting instantly to signaling server at: ${serverUrl}`);
       
       const socket = new WebSocket(serverUrl);

@@ -73,6 +73,7 @@ import VersusRunScreen from './src/pages/VersusRunScreen';
 import ResetPasswordScreen from './src/pages/ResetPasswordScreen';
 import { HealthProvider } from './src/context/HealthContext';
 import LiveVersusRoutine from './src/pages/LiveVersusRoutine';
+import ActiveVersusScreen from './src/pages/ActiveVersusScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -145,6 +146,7 @@ function WorkoutStackScreen() {
       <WorkoutStack.Screen name="ActiveWorkoutScreen" component={ActiveWorkoutScreen} />
       <WorkoutStack.Screen name="WorkoutSummaryScreen" component={WorkoutSummaryScreen} />
       <WorkoutStack.Screen name="LiveVersusRoutine" component={LiveVersusRoutine} />
+      <WorkoutStack.Screen name="ActiveVersusScreen" component={ActiveVersusScreen} />
     </WorkoutStack.Navigator>
   );
 }

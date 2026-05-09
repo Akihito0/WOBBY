@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Alert
+  View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Alert, ActivityIndicator, Modal
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { mediaDevices, RTCPeerConnection, RTCView, RTCSessionDescription } from 'react-native-webrtc';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Line, Circle } from 'react-native-svg';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import ChallengeModal from '../components/ChallengeModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -18,6 +19,7 @@ export type Pose = {
   leftWrist: Point; rightWrist: Point;
   leftHip: Point; rightHip: Point;
   leftKnee: Point; rightKnee: Point;
+  leftAnkle: Point; rightAnkle: Point;
 };
 
 const calculateAngle = (A: Point | undefined, B: Point | undefined, C: Point | undefined) => {
@@ -36,9 +38,23 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [isConnected, setIsConnected] = useState(false);
   
   const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
+  const [isServerReady, setIsServerReady] = useState(false); // 🔥 Fix 10-20s Delay 🔥
+  const [countdown, setCountdown] = useState(5); // 5-second countdown
+  const [showCountdown, setShowCountdown] = useState(true);
   const [time, setTime] = useState(0);
   const [reps, setReps] = useState(0);
-  const [opponentReps, setOpponentReps] = useState(0); // 🔴 OPPONENT'S LIVE REPS
+  const [opponentReps, setOpponentReps] = useState(0); 
+  
+  const [isFinished, setIsFinished] = useState(false);
+  const [opponentFinished, setOpponentFinished] = useState(false);
+  const [myTime, setMyTime] = useState(0);
+  const [opponentTime, setOpponentTime] = useState(0);
+  const [showResultModal, setShowResultModal] = useState(false);
+
+  // Final match result states for ChallengeModal
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [challengeData, setChallengeData] = useState<any>(null);
+  const userIdRef = useRef<string | null>(null);
   
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
@@ -62,6 +78,12 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     channel.on('broadcast', { event: 'REP_UPDATE' }, (payload) => {
       console.log("Opponent rep update received!", payload);
       setOpponentReps(payload.payload.reps);
+    });
+
+    channel.on('broadcast', { event: 'FINISHED_SET' }, (payload) => {
+      console.log("Opponent finished set!", payload);
+      setOpponentFinished(true);
+      setOpponentTime(payload.payload.time);
     });
 
     channel.subscribe((status) => {
@@ -101,7 +123,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       });
       setLocalStream(stream);
 
-      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8765';
+      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
       const socket = new WebSocket(serverUrl);
       ws.current = socket;
 
@@ -138,6 +160,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         const data = JSON.parse(e.data);
         if (data.type === 'answer') {
           await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
+          if (!isServerReady) setIsServerReady(true); // AI Server accepted stream and is ready!
         } else if (data.type === 'pose' && data.landmarks?.length >= 33) {
           const lm = data.landmarks;
           const parsePoint = (i: number) => ({
@@ -152,6 +175,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
             leftWrist: parsePoint(15), rightWrist: parsePoint(16),
             leftHip: parsePoint(23), rightHip: parsePoint(24),
             leftKnee: parsePoint(25), rightKnee: parsePoint(26),
+            leftAnkle: parsePoint(27), rightAnkle: parsePoint(28),
           });
         }
       };
@@ -160,7 +184,20 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     }
   };
 
-  // ─── 3. TIMER ───
+  // ─── 3. COUNTDOWN & TIMER ───
+  useEffect(() => {
+    let timer: any;
+    if (showCountdown && isServerReady) {
+      if (countdown > 0) {
+        timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+      } else {
+        setShowCountdown(false);
+        setIsWorkoutStarted(true);
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [countdown, showCountdown, isServerReady]);
+
   useEffect(() => {
     if (isWorkoutStarted) {
       intervalRef.current = setInterval(() => setTime(prev => prev + 1), 1000);
@@ -172,58 +209,89 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
   // ─── 4. REP COUNTING & BROADCASTING ───
   useEffect(() => {
-    if (!isWorkoutStarted || !pose) return;
-
-    const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
-    const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
-
-    if (leftElbowAngle === null && rightElbowAngle === null) {
-      setFormFeedback('Arms not visible');
-      return;
-    }
-
-    let avgElbowAngle = (leftElbowAngle ?? rightElbowAngle ?? 0 + (rightElbowAngle ?? leftElbowAngle ?? 0)) / 2;
+    if (!isWorkoutStarted || !pose || isFinished) return;
 
     const name = exerciseName.toUpperCase();
-    const isPushExercise = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP');
-    const upThreshold = isPushExercise ? 145 : 60; 
-    const downThreshold = isPushExercise ? 100 : 150; 
+    const isPushExercise = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS');
+    const isSquatExercise = name.includes('SQUAT') || name.includes('LEG');
 
-    // Symmetry Check
-    const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null) ? Math.abs(leftElbowAngle - rightElbowAngle) : 0;
-    if (elbowSymmetry < 45) {
-      consecutiveGoodFormFrames.current += 1;
-    } else {
-      consecutiveGoodFormFrames.current = 0;
-      setFormFeedback('Uneven arms');
-    }
+    let isRepValid = false;
+    let feedback = "";
 
-    if (consecutiveGoodFormFrames.current < 2) return;
-
-    // Rep Registration
-    const currentPhase = exercisePhaseRef.current;
-    
-    if (isPushExercise) {
-      if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
-        exercisePhaseRef.current = 'down';
-        setFormFeedback('Go lower! ✓');
-      } else if (currentPhase === 'down' && avgElbowAngle > upThreshold) {
-        registerRep();
+    if (isSquatExercise) {
+      // 🦵 SQUAT LOGIC: Hip-Knee-Ankle
+      const leftKneeAngle = calculateAngle(pose.leftHip, pose.leftKnee, pose.leftAnkle);
+      const rightKneeAngle = calculateAngle(pose.rightHip, pose.rightKnee, pose.rightAnkle);
+      
+      if (leftKneeAngle === null && rightKneeAngle === null) {
+        setFormFeedback('Legs not visible');
+        return;
       }
-    } else {
-      if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
+
+      let avgKneeAngle = 0;
+      if (leftKneeAngle !== null && rightKneeAngle !== null) {
+        avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
+      } else {
+        avgKneeAngle = leftKneeAngle ?? rightKneeAngle ?? 0;
+      }
+      
+      // Thresholds: Down < 100 deg, Up > 160 deg
+      if (exercisePhaseRef.current === 'down' && avgKneeAngle < 100) {
         exercisePhaseRef.current = 'up';
-        setFormFeedback('Up position! ✓');
-      } else if (currentPhase === 'up' && avgElbowAngle > downThreshold) {
+        setFormFeedback('Good depth! ✓');
+      } else if (exercisePhaseRef.current === 'up' && avgKneeAngle > 160) {
         registerRep();
       }
+
+    } else {
+      // 💪 ARM LOGIC: Shoulder-Elbow-Wrist (Bicep Curls or Push exercises)
+      const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
+      const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
+
+      if (leftElbowAngle === null && rightElbowAngle === null) {
+        setFormFeedback('Arms not visible');
+        return;
+      }
+
+      let avgElbowAngle = 0;
+      if (leftElbowAngle !== null && rightElbowAngle !== null) {
+        avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
+      } else {
+        avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
+      }
+
+      const upThreshold = isPushExercise ? 145 : 60; 
+      const downThreshold = isPushExercise ? 100 : 150; 
+
+      if (isPushExercise) {
+        if (exercisePhaseRef.current === 'up' && avgElbowAngle < downThreshold) {
+          exercisePhaseRef.current = 'down';
+          setFormFeedback('Go lower! ✓');
+        } else if (exercisePhaseRef.current === 'down' && avgElbowAngle > upThreshold) {
+          registerRep();
+        }
+      } else {
+        // Bicep Curl
+        if (exercisePhaseRef.current === 'down' && avgElbowAngle < upThreshold) {
+          exercisePhaseRef.current = 'up';
+          setFormFeedback('Full squeeze! ✓');
+        } else if (exercisePhaseRef.current === 'up' && avgElbowAngle > downThreshold) {
+          registerRep();
+        }
+      }
     }
-  }, [pose, isWorkoutStarted]);
+  }, [pose, isWorkoutStarted, isFinished]);
 
   const registerRep = () => {
     const newReps = reps + 1;
     setReps(newReps);
-    exercisePhaseRef.current = isPushExercise(exerciseName) ? 'up' : 'down';
+    
+    const name = exerciseName.toUpperCase();
+    if (name.includes('SQUAT')) {
+      exercisePhaseRef.current = 'down';
+    } else {
+      exercisePhaseRef.current = isPushExercise(exerciseName) ? 'up' : 'down';
+    }
     setFormFeedback('Rep counted! ✓');
 
     // 🔴 SEND LIVE UPDATE TO OPPONENT
@@ -245,7 +313,18 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
   const handleSetFinished = async () => {
     setIsWorkoutStarted(false);
+    setIsFinished(true);
+    setMyTime(time);
+
+    // 🔴 BROADCAST FINISH TO OPPONENT
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'FINISHED_SET',
+      payload: { time: time }
+    });
     
+    const isLastSet = Number(currentSet) >= Number(targetSets);
+
     // Save to database
     try {
       const fieldReps = isPlayer1 ? 'player1_reps' : 'player2_reps';
@@ -256,18 +335,155 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .from('versus_battles')
         .update({
           [fieldReps]: targetReps,
-          [fieldSets]: currentSet,
-          [fieldTime]: time // Save how fast they finished!
+          [fieldSets]: Number(currentSet),
+          [fieldTime]: time,
+          ...(isLastSet ? { status: 'active' } : {}) // Mark as active (not 'waiting') until both done
         })
         .eq('id', matchId);
 
     } catch (e) {
       console.log('Error saving set data', e);
     }
-
-    Alert.alert("Set Complete!", "You finished before your opponent. Returning to Lobby...");
-    navigation.goBack(); // Return to LiveVersusRoutine
   };
+
+  const determineAndSaveWinner = async (localTime: number, remoteTime: number) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      userIdRef.current = user.id;
+
+      // WAIT until both players' times are saved to DB (poll with retries)
+      let match: any = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data } = await supabase
+          .from('versus_battles')
+          .select('*')
+          .eq('id', matchId)
+          .single();
+        
+        if (data && data.player1_time > 0 && data.player2_time > 0) {
+          match = data;
+          break;
+        }
+        
+        console.log(`Waiting for both times... attempt ${attempt + 1} (p1=${data?.player1_time}, p2=${data?.player2_time})`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      if (!match) {
+        // Fallback: use whatever we have
+        const { data } = await supabase.from('versus_battles').select('*').eq('id', matchId).single();
+        match = data;
+      }
+      if (!match) return;
+
+      // Lower cumulative time = faster = winner
+      const p1TotalTime = match.player1_time || 999999;
+      const p2TotalTime = match.player2_time || 999999;
+      const winnerId = p1TotalTime <= p2TotalTime ? match.player1_id : match.player2_id;
+      const iWon = winnerId === user.id;
+
+      // Only player1 writes the winner to avoid both overwriting each other
+      if (isPlayer1) {
+        await supabase
+          .from('versus_battles')
+          .update({
+            winner_id: winnerId,
+            status: 'completed'
+          })
+          .eq('id', matchId);
+        console.log('✅ Winner saved:', winnerId === match.player1_id ? 'Player 1' : 'Player 2');
+      } else {
+        // Player 2: wait briefly for Player 1 to write the winner
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const { data: finalMatch } = await supabase.from('versus_battles').select('winner_id').eq('id', matchId).single();
+        if (finalMatch?.winner_id) {
+          const actuallyWon = finalMatch.winner_id === user.id;
+          if (actuallyWon !== iWon) {
+            // Player 1's write is the source of truth
+          }
+        }
+      }
+
+      // 💰 SAVE XP TO DATABASE
+      const earnedXp = iWon ? 150 : 50;
+      const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
+      
+      // Save XP to versus_battles row
+      await supabase
+        .from('versus_battles')
+        .update({ [xpField]: earnedXp })
+        .eq('id', matchId);
+
+      // Add XP to user's profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('xp')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ xp: (profile.xp || 0) + earnedXp })
+          .eq('id', user.id);
+        console.log(`💰 Added ${earnedXp} XP to profile (total: ${(profile.xp || 0) + earnedXp})`);
+      }
+
+      // Fetch opponent username
+      const opponentId = isPlayer1 ? match.player2_id : match.player1_id;
+      const { data: oppProfile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', opponentId)
+        .single();
+
+      const totalSecs = localTime;
+      const hrs = Math.floor(totalSecs / 3600);
+      const mins = Math.floor((totalSecs % 3600) / 60);
+      const secs = totalSecs % 60;
+      const durStr = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+
+      setChallengeData({
+        status: iWon ? 'VICTORY' : 'DEFEAT',
+        exerciseName: exerciseName,
+        reps: targetReps,
+        sets: targetSets,
+        date: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
+        duration: durStr,
+        opponent: oppProfile?.username || 'Opponent',
+        xp: iWon ? 150 : 50,
+      });
+      setShowResultModal(false);
+      setShowChallengeModal(true);
+
+    } catch (err) {
+      console.log('Error determining winner:', err);
+    }
+  };
+
+  const handleNextStep = () => {
+    setShowResultModal(false);
+    const cSet = Number(currentSet) || 1;
+    const tSets = Number(targetSets) || 1;
+
+    if (cSet < tSets) {
+      navigation.replace('LiveVersusRoutine', { 
+        matchId, 
+        isPlayer1, 
+        currentSet: cSet + 1 
+      });
+    } else {
+      // Last set done — determine winner!
+      determineAndSaveWinner(myTime, opponentTime);
+    }
+  };
+
+  useEffect(() => {
+    if (isFinished && opponentFinished) {
+      setShowResultModal(true);
+    }
+  }, [isFinished, opponentFinished]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
@@ -297,6 +513,16 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           {drawLine(pose.leftElbow, pose.leftWrist)}
           {drawLine(pose.rightShoulder, pose.rightElbow)}
           {drawLine(pose.rightElbow, pose.rightWrist)}
+          
+          {/* Torso & Legs */}
+          {drawLine(pose.leftShoulder, pose.leftHip)}
+          {drawLine(pose.rightShoulder, pose.rightHip)}
+          {drawLine(pose.leftHip, pose.rightHip)}
+          {drawLine(pose.leftHip, pose.leftKnee)}
+          {drawLine(pose.leftKnee, pose.leftAnkle)}
+          {drawLine(pose.rightHip, pose.rightKnee)}
+          {drawLine(pose.rightKnee, pose.rightAnkle)}
+
           {Object.entries(pose).map(([key, pt]) => pt.conf > 0.15 ? <Circle key={key} cx={pt.x} cy={pt.y} r="5" fill="#CCFF00" /> : null)}
         </Svg>
       )}
@@ -323,22 +549,82 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         </LinearGradient>
       </View>
 
-      {/* PRE-WORKOUT START MENU */}
-      {!isWorkoutStarted && (
-        <View style={styles.bottomOverlay}>
-          <Text style={styles.exerciseTitle}>{exerciseName} - Set {currentSet}</Text>
-          <TouchableOpacity style={styles.startBtn} onPress={() => setIsWorkoutStarted(true)} activeOpacity={0.8}>
-            <Text style={styles.startBtnText}>START BATTLE</Text>
-          </TouchableOpacity>
+      {/* 🔴 AUTOMATIC COUNTDOWN OVERLAY 🔴 */}
+      {showCountdown && isServerReady && (
+        <View style={styles.countdownOverlay}>
+          <Text style={styles.countdownText}>
+            {countdown > 0 ? countdown : 'GO!'}
+          </Text>
+          <Text style={styles.countdownSubText}>Get into position</Text>
+        </View>
+      )}
+
+      {/* 🔄 SERVER LOADING OVERLAY 🔄 */}
+      {!isServerReady && (
+        <View style={styles.countdownOverlay}>
+          <ActivityIndicator size="large" color="#CCFF00" />
+          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Connecting to AI Server...</Text>
         </View>
       )}
 
       {/* IN-WORKOUT FEEDBACK */}
-      {isWorkoutStarted && (
+      {isWorkoutStarted && !showCountdown && (
         <View style={styles.feedbackOverlay}>
            <Text style={styles.feedbackText}>{formFeedback}</Text>
         </View>
       )}
+
+      {/* ⏳ WAITING FOR OPPONENT OVERLAY ⏳ */}
+      {isFinished && !opponentFinished && (
+        <View style={styles.countdownOverlay}>
+          <ActivityIndicator size="large" color="#CCFF00" />
+          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Waiting for Opponent...</Text>
+          <Text style={{ color: '#888', marginTop: 10 }}>Your Time: {myTime}s</Text>
+        </View>
+      )}
+
+      {/* 🏆 SET RESULTS MODAL 🏆 */}
+      <Modal visible={showResultModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <LinearGradient colors={['#1A1D12', '#2A2E1A']} style={styles.resultContainer}>
+            <Text style={styles.resultTitle}>SET {currentSet} COMPLETE</Text>
+            
+            <View style={styles.resultRow}>
+              <View style={styles.resultCol}>
+                <Text style={styles.resultName}>YOU</Text>
+                <Text style={styles.resultTime}>{myTime}s</Text>
+              </View>
+              <View style={styles.vsCircle}>
+                <Text style={styles.resultVs}>VS</Text>
+              </View>
+              <View style={styles.resultCol}>
+                <Text style={styles.resultName}>OPPONENT</Text>
+                <Text style={styles.resultTime}>{opponentTime}s</Text>
+              </View>
+            </View>
+
+            <Text style={[styles.winnerMsg, { color: myTime < opponentTime ? '#CCFF00' : '#FF4444' }]}>
+              {myTime < opponentTime ? 'YOU WON THIS SET! 🎉' : (myTime === opponentTime ? "IT'S A TIE! 🤝" : 'OPPONENT WON THIS SET! 📉')}
+            </Text>
+
+            <TouchableOpacity style={styles.nextButton} onPress={handleNextStep}>
+              <Text style={styles.nextButtonText}>
+                {currentSet < targetSets ? 'START NEXT SET' : 'FINISH WORKOUT'}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* 🏆 FINAL MATCH RESULT - Uses teammate's ChallengeModal 🏆 */}
+      <ChallengeModal
+        visible={showChallengeModal}
+        onClose={() => {
+          setShowChallengeModal(false);
+          navigation.navigate('VersusWorkoutScreen');
+        }}
+        data={challengeData}
+      />
     </View>
   );
 }
@@ -359,11 +645,23 @@ const styles = StyleSheet.create({
   timerText: { color: '#FFF', fontSize: 18, fontFamily: 'Barlow-Bold', marginBottom: 5 },
   vsText: { color: '#FFF', fontSize: 12, fontFamily: 'Montserrat-Black', fontStyle: 'italic', opacity: 0.5 },
 
-  bottomOverlay: { position: 'absolute', bottom: 40, left: 20, right: 20, backgroundColor: 'rgba(20,20,20,0.95)', padding: 25, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#CCFF00' },
-  exerciseTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat-Black', marginBottom: 20, textTransform: 'uppercase' },
-  startBtn: { backgroundColor: '#CCFF00', width: '100%', paddingVertical: 15, borderRadius: 10, alignItems: 'center' },
-  startBtnText: { color: '#000', fontSize: 18, fontFamily: 'Montserrat-ExtraBold' },
+  countdownOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+  countdownText: { color: '#CCFF00', fontSize: 120, fontFamily: 'Montserrat-Black', textShadowColor: '#000', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 10 },
+  countdownSubText: { color: '#FFF', fontSize: 24, fontFamily: 'Montserrat-Bold', marginTop: 10 },
 
   feedbackOverlay: { position: 'absolute', bottom: 40, left: 20, right: 20, alignItems: 'center' },
-  feedbackText: { backgroundColor: 'rgba(0,0,0,0.7)', color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat-Bold', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 15, overflow: 'hidden' }
+  feedbackText: { backgroundColor: 'rgba(0,0,0,0.7)', color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat-Bold', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 15, overflow: 'hidden' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
+  resultContainer: { width: '90%', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: '#CCFF00' },
+  resultTitle: { color: '#FFF', fontSize: 24, fontFamily: 'Montserrat-Black', marginBottom: 30 },
+  resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', width: '100%', marginBottom: 30 },
+  resultCol: { alignItems: 'center' },
+  resultName: { color: '#888', fontSize: 14, fontFamily: 'Montserrat-Bold', marginBottom: 10 },
+  resultTime: { color: '#FFF', fontSize: 32, fontFamily: 'Montserrat-Black' },
+  vsCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
+  resultVs: { color: '#CCFF00', fontSize: 18, fontFamily: 'Montserrat-Black' },
+  winnerMsg: { fontSize: 20, fontFamily: 'Montserrat-Bold', textAlign: 'center', marginBottom: 40 },
+  nextButton: { backgroundColor: '#CCFF00', paddingHorizontal: 40, paddingVertical: 15, borderRadius: 30 },
+  nextButtonText: { color: '#000', fontSize: 18, fontFamily: 'Montserrat-Black' }
 });
