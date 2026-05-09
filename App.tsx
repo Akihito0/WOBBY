@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { TouchableOpacity, Image, StyleSheet, Dimensions, View } from 'react-native';
+import { TouchableOpacity, Image, StyleSheet, Dimensions, View, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -80,6 +80,7 @@ type YouStackParamList = {
   YouMain: { scrollTo?: string };
   YouSettings: undefined;
   NotificationsScreen: undefined;
+  PostRunFromNotification: { matchId?: string; notificationId?: string } | undefined;
   PersonalInformation: undefined;
   LinkedDevices: undefined;
   AboutUs: undefined;
@@ -213,6 +214,8 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenName>('splash');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [resetPasswordEmail, setResetPasswordEmail] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [latestNotification, setLatestNotification] = useState<any | null>(null);
 
   const [fontsLoaded] = useFonts({
     'Montserrat-Regular': Montserrat_400Regular,
@@ -236,6 +239,7 @@ export default function App() {
         if (session) {
           // User is already logged in, check their profile completeness
           console.log('✅ Session found! User:', session.user?.email);
+          setCurrentUserId(session.user.id);
           
           const { data: profile, error } = await supabase
             .from('profiles')
@@ -295,6 +299,7 @@ export default function App() {
         } else {
           // No session, show entry/login screen
           console.log('❌ No session found. Showing entry screen.');
+          setCurrentUserId(null);
           setCurrentScreen('entry');
         }
       } catch (error) {
@@ -318,6 +323,7 @@ export default function App() {
       console.log('📊 Session access token:', session?.access_token ? '✅ exists' : '❌ missing');
       
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
+        setCurrentUserId(session.user.id);
         // Sign-in event OR email confirmation detected while app is open
         console.log('📝 User signed in or updated, checking profile completeness...');
         const checkProfile = async () => {
@@ -402,12 +408,47 @@ export default function App() {
         checkProfile();
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 User signed out, going to entry screen...');
+        setCurrentUserId(null);
         setCurrentScreen('entry');
       }
     });
 
     return () => subscription?.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const channel = supabase
+      .channel(`app_notifications:${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          setLatestNotification(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!latestNotification) return;
+
+    const timer = setTimeout(() => {
+      setLatestNotification(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [latestNotification]);
 
   // Handle deep link after OAuth callback or email confirmation
   useEffect(() => {
@@ -493,6 +534,19 @@ export default function App() {
     return (
       <HealthProvider>
         <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          {latestNotification && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setLatestNotification(null)}
+              style={styles.notificationBanner}
+            >
+              <Text style={styles.notificationLabel}>New notification</Text>
+              <Text style={styles.notificationTitle}>{latestNotification.title}</Text>
+              <Text style={styles.notificationMessage} numberOfLines={2}>
+                {latestNotification.message}
+              </Text>
+            </TouchableOpacity>
+          )}
           <NavigationContainer>
             <MainStack.Navigator screenOptions={{ headerShown: false }}>
               <MainStack.Screen name="AppTabs" component={AppTabs} />
@@ -688,4 +742,42 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   splashImage: { width: width, height: height },
+  notificationBanner: {
+    position: 'absolute',
+    top: 52,
+    left: 16,
+    right: 16,
+    zIndex: 50,
+    backgroundColor: '#0D1612',
+    borderWidth: 1,
+    borderColor: '#2F6F4E',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  notificationLabel: {
+    color: '#8EE6A8',
+    fontSize: 11,
+    fontFamily: 'Montserrat_700Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  notificationTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: 'Montserrat_800ExtraBold',
+    marginBottom: 4,
+  },
+  notificationMessage: {
+    color: '#C9D1CC',
+    fontSize: 12,
+    fontFamily: 'Montserrat_400Regular',
+    lineHeight: 17,
+  },
 });

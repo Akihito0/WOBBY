@@ -7,7 +7,8 @@ import {
   StatusBar,
   Image,
   Platform,
-  FlatList
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import NotificationCard from '../components/NotificationCard';
@@ -23,27 +24,39 @@ const NotificationsScreen: React.FC = () => {
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const reloadNotifications = async (activeUserId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', activeUserId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading notifications:', error);
+        setNotifications([]);
+      } else {
+        setNotifications(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
     const loadNotifications = async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
-        if (!userId) return;
+        const activeUserId = sessionData?.session?.user?.id;
+        if (!mounted || !activeUserId) return;
 
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error loading notifications:', error);
-          setNotifications([]);
-        } else if (mounted) {
-          setNotifications(data || []);
-        }
+        setUserId(activeUserId);
+        await reloadNotifications(activeUserId);
       } catch (err) {
         console.error('Failed to load notifications:', err);
       } finally {
@@ -54,6 +67,36 @@ const NotificationsScreen: React.FC = () => {
     loadNotifications();
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const nextNotification = payload.new as any;
+          setNotifications(prev => {
+            if (prev.some(item => item.id === nextNotification.id)) {
+              return prev;
+            }
+            return [nextNotification, ...prev];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   return (
     <View style={styles.root}>
@@ -88,6 +131,13 @@ const NotificationsScreen: React.FC = () => {
       <View style={styles.content}>
         {loading ? (
           <ActivityIndicator style={{ marginTop: 20 }} />
+        ) : notifications.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No notifications yet</Text>
+            <Text style={styles.emptyText}>
+              Race results and updates will appear here.
+            </Text>
+          </View>
         ) : (
           <FlatList
             data={notifications}
@@ -155,6 +205,26 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     backgroundColor: '#121310',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: 'Montserrat_800ExtraBold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: '#8A8A8A',
+    fontSize: 14,
+    fontFamily: 'Montserrat_400Regular',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

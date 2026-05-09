@@ -17,6 +17,9 @@ import MapboxGL from '@rnmapbox/maps';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { uploadMapSnapshot } from '../services/runUpload';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 const uriToBase64 = async (uri: string): Promise<string | null> => {
   try {
     return new Promise((resolve, reject) => {
@@ -52,7 +55,6 @@ const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] =
   let minLng = Math.min(...lngs);
   let maxLng = Math.max(...lngs);
 
-  // Enforce a minimum bounding box size for short runs
   const MIN_DELTA = 0.005; 
   
   if (maxLat - minLat < MIN_DELTA) {
@@ -68,13 +70,15 @@ const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] =
 
   return [[maxLng, maxLat], [minLng, minLat]];
 };
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Set your Mapbox public token here
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 if (MAPBOX_TOKEN) {
   MapboxGL.setAccessToken(MAPBOX_TOKEN);
 }
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Coordinate {
   latitude: number;
@@ -83,23 +87,15 @@ interface Coordinate {
 }
 
 interface RunMetrics {
-  distance: number; // km
-  pace: string; // min'sec"
+  distance: number; 
+  pace: string; 
   elevation: {
     gain: number;
     loss: number;
   };
-  time: number; // seconds
+  time: number; 
 }
 
-interface UserRunData {
-  userId: string;
-  username: string;
-  metrics: RunMetrics;
-  coordinates: Coordinate[];
-}
-
-// Helper functions
 const formatTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -144,6 +140,8 @@ const calcElevationGain = (coords: Coordinate[]): number => {
   return Math.round(gain);
 };
 
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 const VersusRunScreen = ({ navigation, route }: any) => {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [runState, setRunState] = useState<'idle' | 'running' | 'paused' | 'finished'>('running');
@@ -165,7 +163,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const mapViewRef = useRef<MapboxGL.MapView>(null);
 
-  // Initialize location tracking and realtime subscription
+  // FIXED: Added timeRef to prevent stale closures in location callbacks
+  const timeRef = useRef(0);
+
+  useEffect(() => {
+    timeRef.current = time;
+  }, [time]);
+
   useEffect(() => {
     startLocationTracking();
     subscribeToOpponentUpdates();
@@ -175,7 +179,6 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     };
   }, []);
 
-  // Timer for opponent elapsed time
   useEffect(() => {
     if (runState === 'running') {
       opponentTimerRef.current = setInterval(() => {
@@ -187,33 +190,59 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     };
   }, [runState]);
 
-  // Monitor user distance to detect when target is reached
   useEffect(() => {
     const currentDistance = calcDistance(userCoordinates);
     if (currentDistance >= targetDistance && !userReachedTarget) {
       setUserReachedTarget(true);
-      console.log(`🎉 You reached target distance of ${targetDistance}km!`);
       Alert.alert('🎯 Target Reached!', `You reached ${targetDistance}km!`);
     }
   }, [userCoordinates, targetDistance, userReachedTarget]);
 
-  const subscribeToOpponentUpdates = () => {
-    if (!route.params?.opponentId) return;
+  // Prevent users from leaving the screen while a run is in progress
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: {preventDefault: () => void; data: {action: any}}) => {
+      // Only block if the run is still running (not finished)
+      if (runState !== 'finished') {
+        e.preventDefault();
+        
+        Alert.alert(
+          '⚠️ Versus Run In Progress',
+          'You are still in an active versus run. You must finish the run or the match will be forfeit. Continue running?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Forfeit & Exit',
+              style: 'destructive',
+              onPress: () => {
+                setRunState('finished');
+                navigation.dispatch(e.data.action);
+              }
+            }
+          ]
+        );
+      }
+    });
 
+    return unsubscribe;
+  }, [navigation, runState]);
+
+  const subscribeToOpponentUpdates = () => {
+    if (!route.params?.opponentId || !route.params?.matchId) return;
+
+    const matchId = route.params.matchId;
     const opponentId = route.params.opponentId;
-    const channel = supabase.channel(`versus_run:${opponentId}`);
+    
+    const channel = supabase.channel(`versus_run:${matchId}`, {
+      config: { broadcast: { self: true } }
+    });
 
     channel
       .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'versus_run_tracking',
-          filter: `user_id=eq.${opponentId}`,
-        },
+        'broadcast',
+        { event: 'location_update' },
         (payload) => {
-            const data = payload.new as any;
+          const data = payload.payload;
+          if (data.userId === opponentId) {
             const newPoint = {
               latitude: data.latitude,
               longitude: data.longitude,
@@ -222,40 +251,32 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
             setOpponentCoordinates(prev => {
               const newArr = [...prev, newPoint];
-              // Update opponent time based on incoming payload
               setOpponentTime(data.elapsed_time || 0);
 
-              // Check if opponent reached target distance using the updated array
               const currentDistance = calcDistance(newArr);
               if (currentDistance >= targetDistance && !opponentReachedTarget) {
                 setOpponentReachedTarget(true);
-                console.log('🎉 Opponent reached target distance!');
               }
 
               return newArr;
             });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'versus_run_results',
-          filter: `match_id=eq.${route.params?.matchId}`,
-        },
-        (payload) => {
-          const data = payload.new as any;
-          console.log('📊 Race result updated:', data);
-          
-          // Check if opponent finished
-          if (data.user_2_finished === true) {
-            setOpponentFinished(true);
-            setOpponentReachedTarget(data.user_2_reached_target || false);
           }
         }
       )
-      .subscribe();
+      .on(
+        'broadcast',
+        { event: 'run_finished' },
+        (payload) => {
+          const data = payload.payload;
+          if (data.userId === opponentId) {
+            setOpponentFinished(true);
+            setOpponentReachedTarget(data.reachedTarget || false);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log(`📡 Broadcast channel status: ${status}`);
+      });
 
     realtimeChannelRef.current = channel;
   };
@@ -266,37 +287,33 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     }
   };
 
-  // Save user location to versus_run_tracking table for opponent to see
+  // FIXED: Uses the persistent realtimeChannelRef.current instead of creating a new instance
   const publishUserLocation = async (coord: Coordinate) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+      
+      // We must use the ALREADY SUBSCRIBED ref to send messages
+      if (!session?.user?.id || !realtimeChannelRef.current) return;
 
-      const { data: insertData, error: insertError } = await supabase
-        .from('versus_run_tracking')
-        .insert([
-          {
-            user_id: session.user.id,
-            match_id: route.params?.matchId,
-            latitude: coord.latitude,
-            longitude: coord.longitude,
-            altitude: coord.altitude,
-            elapsed_time: time,
-          }
-        ])
-        .select();
-
-      if (insertError) {
-        console.error('Error publishing location to versus_run_tracking:', insertError);
-      } else {
-        console.debug('Published location row:', insertData?.[0]);
-      }
+      realtimeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'location_update',
+        payload: {
+          userId: session.user.id,
+          latitude: coord.latitude,
+          longitude: coord.longitude,
+          altitude: coord.altitude,
+          elapsed_time: timeRef.current, // Uses ref to avoid stale state
+          timestamp: new Date().toISOString(),
+        }
+      }).catch(err => {
+        console.error('Error broadcasting location:', err);
+      });
     } catch (error) {
-      console.error('Error publishing location:', error);
+      console.error('Error in publishUserLocation:', error);
     }
   };
 
-  // Timer for elapsed time
   useEffect(() => {
     if (runState === 'running') {
       timerRef.current = setInterval(() => {
@@ -308,15 +325,10 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     };
   }, [runState]);
 
-
-
   const startLocationTracking = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('Permission denied');
-        return;
-      }
+      if (status !== 'granted') return;
 
       locationSubscriptionRef.current = await Location.watchPositionAsync(
         {
@@ -325,24 +337,18 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           distanceInterval: 10,
         },
         (location) => {
-          // ADDED FILTER: Ignore wildly inaccurate GPS spikes during races
           const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 40;
           
-          if (!hasGoodAccuracy) {
-             console.warn('⚠️ Versus GPS accuracy too low, skipping:', location.coords.accuracy);
-             return; // Skip this bad coordinate
-          }
+          if (!hasGoodAccuracy) return;
 
           const coord: Coordinate = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
             altitude: location.coords.altitude || undefined,
           };
-          console.debug('Location update:', coord);
-          setUserCoordinates(prev => [...prev, coord]);
           
-          // Publish location for opponent to see in real-time
-          publishUserLocation(coord).catch(err => console.error('publishUserLocation error:', err));
+          setUserCoordinates(prev => [...prev, coord]);
+          publishUserLocation(coord);
         }
       );
     } catch (error) {
@@ -351,49 +357,73 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   };
 
   const stopLocationTracking = () => {
-    if (locationSubscriptionRef.current) {
-      locationSubscriptionRef.current.remove();
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+    if (locationSubscriptionRef.current) locationSubscriptionRef.current.remove();
+    if (timerRef.current) clearInterval(timerRef.current);
   };
 
   const userMetrics: RunMetrics = {
     distance: calcDistance(userCoordinates),
     pace: calcPace(calcDistance(userCoordinates), time),
-    elevation: {
-      gain: calcElevationGain(userCoordinates),
-      loss: 0,
-    },
+    elevation: { gain: calcElevationGain(userCoordinates), loss: 0 },
     time,
   };
 
   const opponentMetrics: RunMetrics = {
     distance: calcDistance(opponentCoordinates),
     pace: calcPace(calcDistance(opponentCoordinates), opponentTime),
-    elevation: {
-      gain: calcElevationGain(opponentCoordinates),
-      loss: 0,
-    },
+    elevation: { gain: calcElevationGain(opponentCoordinates), loss: 0 },
     time: opponentTime,
   };
 
-  // Determine who's ahead
   const userAhead = userMetrics.distance > opponentMetrics.distance;
   const distanceDiff = Math.abs(userMetrics.distance - opponentMetrics.distance);
 
+  const buildRaceNotificationMessage = (isWinner: boolean, reachedTargetDist: boolean) => {
+    if (isWinner) {
+      return reachedTargetDist
+        ? `You won the ${targetDistance}km versus run.`
+        : `You won the versus run by distance.`;
+    }
 
+    return reachedTargetDist
+      ? `You finished the ${targetDistance}km versus run, but your opponent was faster.`
+      : `You forfeited the versus run and your opponent won.`;
+  };
 
- const handleFinishRun = async () => {
+  const handleFinishRun = async () => {
+    const userDistance = calcDistance(userCoordinates);
+    const userReachedTargetDist = userDistance >= targetDistance;
+
+    // If user hasn't reached target, ask for confirmation
+    if (!userReachedTargetDist) {
+      Alert.alert(
+        '⚠️ Target Not Reached',
+        `You've only covered ${userDistance.toFixed(2)}km of ${targetDistance}km. Do you want to forfeit this match?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Forfeit & Wait for Result',
+            style: 'destructive',
+            onPress: () => {
+              performFinishRun(userReachedTargetDist);
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    // User reached target, proceed directly
+    performFinishRun(userReachedTargetDist);
+  };
+
+  const performFinishRun = async (userReachedTargetDist: boolean) => {
     setIsSaving(true);
     setRunState('finished');
     
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
       if (sessionError || !session?.user?.id) {
-        Alert.alert('Error', 'Could not authenticate user. Please try again.');
         setIsSaving(false);
         return;
       }
@@ -401,22 +431,16 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       const userId = session.user.id;
       const now = new Date();
 
-      // ─── NEW SNAPSHOT LOGIC ───
       let uploadedMapUrl = null;
       if (userCoordinates.length >= 2) {
-        // 1. Frame the map using our new getBounds logic
         const bounds = getBounds(userCoordinates);
         cameraRef.current?.fitBounds(bounds[0], bounds[1], 80, 800);
         
         try {
-          // 2. Wait for animation and map tiles to load
           await new Promise(resolve => setTimeout(resolve, 2000));
-          
           if (mapViewRef.current) {
-            // 3. Take the snapshot
             const snapshotUri = await mapViewRef.current.takeSnap(true);
             if (snapshotUri && typeof snapshotUri === 'string') {
-              // 4. Convert and upload to Supabase
               const base64Data = await uriToBase64(snapshotUri);
               if (base64Data) {
                 uploadedMapUrl = await uploadMapSnapshot(
@@ -428,29 +452,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             }
           }
         } catch (snapErr) {
-          console.error('Failed to capture or upload map snapshot:', snapErr);
+          console.error('Failed snapshot:', snapErr);
         }
       }
-      // ──────────────────────────
 
       const userDistance = calcDistance(userCoordinates);
       const opponentDistance = calcDistance(opponentCoordinates);
 
-      console.debug('Finishing run values:', {
-        userDistance,
-        opponentDistance,
-        userCoordinatesLength: userCoordinates.length,
-        opponentCoordinatesLength: opponentCoordinates.length,
-        time: userMetrics.time,
-        opponentTime,
-        targetDistance,
-        opponentReachedTarget,
-      });
-
-      // Determine if user reached target
-      const userReachedTargetDist = userDistance >= targetDistance;
-
-      // Determine winner
       let winnerId = null;
       let winnerReason = '';
 
@@ -461,58 +469,18 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         winnerId = route.params?.opponentId;
         winnerReason = 'Opponent reached target first';
       } else if (userReachedTargetDist && opponentReachedTarget) {
-        // Both reached target - whoever was faster wins
-        if (userMetrics.time < opponentTime) {
-          winnerId = userId;
-          winnerReason = `Won ${targetDistance}km race by time!`;
-        } else {
-          winnerId = route.params?.opponentId;
-          winnerReason = 'Opponent won by time';
-        }
+        winnerId = userMetrics.time < opponentTime ? userId : route.params?.opponentId;
+        winnerReason = winnerId === userId ? `Won ${targetDistance}km race by time!` : 'Opponent won by time';
       } else {
-        // Neither reached target - whoever has more distance wins
-        if (userDistance > opponentDistance) {
-          winnerId = userId;
-          winnerReason = `Won with ${userDistance.toFixed(2)}km vs ${opponentDistance.toFixed(2)}km`;
-        } else {
-          winnerId = route.params?.opponentId;
-          winnerReason = `Opponent won with more distance`;
-        }
+        winnerId = userDistance > opponentDistance ? userId : route.params?.opponentId;
+        winnerReason = winnerId === userId ? 'Won with more distance' : 'Opponent won with more distance';
       }
 
-      // Fetch result row to determine whether current user is user_1 or user_2
-      let { data: resultRow, error: fetchError } = await supabase
+      let { data: resultRow } = await supabase
         .from('versus_run_results')
         .select('*')
         .eq('match_id', route.params?.matchId)
         .maybeSingle();
-
-      if (fetchError) {
-        console.error('Error fetching versus_run_results:', fetchError);
-      }
-
-      // If result row doesn't exist (race mismatch), create a fallback row
-      if (!resultRow) {
-        console.warn('versus_run_results row missing for match, creating fallback row');
-        const { data: created, error: createErr } = await supabase
-          .from('versus_run_results')
-          .insert([
-            {
-              match_id: route.params?.matchId,
-              user_1_id: userId,
-              user_2_id: route.params?.opponentId,
-              target_distance: targetDistance,
-            }
-          ])
-          .select()
-          .maybeSingle();
-
-        if (createErr) {
-          console.error('Error creating fallback versus_run_results row:', createErr);
-        } else {
-          resultRow = created as any;
-        }
-      }
 
       const updatePayload: any = {
         winner_id: winnerId,
@@ -533,59 +501,11 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         updatePayload.user_2_finished = true;
       }
 
-      // Update race result in database for the correct user columns
-      const { error: updateError } = await supabase
+      await supabase
         .from('versus_run_results')
         .update(updatePayload)
         .eq('match_id', route.params?.matchId);
 
-      if (updateError) {
-        console.error('Error updating versus_run_results:', updateError);
-      }
-
-      // Refetch the row to see if both finished and if so, create notifications
-      const { data: updatedRow, error: updatedFetchError } = await supabase
-        .from('versus_run_results')
-        .select('*')
-        .eq('match_id', route.params?.matchId)
-        .maybeSingle();
-
-      if (updatedFetchError) console.error('Error refetching versus_run_results:', updatedFetchError);
-
-      if (updatedRow && updatedRow.user_1_finished && updatedRow.user_2_finished) {
-        // Both finished - create notifications for both users
-        try {
-          const youWon = updatedRow.winner_id === userId;
-          const title = 'Versus Race Finished';
-          const messageForYou = youWon ? `You won the ${updatedRow.target_distance}km race!` : `You lost the ${updatedRow.target_distance}km race.`;
-          const messageForOpponent = youWon ? `You lost the ${updatedRow.target_distance}km race.` : `You won the ${updatedRow.target_distance}km race!`;
-
-          // Insert notifications for both users (may fail if table doesn't exist)
-          const inserts = [
-            {
-              user_id: userId,
-              title,
-              message: messageForYou,
-              metadata: { match_id: route.params?.matchId, winner_id: updatedRow.winner_id },
-              is_read: false,
-            },
-            {
-              user_id: route.params?.opponentId,
-              title,
-              message: messageForOpponent,
-              metadata: { match_id: route.params?.matchId, winner_id: updatedRow.winner_id },
-              is_read: false,
-            }
-          ];
-
-          const { error: notifErr } = await supabase.from('notifications').insert(inserts);
-          if (notifErr) console.error('Error creating notifications:', notifErr);
-        } catch (err) {
-          console.error('Failed to create notifications (table may be missing):', err);
-        }
-      }
-
-      // Save user's run data
       const runData = {
         user_id: userId,
         title: `${targetDistance}km Versus Run`,
@@ -594,59 +514,82 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         duration: userMetrics.time,
         pace: userMetrics.pace,
         elevation_gain: userMetrics.elevation.gain,
-        elevation_loss: userMetrics.elevation.loss,
-        min_elevation: 0,
-        max_elevation: 0,
-        average_elevation: 0,
         route_coordinates: userCoordinates,
-        route_map_url: uploadedMapUrl, // INJECT THE URL HERE
-        media_urls: [],
+        route_map_url: uploadedMapUrl,
         workout_type: 'versus_run',
         started_at: new Date(now.getTime() - userMetrics.time * 1000).toISOString(),
         completed_at: now.toISOString(),
-        created_at: now.toISOString(),
       };
 
-      const { error } = await supabase
-        .from('runs')
-        .insert([runData]);
+      await supabase.from('runs').insert([runData]);
 
-      if (error) {
-        console.error('Error saving versus run:', error);
-        Alert.alert('Error', 'Failed to save run. Please try again.');
-        setIsSaving(false);
-        return;
+      const notificationRows = [
+        {
+          user_id: userId,
+          title: 'Versus Run Result',
+          message: buildRaceNotificationMessage(winnerId === userId, userReachedTargetDist),
+          metadata: {
+            match_id: route.params?.matchId,
+            opponent_id: route.params?.opponentId,
+            winner_id: winnerId,
+            reached_target: userReachedTargetDist,
+            final_distance: userDistance,
+            final_time: userMetrics.time,
+          },
+          is_read: false,
+        },
+      ];
+
+      if (route.params?.opponentId) {
+        notificationRows.push({
+          user_id: route.params.opponentId,
+          title: 'Versus Run Result',
+          message: buildRaceNotificationMessage(winnerId === route.params.opponentId, opponentReachedTarget),
+          metadata: {
+            match_id: route.params?.matchId,
+            opponent_id: userId,
+            winner_id: winnerId,
+            reached_target: opponentReachedTarget,
+            final_distance: opponentDistance,
+            final_time: opponentTime,
+          },
+          is_read: false,
+        });
       }
 
-      console.log('✅ Versus run saved successfully!');
+      await supabase.from('notifications').insert(notificationRows);
+
+      // Broadcast finish event to opponent
+      if (realtimeChannelRef.current) {
+        realtimeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'run_finished',
+          payload: {
+            userId: userId,
+            reachedTarget: userReachedTargetDist,
+            finalDistance: userDistance,
+            finalTime: userMetrics.time,
+            timestamp: new Date().toISOString(),
+          }
+        });
+      }
       
-      // Set the result to show
       setRaceResult({
         winner: winnerId === userId ? 'You' : 'Opponent',
         reason: winnerReason,
       });
       
       setIsSaving(false);
-      
-      // Show result or wait for opponent to finish
-      if (opponentFinished) {
-        Alert.alert('Race Complete! 🏃', winnerReason);
-        setTimeout(() => {
-          navigation.goBack();
-        }, 2000);
-      } else {
-        Alert.alert('Run Finished ✅', 'Waiting for opponent to finish...');
-      }
+
+      Alert.alert('Run Finished ✅', 'Result will be sent to your notifications');
+      setTimeout(() => navigation.goBack(), 1500);
     } catch (error) {
-      console.error('Error in handleFinishRun:', error);
-      Alert.alert('Error', 'An unexpected error occurred.');
       setIsSaving(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <LinearGradient
         colors={['#432B16', '#000000']}
         start={{ x: 1, y: 0.1 }}
@@ -659,7 +602,6 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         <Text style={styles.headerTitle}>VERSUS RUN</Text>
       </LinearGradient>
 
-      {/* Competitive Status Bar */}
       <View style={styles.statusBar}>
         <View style={styles.statusContainer}>
           <Text style={[styles.statusText, userAhead && styles.leadingText]}>
@@ -671,16 +613,9 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         </View>
       </View>
 
-      {/* Main Metrics Comparison */}
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Time and Distance - Both Users */}
         <View style={styles.timeDistanceRow}>
-          <LinearGradient
-            colors={['#1a1a1a', '#2d2d2d']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.metricCard, styles.userCard]}
-          >
+          <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={[styles.metricCard, styles.userCard]}>
             <Text style={styles.userLabel}>YOU</Text>
             <Text style={styles.largeValue}>{formatTime(userMetrics.time)}</Text>
             <Text style={styles.distanceValue}>{userMetrics.distance.toFixed(2)} km</Text>
@@ -688,25 +623,14 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
           <View style={styles.divider} />
 
-          <LinearGradient
-            colors={['#1a1a1a', '#2d2d2d']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.metricCard, styles.opponentCard]}
-          >
+          <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={[styles.metricCard, styles.opponentCard]}>
             <Text style={styles.opponentLabel}>OPPONENT</Text>
             <Text style={styles.largeValue}>{formatTime(opponentMetrics.time)}</Text>
             <Text style={styles.distanceValue}>{opponentMetrics.distance.toFixed(2)} km</Text>
           </LinearGradient>
         </View>
 
-        {/* Pacing Details */}
-        <LinearGradient
-          colors={['#0f1a0a', '#1a2915']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.detailsCard}
-        >
+        <LinearGradient colors={['#0f1a0a', '#1a2915']} style={styles.detailsCard}>
           <Text style={styles.detailsTitle}>PACING</Text>
           <View style={styles.comparisonRow}>
             <View style={styles.metricItem}>
@@ -723,30 +647,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           </View>
         </LinearGradient>
 
-        {/* Elevation Details */}
-        <LinearGradient
-          colors={['#1a0f0f', '#2a1515']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.detailsCard}
-        >
-          <Text style={styles.detailsTitle}>ELEVATION</Text>
-          <View style={styles.comparisonRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Elevation Gain</Text>
-              <Text style={styles.metricValueLarge}>{userMetrics.elevation.gain} m</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Opponent Gain</Text>
-              <Text style={styles.metricValueLarge}>{opponentMetrics.elevation.gain} m</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Distance Progress Bars */}
         <View style={styles.progressSection}>
-          {/* User Distance Progress */}
           <View style={styles.progressItem}>
             <View style={styles.progressLabelRow}>
               <Text style={styles.progressLabel}>Distance</Text>
@@ -755,17 +656,11 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             <View style={styles.progressBarContainer}>
               <LinearGradient
                 colors={['#34D399', '#5EE7DF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[
-                  styles.progressBar,
-                  { width: `${Math.min((userMetrics.distance / 5) * 100, 100)}%` }
-                ]}
+                style={[styles.progressBar, { width: `${Math.min((userMetrics.distance / targetDistance) * 100, 100)}%` }]}
               />
             </View>
           </View>
 
-          {/* Opponent Distance Progress */}
           <View style={styles.progressItem}>
             <View style={styles.progressLabelRow}>
               <Text style={styles.progressLabel}>Opponent Distance</Text>
@@ -774,38 +669,29 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             <View style={styles.progressBarContainer}>
               <LinearGradient
                 colors={['#6B7280', '#9CA3AF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[
-                  styles.progressBar,
-                  { width: `${Math.min((opponentMetrics.distance / 5) * 100, 100)}%` }
-                ]}
+                style={[styles.progressBar, { width: `${Math.min((opponentMetrics.distance / targetDistance) * 100, 100)}%` }]}
               />
             </View>
           </View>
         </View>
 
-        {/* Map Section */}
         {userCoordinates.length > 0 && (
-  <View style={[styles.mapSection, mapExpanded && styles.mapSectionExpanded]}>
-    <View style={styles.mapTitleRow}>
-      <Text style={styles.mapTitle}>LIVE ROUTE</Text>
-      <TouchableOpacity
-        onPress={() => setMapExpanded(prev => !prev)}
-        style={styles.mapExpandBtn}
-      >
-        <Text style={styles.mapExpandIcon}>{mapExpanded ? '⛶' : '⤢'}</Text>
-      </TouchableOpacity>
-    </View>
+          <View style={[styles.mapSection, mapExpanded && styles.mapSectionExpanded]}>
+            <View style={styles.mapTitleRow}>
+              <Text style={styles.mapTitle}>LIVE ROUTE</Text>
+              <TouchableOpacity onPress={() => setMapExpanded(prev => !prev)} style={styles.mapExpandBtn}>
+                <Text style={styles.mapExpandIcon}>{mapExpanded ? '⛶' : '⤢'}</Text>
+              </TouchableOpacity>
+            </View>
 
-    <MapboxGL.MapView
-      ref={mapViewRef} // ADD THE REF HERE
-      style={[styles.map, mapExpanded && styles.mapExpanded]}
-      styleURL={MapboxGL.StyleURL.Dark}
-      compassEnabled={false}
-      logoEnabled={false}
-      attributionEnabled={false}
-    >
+            <MapboxGL.MapView
+              ref={mapViewRef}
+              style={[styles.map, mapExpanded && styles.mapExpanded]}
+              styleURL={MapboxGL.StyleURL.Dark}
+              compassEnabled={false}
+              logoEnabled={false}
+              attributionEnabled={false}
+            >
               <MapboxGL.Camera
                 ref={cameraRef}
                 zoomLevel={16}
@@ -815,10 +701,8 @@ const VersusRunScreen = ({ navigation, route }: any) => {
                 ]}
                 followUserLocation={runState === 'running'}
                 followZoomLevel={16}
-                animationDuration={1000}
               />
 
-              {/* User Route Line */}
               {userCoordinates.length > 1 && (
                 <MapboxGL.ShapeSource
                   id="userRoute"
@@ -833,55 +717,41 @@ const VersusRunScreen = ({ navigation, route }: any) => {
                 >
                   <MapboxGL.LineLayer
                     id="userRouteLine"
-                    style={{
-                      lineColor: '#34D399',
-                      lineWidth: 4,
-                      lineOpacity: 0.8,
-                    }}
+                    style={{ lineColor: '#34D399', lineWidth: 4, lineOpacity: 0.8 }}
                   />
                 </MapboxGL.ShapeSource>
               )}
 
-              {/* User Current Position - Privacy: Only show user's location */}
-              {userCoordinates.length > 0 && (
-                <MapboxGL.PointAnnotation
-                  id="user-location"
-                  coordinate={[
-                    userCoordinates[userCoordinates.length - 1].longitude,
-                    userCoordinates[userCoordinates.length - 1].latitude,
-                  ]}
-                >
-                  <View style={styles.userLocationDot} />
-                </MapboxGL.PointAnnotation>
-              )}
+              <MapboxGL.PointAnnotation
+                id="user-location"
+                coordinate={[
+                  userCoordinates[userCoordinates.length - 1].longitude,
+                  userCoordinates[userCoordinates.length - 1].latitude,
+                ]}
+              >
+                <View style={styles.userLocationDot} />
+              </MapboxGL.PointAnnotation>
             </MapboxGL.MapView>
           </View>
         )}
       </ScrollView>
 
-      {/* Bottom Control Buttons */}
       <View style={styles.bottomControls}>
         {runState === 'running' && (
           <>
             <TouchableOpacity
-              onPress={() => setRunState(runState === 'running' ? 'paused' : 'running')}
+              onPress={() => setRunState('paused')}
               style={styles.pauseButton}
               disabled={isSaving}
             >
-              <Text style={styles.buttonText}>
-                {runState === 'running' ? 'PAUSE' : 'RESUME'}
-              </Text>
+              <Text style={styles.buttonText}>PAUSE</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleFinishRun}
               style={[styles.finishButton, isSaving && styles.savingButton]}
               disabled={isSaving}
             >
-              {isSaving ? (
-                <ActivityIndicator color="#121310" size="small" />
-              ) : (
-                <Text style={styles.finishButtonText}>FINISH RUN</Text>
-              )}
+              {isSaving ? <ActivityIndicator color="#121310" /> : <Text style={styles.finishButtonText}>FINISH RUN</Text>}
             </TouchableOpacity>
           </>
         )}
@@ -891,288 +761,56 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121310',
-  },
-  header: {
-    paddingTop: 65,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 10,
-  },
-  backBtn: {
-    width: 30,
-    height: 30,
-    marginRight: 20,
-  },
-  headerTitle: {
-    color: '#d1d1d1',
-    fontSize: 28,
-    fontFamily: 'Montserrat-Black',
-  },
-  statusBar: {
-    paddingHorizontal: 20,
-    marginBottom: 15,
-  },
-  statusContainer: {
-    backgroundColor: 'rgba(52, 211, 153, 0.15)',
-    borderWidth: 1,
-    borderColor: '#34D399',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-  },
-  statusText: {
-    color: '#34D399',
-    fontSize: 16,
-    fontFamily: 'Montserrat-Bold',
-  },
-  leadingText: {
-    color: '#34D399',
-  },
-  gapText: {
-    color: '#888888',
-    fontSize: 13,
-    fontFamily: 'Barlow-Regular',
-    marginTop: 4,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  contentContainer: {
-    paddingBottom: 100,
-  },
-  timeDistanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  metricCard: {
-    borderRadius: 15,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 15,
-    borderLeftWidth: 3,
-    borderLeftColor: '#34D399',
-  },
-  userCard: {
-    flex: 1,
-    borderLeftWidth: 3,
-    borderLeftColor: '#34D399',
-  },
-  opponentCard: {
-    flex: 1,
-    borderRightWidth: 3,
-    borderRightColor: '#2196F3',
-  },
-  divider: {
-    width: 1,
-    height: 80,
-    backgroundColor: '#333333',
-    marginHorizontal: 10,
-  },
-  userLabel: {
-    color: '#34D399',
-    fontSize: 12,
-    fontFamily: 'Montserrat-Bold',
-    marginBottom: 8,
-  },
-  opponentLabel: {
-    color: '#2196F3',
-    fontSize: 12,
-    fontFamily: 'Montserrat-Bold',
-    marginBottom: 8,
-  },
-  largeValue: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontFamily: 'Barlow-Bold',
-    marginBottom: 8,
-  },
-  distanceValue: {
-    color: '#A3CF06',
-    fontSize: 18,
-    fontFamily: 'Barlow-Bold',
-  },
-  detailsCard: {
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
-  },
-  detailsTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: 'Montserrat-Bold',
-    marginBottom: 15,
-  },
-  comparisonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  singleMetricRow: {
-    flexDirection: 'column',
-    alignItems: 'center',
-  },
-  metricItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  metricDivider: {
-    width: 1,
-    height: 60,
-    backgroundColor: '#333333',
-    marginHorizontal: 10,
-  },
-  metricLabel: {
-    color: '#888888',
-    fontSize: 12,
-    fontFamily: 'Montserrat-Regular',
-    marginBottom: 8,
-  },
-  metricValueLarge: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontFamily: 'Barlow-Bold',
-    marginBottom: 4,
-  },
-  metricUnit: {
-    color: '#666666',
-    fontSize: 10,
-    fontFamily: 'Barlow-Regular',
-  },
-  progressSection: {
-    marginBottom: 20,
-  },
-  progressItem: {
-    marginBottom: 20,
-  },
-  progressLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  progressLabel: {
-    color: '#CCCCCC',
-    fontSize: 12,
-    fontFamily: 'Montserrat-Regular',
-  },
-  progressValue: {
-    color: '#A3CF06',
-    fontSize: 12,
-    fontFamily: 'Barlow-Bold',
-  },
-  progressBarContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    height: 8,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 8,
-  },
-  mapSection: {
-    marginBottom: 20,
-  },
-  mapTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: 'Montserrat-Bold',
-    marginBottom: 10,
-  },
-  map: {
-    width: '100%',
-    height: 300,
-    borderRadius: 15,
-    overflow: 'hidden',
-  },
-  userLocationDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#34D399',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  bottomControls: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: 'rgba(18, 19, 16, 0.95)',
-    borderTopWidth: 1,
-    borderTopColor: '#333333',
-    flexDirection: 'row',
-    gap: 10,
-  },
-  pauseButton: {
-    flex: 1,
-    backgroundColor: '#333333',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  finishButton: {
-    flex: 1,
-    backgroundColor: '#A3CF06',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  savingButton: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: 'Montserrat-Bold',
-  },
-  finishButtonText: {
-    color: '#121310',
-    fontSize: 14,
-    fontFamily: 'Montserrat-Bold',
-  },
-  mapTitleRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: 10,
-},
-mapExpandBtn: {
-  backgroundColor: '#1a1a1a',
-  borderRadius: 8,
-  paddingHorizontal: 10,
-  paddingVertical: 4,
-  borderWidth: 1,
-  borderColor: '#333333',
-},
-mapExpandIcon: {
-  color: '#FFFFFF',
-  fontSize: 16,
-},
-mapSectionExpanded: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  zIndex: 10,
-  backgroundColor: '#121310',
-  marginBottom: 0,
-  paddingHorizontal: 20,
-  paddingTop: 10,
-},
-mapExpanded: {
-  height: SCREEN_HEIGHT - 200, // leaves room for header + bottom controls
-},
+  container: { flex: 1, backgroundColor: '#121310' },
+  header: { paddingTop: 65, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'flex-end', marginBottom: 10 },
+  backBtn: { width: 30, height: 30, marginRight: 20 },
+  headerTitle: { color: '#d1d1d1', fontSize: 28, fontFamily: 'Montserrat-Black' },
+  statusBar: { paddingHorizontal: 20, marginBottom: 15 },
+  statusContainer: { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderWidth: 1, borderColor: '#34D399', borderRadius: 12, padding: 12, alignItems: 'center' },
+  statusText: { color: '#34D399', fontSize: 16, fontFamily: 'Montserrat-Bold' },
+  leadingText: { color: '#34D399' },
+  gapText: { color: '#888888', fontSize: 13, fontFamily: 'Barlow-Regular', marginTop: 4 },
+  content: { flex: 1, paddingHorizontal: 20 },
+  contentContainer: { paddingBottom: 100 },
+  timeDistanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  metricCard: { borderRadius: 15, padding: 20, alignItems: 'center', marginBottom: 15 },
+  userCard: { flex: 1, borderLeftWidth: 3, borderLeftColor: '#34D399' },
+  opponentCard: { flex: 1, borderRightWidth: 3, borderRightColor: '#2196F3' },
+  divider: { width: 1, height: 80, backgroundColor: '#333333', marginHorizontal: 10 },
+  userLabel: { color: '#34D399', fontSize: 12, fontFamily: 'Montserrat-Bold', marginBottom: 8 },
+  opponentLabel: { color: '#2196F3', fontSize: 12, fontFamily: 'Montserrat-Bold', marginBottom: 8 },
+  largeValue: { color: '#FFFFFF', fontSize: 24, fontFamily: 'Barlow-Bold', marginBottom: 8 },
+  distanceValue: { color: '#A3CF06', fontSize: 18, fontFamily: 'Barlow-Bold' },
+  detailsCard: { borderRadius: 15, padding: 20, marginBottom: 15 },
+  detailsTitle: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat-Bold', marginBottom: 15 },
+  comparisonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metricItem: { flex: 1, alignItems: 'center' },
+  metricDivider: { width: 1, height: 60, backgroundColor: '#333333', marginHorizontal: 10 },
+  metricLabel: { color: '#888888', fontSize: 12, fontFamily: 'Montserrat-Regular', marginBottom: 8 },
+  metricValueLarge: { color: '#FFFFFF', fontSize: 20, fontFamily: 'Barlow-Bold', marginBottom: 4 },
+  metricUnit: { color: '#666666', fontSize: 10, fontFamily: 'Barlow-Regular' },
+  progressSection: { marginBottom: 20 },
+  progressItem: { marginBottom: 20 },
+  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  progressLabel: { color: '#CCCCCC', fontSize: 12, fontFamily: 'Montserrat-Regular' },
+  progressValue: { color: '#A3CF06', fontSize: 12, fontFamily: 'Barlow-Bold' },
+  progressBarContainer: { backgroundColor: '#1a1a1a', borderRadius: 8, height: 8, overflow: 'hidden' },
+  progressBar: { height: '100%', borderRadius: 8 },
+  mapSection: { marginBottom: 20 },
+  mapTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  mapTitle: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat-Bold' },
+  mapExpandBtn: { backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#333333' },
+  mapExpandIcon: { color: '#FFFFFF', fontSize: 16 },
+  map: { width: '100%', height: 300, borderRadius: 15, overflow: 'hidden' },
+  userLocationDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#34D399', borderWidth: 2, borderColor: 'white' },
+  bottomControls: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingVertical: 15, backgroundColor: 'rgba(18, 19, 16, 0.95)', borderTopWidth: 1, borderTopColor: '#333333', flexDirection: 'row', gap: 10 },
+  pauseButton: { flex: 1, backgroundColor: '#333333', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  finishButton: { flex: 1, backgroundColor: '#A3CF06', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  savingButton: { opacity: 0.6 },
+  buttonText: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat-Bold' },
+  finishButtonText: { color: '#121310', fontSize: 14, fontFamily: 'Montserrat-Bold' },
+  mapSectionExpanded: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, backgroundColor: '#121310', paddingHorizontal: 20, paddingTop: 10 },
+  mapExpanded: { height: SCREEN_HEIGHT - 200 },
 });
 
 export default VersusRunScreen;
