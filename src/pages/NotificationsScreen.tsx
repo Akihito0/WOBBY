@@ -11,46 +11,49 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import NotificationCard from '../components/NotificationCard';
+import { supabase } from '../supabase';
+import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const notifications = [
-  {
-    id: '1',
-    title: 'You have a new challenger!',
-    message: '@tweetzie wants to challenge you.',
-    timestamp: '2 hrs ago',
-    avatar: require('../assets/1.png'),
-    isRead: false,
-  },
-  {
-    id: '2',
-    title: 'You have a new challenger!',
-    message: '@calrkGwapough wants to challenge you.',
-    timestamp: '2 hrs ago',
-    avatar: require('../assets/2.png'),
-    isRead: true,
-  },
-  // Adding duplicates to ensure the list is long enough to scroll
-  {
-    id: '3',
-    title: 'You have a new challenger!',
-    message: '@gym_rat_99 wants to challenge you.',
-    timestamp: '5 hrs ago',
-    avatar: require('../assets/3.png'),
-    isRead: true,
-  },
-  {
-    id: '4',
-    title: 'You have a new challenger!',
-    message: '@fitness_king wants to challenge you.',
-    timestamp: '1 day ago',
-    avatar: require('../assets/4.png'),
-    isRead: true,
-  },
-];
+// We'll load notifications from Supabase `notifications` table for the signed-in user
+// Fallback to empty list if table doesn't exist or fetch fails
 
 const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadNotifications = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error loading notifications:', error);
+          setNotifications([]);
+        } else if (mounted) {
+          setNotifications(data || []);
+        }
+      } catch (err) {
+        console.error('Failed to load notifications:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadNotifications();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <View style={styles.root}>
@@ -83,21 +86,25 @@ const NotificationsScreen: React.FC = () => {
 
       {/* ── SCROLLABLE BODY ── */}
       <View style={styles.content}>
-        <FlatList
-          data={notifications}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <NotificationCard
-              title={item.title}
-              message={item.message}
-              timestamp={item.timestamp}
-              avatar={item.avatar}
-              isRead={item.isRead}
-              onPress={() => console.log(`Pressed notification ${item.id}`)}
-            />
-          )}
-        />
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 20 }} />
+        ) : (
+          <FlatList
+            data={notifications}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <NotificationCard
+                title={item.title}
+                message={item.message}
+                timestamp={new Date(item.created_at).toLocaleString()}
+                avatar={require('../assets/1.png')}
+                isRead={item.is_read}
+                onPress={() => navigation.navigate('PostRunFromNotification', { matchId: item.metadata?.match_id, notificationId: item.id })}
+              />
+            )}
+          />
+        )}
       </View>
     </View>
   );

@@ -14,6 +14,7 @@ export interface MatchState {
   status: 'idle' | 'searching' | 'found' | 'waiting_for_acceptance' | 'both_accepted' | 'error';
   opponent?: OpponentData;
   matchId?: string;
+  targetDistance?: number;
   userAccepted?: boolean;
   opponentAccepted?: boolean;
   error?: string;
@@ -33,14 +34,14 @@ export const useVersusMatchmaking = () => {
   const acceptancePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /**
-   * Start the matchmaking process
-   * - Call the RPC function find_or_join_match()
+   * Start the matchmaking process with target distance
+   * - Call the RPC function find_or_join_match(target_distance)
    * - If waiting: set up realtime listener AND fallback polling
    * - If matched: fetch opponent data and resolve immediately
    */
-  const startMatchmaking = useCallback(async () => {
+  const startMatchmaking = useCallback(async (targetDistance: 1 | 3 | 5 = 1) => {
     try {
-      console.log('🚀 [Matchmaking] Starting matchmaking process...');
+      console.log(`🚀 [Matchmaking] Starting matchmaking process for ${targetDistance}km...`);
       setMatchState({ status: 'searching' });
 
       // Get current user
@@ -55,9 +56,9 @@ export const useVersusMatchmaking = () => {
       currentUserIdRef.current = userId;
       matchFoundRef.current = false;
 
-      // Call the RPC function
-      console.log('📞 [Matchmaking] Calling find_or_join_match() RPC...');
-      const { data, error } = await supabase.rpc('find_or_join_match');
+      // Call the RPC function with target distance
+      console.log(`📞 [Matchmaking] Calling find_or_join_match(${targetDistance}) RPC...`);
+      const { data, error } = await supabase.rpc('find_or_join_match', { p_target_distance: targetDistance });
 
       if (error) {
         throw new Error(error.message || 'Matchmaking failed');
@@ -87,7 +88,7 @@ export const useVersusMatchmaking = () => {
       } else if (data.status === 'matched') {
         console.log('🎉 [Matchmaking] Status is MATCHED - immediate match found!');
         // Immediate match! Fetch opponent data
-        await fetchAndSetOpponent(data.opponent_id, data.match_id);
+        await fetchAndSetOpponent(data.opponent_id, data.match_id, data.target_distance);
       } else {
         console.warn('⚠️ [Matchmaking] Unknown status:', data.status);
       }
@@ -152,7 +153,7 @@ export const useVersusMatchmaking = () => {
             }
 
             // Fetch opponent data and update state
-            await fetchAndSetOpponent(updated.opponent_id, updated.match_id);
+            await fetchAndSetOpponent(updated.opponent_id, updated.match_id, updated.target_distance);
           } else {
             console.log(`ℹ️ [Realtime] Update received but status not matched yet:`, updated.status);
           }
@@ -197,7 +198,7 @@ export const useVersusMatchmaking = () => {
         // This handles RLS and multiple rows cases
         const { data, error } = await supabase
           .from('versus_matchmaking')
-          .select('status, opponent_id, match_id')
+          .select('status, opponent_id, match_id, target_distance')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -231,7 +232,7 @@ export const useVersusMatchmaking = () => {
           }
 
           // Fetch opponent data and update state
-          await fetchAndSetOpponent(record.opponent_id, record.match_id);
+          await fetchAndSetOpponent(record.opponent_id, record.match_id, record.target_distance);
         } else {
           console.log(`ℹ️ [Polling] Record exists but status is: ${record.status}. Waiting for it to change to 'matched'...`);
         }
@@ -244,7 +245,7 @@ export const useVersusMatchmaking = () => {
   /**
    * Fetch opponent profile data and set match state
    */
-  const fetchAndSetOpponent = async (opponentId: string, matchId: string) => {
+  const fetchAndSetOpponent = async (opponentId: string, matchId: string, targetDistance: number) => {
     try {
       console.log(`👥 [Opponent] Fetching opponent profile for ID: ${opponentId}`);
       
@@ -265,6 +266,7 @@ export const useVersusMatchmaking = () => {
         status: 'found',
         opponent: profile,
         matchId,
+        targetDistance,
       });
 
       console.log('🎯 [Opponent] Match state updated successfully');

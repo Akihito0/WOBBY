@@ -51,6 +51,7 @@ import VersusWorkoutScreen from './src/pages/VersusWorkout';
 import RunScreen from './src/pages/Run';
 import WorkoutSummaryScreen from './src/pages/WorkoutSummaryScreen';
 import NotificationsScreen from './src/pages/NotificationsScreen';
+  import PostRunFromNotification from './src/pages/PostRunFromNotification';
 import RoutineSelectedScreen from './src/pages/RoutineSelectedScreen';
 import ActiveWorkoutScreen from './src/pages/ActiveWorkoutScreen';
 import RoutinesScreen from './src/pages/RoutinesScreen';
@@ -164,6 +165,7 @@ function YouStackScreen() {
       <YouStack.Screen name="YouMain" component={YouPage} />
       <YouStack.Screen name="YouSettings" component={YouSettings} />
       <YouStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
+      <YouStack.Screen name="PostRunFromNotification" component={PostRunFromNotification} />
       <YouStack.Screen name="PersonalInformation" component={PersonalInformation} />
       <YouStack.Screen name="LinkedDevices" component={LinkedDevices} />
       <YouStack.Screen name="AboutUs" component={AboutUs} />

@@ -1,10 +1,13 @@
 # Versus Matchmaking Implementation Guide
 
 ## Overview
+
 This documents the integration of the versus matchmaking system using RPC calls and Realtime listeners.
 
 ## Database Setup
+
 You've already created the following in Supabase SQL editor:
+
 - `versus_matchmaking` table with columns: id, user_id, status, opponent_id, match_id, created_at
 - RLS policies for secure access
 - `find_or_join_match()` RPC function
@@ -12,9 +15,11 @@ You've already created the following in Supabase SQL editor:
 ## Implementation Files
 
 ### 1. Custom Hook: `useVersusMatchmaking.ts`
+
 **Location**: `src/services/useVersusMatchmaking.ts`
 
 **Features**:
+
 - Calls the `find_or_join_match()` RPC function
 - Manages realtime listeners for status updates
 - Automatically fetches opponent profile data
@@ -22,20 +27,25 @@ You've already created the following in Supabase SQL editor:
 - Provides clean cancellation and cleanup
 
 **States**:
+
 - `idle` - No matchmaking active
 - `searching` - User is in the queue or waiting
 - `found` - Match found with opponent data
 - `error` - Something went wrong
 
 **Usage**:
+
 ```typescript
-const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking();
+const { matchState, startMatchmaking, cancelMatchmaking } =
+  useVersusMatchmaking();
 ```
 
 ### 2. Updated VersusWorkout Screen
+
 **Location**: `src/pages/VersusWorkout.tsx`
 
 **Changes**:
+
 - Integrated `useVersusMatchmaking` hook
 - Fetch current user profile on mount
 - Show `Finding` modal while searching (`matchState.status === 'searching'`)
@@ -44,6 +54,7 @@ const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking
 - Pass opponent info and match ID to VersusRunScreen
 
 **Modal Flow**:
+
 1. User clicks "RUN" → `handleRunPress()` calls `startMatchmaking()`
 2. Shows `Finding` modal while searching
 3. When match found, shows `MatchFoundModal` with opponent info
@@ -53,6 +64,7 @@ const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking
 ## How It Works
 
 ### User A (First to click RUN):
+
 1. Calls `find_or_join_match()` RPC
 2. No opponent found → Function returns `{ status: 'waiting' }`
 3. Hook sets up Realtime listener on user A's record
@@ -60,6 +72,7 @@ const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking
 5. User A's record status is still 'waiting'
 
 ### User B (Clicks RUN while A is waiting):
+
 1. Calls `find_or_join_match()` RPC
 2. Finds User A's waiting record
 3. RPC updates User A's record to 'matched' (with User B's ID and match_id)
@@ -68,6 +81,7 @@ const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking
 6. User B navigates immediately
 
 ### User A (via Realtime):
+
 1. Realtime listener detects UPDATE on User A's record
 2. Sees status changed to 'matched'
 3. Hook fetches User A's opponent profile (User B)
@@ -86,11 +100,13 @@ const { matchState, startMatchmaking, cancelMatchmaking } = useVersusMatchmaking
 ## Notes for VersusRunScreen
 
 When User B navigates immediately, make sure VersusRunScreen can handle:
+
 - User A is still seeing the Finding modal
 - User A will navigate once realtime update is detected
 - Both users should have the same `matchId` for tracking
 
 The `matchId` can be used for:
+
 - Linking both users' workout records
 - Tracking progress in real-time during the workout
 - Finalizing results and comparing stats
