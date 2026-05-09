@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Line, Circle } from 'react-native-svg';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import ChallengeModal from '../components/ChallengeModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -49,6 +50,11 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [myTime, setMyTime] = useState(0);
   const [opponentTime, setOpponentTime] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
+
+  // Final match result states for ChallengeModal
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [challengeData, setChallengeData] = useState<any>(null);
+  const userIdRef = useRef<string | null>(null);
   
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
@@ -317,6 +323,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       payload: { time: time }
     });
     
+    const isLastSet = Number(currentSet) >= Number(targetSets);
+
     // Save to database
     try {
       const fieldReps = isPlayer1 ? 'player1_reps' : 'player2_reps';
@@ -327,13 +335,130 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .from('versus_battles')
         .update({
           [fieldReps]: targetReps,
-          [fieldSets]: currentSet,
-          [fieldTime]: time // Save how fast they finished!
+          [fieldSets]: Number(currentSet),
+          [fieldTime]: time,
+          ...(isLastSet ? { status: 'active' } : {}) // Mark as active (not 'waiting') until both done
         })
         .eq('id', matchId);
 
     } catch (e) {
       console.log('Error saving set data', e);
+    }
+  };
+
+  const determineAndSaveWinner = async (localTime: number, remoteTime: number) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      userIdRef.current = user.id;
+
+      // WAIT until both players' times are saved to DB (poll with retries)
+      let match: any = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data } = await supabase
+          .from('versus_battles')
+          .select('*')
+          .eq('id', matchId)
+          .single();
+        
+        if (data && data.player1_time > 0 && data.player2_time > 0) {
+          match = data;
+          break;
+        }
+        
+        console.log(`Waiting for both times... attempt ${attempt + 1} (p1=${data?.player1_time}, p2=${data?.player2_time})`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      if (!match) {
+        // Fallback: use whatever we have
+        const { data } = await supabase.from('versus_battles').select('*').eq('id', matchId).single();
+        match = data;
+      }
+      if (!match) return;
+
+      // Lower cumulative time = faster = winner
+      const p1TotalTime = match.player1_time || 999999;
+      const p2TotalTime = match.player2_time || 999999;
+      const winnerId = p1TotalTime <= p2TotalTime ? match.player1_id : match.player2_id;
+      const iWon = winnerId === user.id;
+
+      // Only player1 writes the winner to avoid both overwriting each other
+      if (isPlayer1) {
+        await supabase
+          .from('versus_battles')
+          .update({
+            winner_id: winnerId,
+            status: 'completed'
+          })
+          .eq('id', matchId);
+        console.log('✅ Winner saved:', winnerId === match.player1_id ? 'Player 1' : 'Player 2');
+      } else {
+        // Player 2: wait briefly for Player 1 to write the winner
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const { data: finalMatch } = await supabase.from('versus_battles').select('winner_id').eq('id', matchId).single();
+        if (finalMatch?.winner_id) {
+          const actuallyWon = finalMatch.winner_id === user.id;
+          if (actuallyWon !== iWon) {
+            // Player 1's write is the source of truth
+          }
+        }
+      }
+
+      // 💰 SAVE XP TO DATABASE
+      const earnedXp = iWon ? 150 : 50;
+      const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
+      
+      // Save XP to versus_battles row
+      await supabase
+        .from('versus_battles')
+        .update({ [xpField]: earnedXp })
+        .eq('id', matchId);
+
+      // Add XP to user's profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('xp')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ xp: (profile.xp || 0) + earnedXp })
+          .eq('id', user.id);
+        console.log(`💰 Added ${earnedXp} XP to profile (total: ${(profile.xp || 0) + earnedXp})`);
+      }
+
+      // Fetch opponent username
+      const opponentId = isPlayer1 ? match.player2_id : match.player1_id;
+      const { data: oppProfile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', opponentId)
+        .single();
+
+      const totalSecs = localTime;
+      const hrs = Math.floor(totalSecs / 3600);
+      const mins = Math.floor((totalSecs % 3600) / 60);
+      const secs = totalSecs % 60;
+      const durStr = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+
+      setChallengeData({
+        status: iWon ? 'VICTORY' : 'DEFEAT',
+        exerciseName: exerciseName,
+        reps: targetReps,
+        sets: targetSets,
+        date: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
+        duration: durStr,
+        opponent: oppProfile?.username || 'Opponent',
+        xp: iWon ? 150 : 50,
+      });
+      setShowResultModal(false);
+      setShowChallengeModal(true);
+
+    } catch (err) {
+      console.log('Error determining winner:', err);
     }
   };
 
@@ -349,7 +474,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         currentSet: cSet + 1 
       });
     } else {
-      navigation.navigate('VersusWorkoutScreen'); 
+      // Last set done — determine winner!
+      determineAndSaveWinner(myTime, opponentTime);
     }
   };
 
@@ -489,6 +615,16 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           </LinearGradient>
         </View>
       </Modal>
+
+      {/* 🏆 FINAL MATCH RESULT - Uses teammate's ChallengeModal 🏆 */}
+      <ChallengeModal
+        visible={showChallengeModal}
+        onClose={() => {
+          setShowChallengeModal(false);
+          navigation.navigate('VersusWorkoutScreen');
+        }}
+        data={challengeData}
+      />
     </View>
   );
 }
