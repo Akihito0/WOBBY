@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
 import { ACHIEVEMENT_DATA } from './Achievements';
 import ChallengeModal from '../components/ChallengeModal';
 
@@ -26,28 +27,149 @@ const PerformanceScreen = () => {
 
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [selectedLog, setSelectedLog] = useState<{
-  status: 'VICTORY' | 'DEFEAT';
-  exerciseName: string;
-  reps: number;
-  sets: number;
-  date: string;
-  duration: string;
-  opponent: string;
-  xp: number;
-} | null>(null);
+    status: 'VICTORY' | 'DEFEAT';
+    exerciseName: string;
+    reps: number | string;
+    sets: number | string;
+    date: string;
+    duration: string;
+    opponent: string;
+    xp: number;
+  } | null>(null);
+
+  const [xpPoints, setXpPoints] = useState(0);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('xp')
+        .eq('id', user.id)
+        .single();
+      if (data) {
+        setXpPoints(data.xp || 0);
+      }
+    } catch (err) {
+      console.log('Error fetching XP for performance screen:', err);
+    }
+  }, []);
   // Modal visibility state
   const [modalVisible, setModalVisible] = useState(false);
   // State to store which specific challenge was clicked
   const [selectedChallenge, setSelectedChallenge] = useState(null);
+  const [challengeLogs, setChallengeLogs] = useState<any[]>([]);
 
-  // Function to trigger the modal
-  const handleCardPress = (item: any) => {
-  setSelectedChallenge(item);
-  setModalVisible(true);
-};
+  const fetchChallenges = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const userId = user.id;
 
-  // XP data (replace with real data)
-  const xpPoints = 1000;
+      // Fetch Battles
+      const { data: battles } = await supabase
+        .from('versus_battles')
+        .select(`
+          *,
+          player1:profiles!versus_battles_player1_id_fkey(username, avatar_url),
+          player2:profiles!versus_battles_player2_id_fkey(username, avatar_url)
+        `)
+        .or(`player1_id.eq.${userId},player2_id.eq.${userId}`)
+        .neq('status', 'waiting');
+
+      // Fetch Runs
+      const { data: runs } = await supabase
+        .from('versus_run_results')
+        .select(`
+          *,
+          user1:profiles!versus_run_results_user_1_id_fkey(username, avatar_url),
+          user2:profiles!versus_run_results_user_2_id_fkey(username, avatar_url)
+        `)
+        .or(`user_1_id.eq.${userId},user_2_id.eq.${userId}`)
+        .not('completed_at', 'is', null);
+
+      interface ChallengeLog {
+        id: string;
+        status: 'VICTORY' | 'DEFEAT';
+        name: string;
+        r: string | number;
+        s: string | number;
+        date: string;
+        dur: string;
+        opp: string;
+        oppAvatar: string | null;
+        xp: number;
+        timestamp: number;
+      }
+
+      const merged: ChallengeLog[] = [];
+
+      if (battles) {
+        battles.forEach(b => {
+          const isPlayer1 = b.player1_id === userId;
+          const opponentProfile = isPlayer1 ? b.player2 : b.player1;
+          const isVictory = b.winner_id === userId;
+          merged.push({
+            id: `battle_${b.id}`,
+            status: isVictory ? 'VICTORY' : 'DEFEAT',
+            name: b.exercise_name || 'VERSUS BATTLE',
+            r: isPlayer1 ? b.player1_reps : b.player2_reps,
+            s: isPlayer1 ? b.player1_sets : b.player2_sets,
+            date: new Date(b.created_at).toLocaleDateString('en-US', {month: 'long', day: '2-digit', year: 'numeric'}),
+            dur: '00:00:00',
+            opp: opponentProfile?.username || 'Unknown',
+            oppAvatar: opponentProfile?.avatar_url || null,
+            xp: isPlayer1 ? b.player1_xp : b.player2_xp,
+            timestamp: new Date(b.created_at).getTime()
+          });
+        });
+      }
+
+      if (runs) {
+        runs.forEach(r => {
+          const isUser1 = r.user_1_id === userId;
+          const opponentProfile = isUser1 ? r.user2 : r.user1;
+          const isVictory = r.winner_id === userId;
+          const distance = isUser1 ? r.user_1_distance : r.user_2_distance;
+          const time = isUser1 ? r.user_1_time : r.user_2_time;
+
+          const hrs = Math.floor(time / 3600);
+          const mins = Math.floor((time % 3600) / 60);
+          const secs = time % 60;
+          const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+          const distNum = Number(distance || 0);
+          const base_xp = Math.floor(distNum >= 1 ? 100 + (distNum - 1) * 50 : distNum * 100);
+          const earnedXp = (isVictory && distNum >= 1) ? base_xp + 100 : base_xp;
+
+          merged.push({
+            id: `run_${r.id}`,
+            status: isVictory ? 'VICTORY' : 'DEFEAT',
+            name: `${r.target_distance}KM VERSUS RUN`,
+            r: distance ? Number(distance).toFixed(2) + ' km' : '0 km',
+            s: '', 
+            date: new Date(r.completed_at).toLocaleDateString('en-US', {month: 'long', day: '2-digit', year: 'numeric'}),
+            dur: durStr,
+            opp: opponentProfile?.username || 'Unknown',
+            oppAvatar: opponentProfile?.avatar_url || null,
+            xp: earnedXp, 
+            timestamp: new Date(r.completed_at).getTime()
+          });
+        });
+      }
+
+      merged.sort((a, b) => b.timestamp - a.timestamp);
+      setChallengeLogs(merged);
+    } catch (err) {
+      console.log('Error fetching challenge history:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchChallenges();
+    fetchProfile();
+  }, [fetchChallenges, fetchProfile]);
 
   // States
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
@@ -239,28 +361,7 @@ const PerformanceScreen = () => {
 <Text style={styles.challengeLogsTitle}>Challenge History</Text>
 
 <View style={styles.challengeLogsContainer}>
- {[
-  { 
-    id: '1', 
-    status: 'VICTORY' as const, // Added 'as const' to fix the type error
-    name: 'PUSH UPS', 
-    r: 8, s: 10, 
-    date: 'January 02, 2026', 
-    dur: '00:15:30', 
-    opp: 'Jordan A. Cabandon', 
-    xp: 500 
-  },
-  { 
-    id: '2', 
-    status: 'DEFEAT' as const, // Added 'as const' here too
-    name: 'SQUATS', 
-    r: 8, s: 10, 
-    date: 'January 01, 2026', 
-    dur: '00:12:10', 
-    opp: 'Jordan A. Cabandon', 
-    xp: 125 
-  },
-].map((item) => {
+ {challengeLogs.length > 0 ? challengeLogs.map((item) => {
   const isVictory = item.status === 'VICTORY';
             
     return (
@@ -269,7 +370,6 @@ const PerformanceScreen = () => {
         activeOpacity={0.85} 
         style={styles.logWrapper}
         onPress={() => {
-          // This ensures all properties are passed to the modal
           setSelectedLog({
             status: item.status, 
             exerciseName: item.name,
@@ -292,7 +392,7 @@ const PerformanceScreen = () => {
           {/* Profile Image - B&W/Tinted if Lose */}
           <View style={styles.imageContainer}>
             <Image 
-              source={require('../assets/5.png')} 
+              source={item.oppAvatar ? { uri: item.oppAvatar } : require('../assets/5.png')} 
               style={[
                 styles.logProfile, 
                 !isVictory && { tintColor: 'gray', opacity: 0.7 } 
@@ -303,7 +403,9 @@ const PerformanceScreen = () => {
           {/* Info Section */}
           <View style={styles.logInfo}>
             <Text style={styles.logExerciseText}>{item.name}</Text>
-            <Text style={styles.logStatsText}>{item.r} reps | {item.s} sets</Text>
+            <Text style={styles.logStatsText}>
+              {item.s === '' ? item.r : `${item.r} reps | ${item.s} sets`}
+            </Text>
           </View>
 
           {/* Slanted Result Banner */}
@@ -316,7 +418,9 @@ const PerformanceScreen = () => {
         </LinearGradient>
       </TouchableOpacity>
     );
-  })}
+  }) : (
+    <Text style={[styles.noRecordText, { marginTop: 20 }]}>No challenges completed yet.</Text>
+  )}
 </View>
 
         </View>

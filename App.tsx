@@ -557,6 +557,11 @@ export default function App() {
                 component={NotificationsScreen}
                 options={{ animation: 'slide_from_right' }}
               />
+              <MainStack.Screen
+                name="PostRunFromNotification"
+                component={PostRunFromNotification}
+                options={{ animation: 'slide_from_right' }}
+              />
             </MainStack.Navigator>
           </NavigationContainer>
           <StatusBar style="light" />

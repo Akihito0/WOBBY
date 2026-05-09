@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 interface CalendarProps {
   onDateSelect?: (date: Date) => void;
   streakDates?: string[];
+  freezeDates?: string[];
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -14,7 +15,7 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-export default function CustomCalendar({ onDateSelect, streakDates = [] }: CalendarProps) {
+export default function CustomCalendar({ onDateSelect, streakDates = [], freezeDates = [] }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const today = new Date();
   const year = currentDate.getFullYear();
@@ -88,6 +89,7 @@ export default function CustomCalendar({ onDateSelect, streakDates = [] }: Calen
 
           const dateString = formatDateString(day);
           const isStreak = streakDates.includes(dateString);
+          const isFreeze = freezeDates.includes(dateString);
           const isSelected = day === selectedDate;
           const isToday = dateString === todayString;
           const isSevenStreak = isSevenDayStreak(dateString);
@@ -97,6 +99,8 @@ export default function CustomCalendar({ onDateSelect, streakDates = [] }: Calen
               <TouchableOpacity
                 style={[
                   styles.dayCell,
+                  isStreak && styles.streakDayCell,
+                  isFreeze && styles.freezeDayCell,
                   isSelected && styles.selectedDayCell,
                   isToday && !isSelected && styles.todayDayCell,
                   isSevenStreak && !isSelected && styles.sevenStreakDayCell,
@@ -112,9 +116,6 @@ export default function CustomCalendar({ onDateSelect, streakDates = [] }: Calen
                 ]}>
                   {day}
                 </Text>
-                {isStreak && !isSelected && !isSevenStreak && (
-                  <View style={styles.streakDot} />
-                )}
               </TouchableOpacity>
             </View>
           );
@@ -208,6 +209,14 @@ const styles = StyleSheet.create({
   sevenStreakDayCell: {
     backgroundColor: 'rgba(192, 255, 0, 0.1)',
   },
+  streakDayCell: {
+    backgroundColor: 'rgba(255, 107, 0, 0.4)',
+    borderColor: '#FF6B00',
+  },
+  freezeDayCell: {
+    backgroundColor: 'rgba(0, 229, 255, 0.4)',
+    borderColor: '#00E5FF',
+  },
   dayText: {
     color: '#F8FAFC',
     fontSize: 15,
@@ -215,13 +224,5 @@ const styles = StyleSheet.create({
   },
   selectedDayText: {
     color: '#C0FF00',
-  },
-  streakDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#C0FF00',
-    position: 'absolute',
-    bottom: 4,
   },
 });

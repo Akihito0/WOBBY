@@ -72,6 +72,7 @@ export default function UserDashboard() {
           .from('runs')
           .select('*')
           .eq('user_id', user.id)
+          .neq('workout_type', 'versus_run')
           .order('completed_at', { ascending: false }),
         supabase
           .from('completed_routines')

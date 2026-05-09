@@ -7,8 +7,8 @@ interface ChallengeModalProps {
   data: {
     status: 'VICTORY' | 'DEFEAT';
     exerciseName: string;
-    reps: number;
-    sets: number;
+    reps: number | string;
+    sets: number | string;
     date: string;
     duration: string;
     opponent: string;
@@ -47,7 +47,7 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({ visible, onClose, data 
               {data.exerciseName}
             </Text>
             <Text style={[styles.statsRow, { color: theme.subheading }]}>
-              {data.reps} reps  |  {data.sets} sets
+              {data.sets !== '' ? `${data.reps} reps  |  ${data.sets} sets` : data.reps}
             </Text>
           </View>
 
