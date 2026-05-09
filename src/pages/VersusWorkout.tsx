@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Finding from '../components/Finding';
 import ExerciseModal from '../components/ExerciseModal';
-import DistanceSelectionModal from '../components/DistanceSelectionModal';
 import { supabase } from '../supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
@@ -12,27 +12,36 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   const [isFinding, setIsFinding] = useState(false);
   const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
 
-  // 👇 ADDED: Refs to hold the selected rules and track cancellation
-  const matchRulesRef = useRef<{ exercise: string; sets: number; reps: number } | null>(null);
-  const isCancelledRef = useRef<boolean>(false);
+  // Refs to manage our network connections so we can cancel them cleanly
+  const realtimeSubRef = useRef<RealtimeChannel | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const myMatchIdRef = useRef<string | null>(null);
 
-  // ─── MATCHMAKING LOGIC ───
-  // We use a useEffect that triggers when `isFinding` becomes true.
-  // This allows React to render the Finding modal BEFORE the heavy database work begins.
-  useEffect(() => {
-    if (isFinding && matchRulesRef.current) {
-      isCancelledRef.current = false; // Reset cancel flag
-      startMatchmaking(matchRulesRef.current.exercise, matchRulesRef.current.sets, matchRulesRef.current.reps);
+  // ─── SAFE CLEANUP FUNCTION ───
+  // This completely stops the search, disconnects the listener, and deletes the empty room
+  const cleanupMatchmaking = async () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    if (realtimeSubRef.current) {
+      supabase.removeChannel(realtimeSubRef.current);
+      realtimeSubRef.current = null;
     }
-  }, [isFinding]);
+    
+    if (myMatchIdRef.current) {
+      await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
+      myMatchIdRef.current = null;
+    }
+    
+    setIsFinding(false);
+  };
 
+  // ─── MATCHMAKING LOGIC ───
   const startMatchmaking = async (exercise: string, sets: number, reps: number) => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session?.user?.id) {
         Alert.alert('Error', 'Could not authenticate user.');
-        setIsFinding(false);
+        await cleanupMatchmaking();
         return;
       }
 
@@ -51,13 +60,11 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
       if (searchError) throw searchError;
 
-      // If user clicked cancel during the network request, abort.
-      if (isCancelledRef.current) return;
-
+      // 🎉 WE ARE PLAYER 2: A match was found!
       if (waitingMatches && waitingMatches.length > 0) {
-        // 🎉 MATCH FOUND! We are Player 2. Join the match!
         const match = waitingMatches[0];
         
+        // Join the match by updating the database
         const { error: updateError } = await supabase
           .from('versus_battles')
           .update({
@@ -68,15 +75,12 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
         if (updateError) throw updateError;
         
-        setIsFinding(false);
-        Alert.alert('Match Found!', 'Get ready to workout!');
-        
-        // TODO: 
+        await cleanupMatchmaking(); // Reset UI
         navigation.navigate('LiveVersusRoutine', { matchId: match.id, isPlayer1: false });
         return;
       }
 
-      // 2. NO MATCH FOUND. We are Player 1. Create a new room and wait.
+      // ⏳ WE ARE PLAYER 1: No match found. Create a room and wait.
       const { data: newMatch, error: createError } = await supabase
         .from('versus_battles')
         .insert([{
@@ -91,88 +95,63 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
       if (createError) throw createError;
       
-      // Save ID so we can delete it if we cancel
+      // Save ID so we can delete it if we hit Cancel
       myMatchIdRef.current = newMatch.id; 
 
-      // 3. Poll for an opponent for 30 seconds
-      let matchFound = false;
-      let attempts = 0;
-      const maxAttempts = 15; 
+      // Set up a Realtime Listener on our new row
+      const channel = supabase.channel(`match_${newMatch.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'versus_battles', filter: `id=eq.${newMatch.id}` },
+          (payload) => {
+            // When Player 2 updates the row to 'matched', this fires instantly!
+            if (payload.new.status === 'matched') {
+               console.log("Opponent joined!");
+               cleanupMatchmaking().then(() => {
+                 navigation.navigate('LiveVersusRoutine', { matchId: newMatch.id, isPlayer1: true });
+               });
+            }
+          }
+        )
+        .subscribe();
 
-      while (!matchFound && attempts < maxAttempts) {
-        // Break the loop instantly if user hit cancel
-        if (isCancelledRef.current) {
-           await cleanUpMyMatch();
-           return;
-        }
+      realtimeSubRef.current = channel;
 
-        attempts++;
-        
-        const { data: checkMatch } = await supabase
-          .from('versus_battles')
-          .select('status, player2_id')
-          .eq('id', newMatch.id)
-          .single();
-
-        if (checkMatch && checkMatch.status === 'matched' && checkMatch.player2_id) {
-          matchFound = true;
-          setIsFinding(false);
-          Alert.alert('Challenger Approaching!', 'Get ready to workout!');
-          
-          // TODO: 
-          navigation.navigate('LiveVersusRoutine', { matchId: newMatch.id, isPlayer1: true });
-          return;
-        }
-
-        // Wait 2 seconds before checking again
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      // 4. Timeout reached. Nobody joined.
-      if (!isCancelledRef.current) {
-        setIsFinding(false);
-        await cleanUpMyMatch();
-        Alert.alert(
-          'No Opponent Found',
-          `Nobody is looking to do ${sets} sets of ${reps} ${exercise} right now. Try different rules or try again later!`
-        );
-      }
+      // Automatically cancel after 30 seconds if nobody joins
+      timeoutRef.current = setTimeout(async () => {
+         await cleanupMatchmaking();
+         Alert.alert(
+           'No Opponent Found',
+           `Nobody is looking to do ${sets} sets of ${reps} ${exercise} right now. Try again later!`
+         );
+      }, 30000);
 
     } catch (error) {
       console.error('Matchmaking error:', error);
-      if (!isCancelledRef.current) {
-        setIsFinding(false);
-        Alert.alert('Error', 'Matchmaking failed. Please try again.');
-      }
+      await cleanupMatchmaking();
+      Alert.alert('Error', 'Matchmaking failed. Please try again.');
     }
   };
 
-  // Helper to delete the empty room
-  const cleanUpMyMatch = async () => {
-    if (myMatchIdRef.current) {
-      await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
-      myMatchIdRef.current = null;
-    }
-  };
 
   // ─── UI HANDLERS ───
-
   const handleRoutineSelect = (routine: any) => {
     setSelectedRoutine({ type: routine.type, exercises: routine.exercises });
     setExerciseModalVisible(true);
   };
 
-  // When user hits "Find Match" on the Exercise Modal
   const handleConfirmExercises = (exercise: string, sets: number, reps: number) => {
     setExerciseModalVisible(false);
-    
-    // Store rules and trigger the useEffect
-    matchRulesRef.current = { exercise, sets, reps };
     setIsFinding(true); 
+    
+    // We use a tiny timeout to let the UI render the "Finding" modal 
+    // before we freeze the app with heavy network database calls!
+    setTimeout(() => {
+       startMatchmaking(exercise, sets, reps);
+    }, 100);
   };
 
-  // When user hits "Cancel" on the Finding Loader Modal
-  const handleCancelFinding = () => {
+  const handleCancelFinding = async () => {
     Alert.alert(
       'Cancel Matchmaking?',
       'Are you sure you want to stop looking for an opponent?',
@@ -181,10 +160,8 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         { 
           text: 'Yes, stop', 
           style: 'destructive',
-          onPress: () => {
-            isCancelledRef.current = true; // Instantly breaks the while loop
-            setIsFinding(false);           // Closes the modal
-            cleanUpMyMatch();              // Deletes the room from Supabase
+          onPress: async () => {
+            await cleanupMatchmaking(); 
           }
         }
       ]
@@ -310,7 +287,7 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* 👇 PASS THE onCancel PROP! */}
+      {/* PASS THE onCancel PROP! */}
       <Finding visible={isFinding} onCancel={handleCancelFinding} />
 
       <ExerciseModal 
@@ -391,7 +368,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 
-  // Choose Mode
   chooseModeTitle: {
     color: '#FFFFFF',
     fontSize: 20,
@@ -401,7 +377,6 @@ const styles = StyleSheet.create({
     right: -15,
   },
 
-  // Mode Buttons
  modeButtonWrapper: {
   borderRadius: 16,
   overflow: 'hidden',
@@ -431,7 +406,6 @@ modeButtonIcon: {
   left: -15,
 },
 
-  // Dropdown INSIDE the card
 dropdownInner: {
   marginTop: 10,
 },
