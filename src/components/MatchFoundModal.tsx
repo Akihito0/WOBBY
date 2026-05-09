@@ -18,6 +18,12 @@ interface MatchFoundModalProps {
   currentUser: { name: string; xp: number; avatar?: any };
   opponent: { name: string; xp: number; avatar?: any };
   targetDistance?: number;
+  isWorkoutMode?: boolean;
+  workoutConfig?: {
+    exercise: string;
+    sets: number;
+    reps: number;
+  };
   onAccept: () => void;
   onDecline: () => void;
 }
@@ -27,6 +33,8 @@ export default function MatchFoundModal({
   currentUser,
   opponent,
   targetDistance = 1,
+  isWorkoutMode = false,
+  workoutConfig,
   onAccept,
   onDecline,
 }: MatchFoundModalProps) {
@@ -95,12 +103,14 @@ export default function MatchFoundModal({
   // Helper to render Avatar or Placeholder
   const renderAvatar = (user: { name: string; avatar?: any }) => {
     if (user.avatar) {
-      return <Image source={user.avatar} style={styles.avatarImg} />;
+      const source = typeof user.avatar === 'string' ? { uri: user.avatar } : user.avatar;
+      return <Image source={source} style={styles.avatarImg} />;
     }
     
     // Generate initials (e.g., "John Doe" -> "JD")
-    const initials = user.name
+    const initials = (user?.name || 'User')
       .split(' ')
+      .filter(Boolean)
       .map((n) => n[0])
       .join('')
       .slice(0, 2)
@@ -144,11 +154,18 @@ export default function MatchFoundModal({
               resizeMode="contain"
             />
 
-            {/* Target Distance */}
-            <View style={styles.distanceContainer}>
-              <Text style={styles.distanceLabel}>RACE DISTANCE</Text>
-              <Text style={styles.distanceValue}>{targetDistance} KM</Text>
-            </View>
+            {/* Target Info */}
+            {isWorkoutMode && workoutConfig ? (
+              <View style={styles.distanceContainer}>
+                <Text style={styles.distanceLabel}>WORKOUT TARGET</Text>
+                <Text style={styles.distanceValue}>{workoutConfig.sets} SETS • {workoutConfig.reps} {workoutConfig.exercise.toUpperCase()}</Text>
+              </View>
+            ) : (
+              <View style={styles.distanceContainer}>
+                <Text style={styles.distanceLabel}>RACE DISTANCE</Text>
+                <Text style={styles.distanceValue}>{targetDistance} KM</Text>
+              </View>
+            )}
 
             {/* Players Row */}
             <View style={styles.vsContainer}>

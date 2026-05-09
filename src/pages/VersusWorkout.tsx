@@ -21,40 +21,61 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   const [matchModalVisible, setMatchModalVisible] = useState(false);
   const [currentProfile, setCurrentProfile] = useState<{ name: string; xp: number; avatar?: any }>({ name: 'You', xp: 0 });
 
+  // New states for workout two-way accept/decline flow
+  const [showWorkoutMatchModal, setShowWorkoutMatchModal] = useState(false);
+  const [workoutOpponentData, setWorkoutOpponentData] = useState<{ name: string; xp: number; avatar?: any } | null>(null);
+  const [workoutCurrentUserData, setWorkoutCurrentUserData] = useState<{ name: string; xp: number; avatar?: any } | null>(null);
+  const [workoutMatchId, setWorkoutMatchId] = useState<string | null>(null);
+  const [workoutConfig, setWorkoutConfig] = useState<{ exercise: string; sets: number; reps: number } | null>(null);
+  const isPlayer1Ref = useRef<boolean>(false);
+  const hasMatchedRef = useRef<boolean>(false);
+
   // Refs to manage our network connections so we can cancel them cleanly
   const realtimeSubRef = useRef<RealtimeChannel | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const workoutPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const myMatchIdRef = useRef<string | null>(null);
 
   // ─── SAFE CLEANUP FUNCTION ───
   // This completely stops the search, disconnects the listener, and deletes the empty room
-  const cleanupMatchmaking = async () => {
+  const cleanupWorkoutMatchmaking = async (deleteRow: boolean = true) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (workoutPollingRef.current) clearInterval(workoutPollingRef.current);
     
     if (realtimeSubRef.current) {
       supabase.removeChannel(realtimeSubRef.current);
       realtimeSubRef.current = null;
     }
     
-    if (myMatchIdRef.current) {
+    if (deleteRow && myMatchIdRef.current) {
       await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
       myMatchIdRef.current = null;
     }
-    
+
+    // reset workout modal & states
+    setShowWorkoutMatchModal(false);
+    setWorkoutOpponentData(null);
+    setWorkoutCurrentUserData(null);
+    setWorkoutMatchId(null);
+    isPlayer1Ref.current = false;
+    hasMatchedRef.current = false;
+
     setIsFinding(false);
   };
 
   // ─── MATCHMAKING LOGIC ───
-  const startMatchmaking = async (exercise: string, sets: number, reps: number) => {
+  const startWorkoutMatchmaking = async (exercise: string, sets: number, reps: number) => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session?.user?.id) {
         Alert.alert('Error', 'Could not authenticate user.');
-        await cleanupMatchmaking();
+        await cleanupWorkoutMatchmaking();
         return;
       }
 
       const userId = session.user.id;
+
+      setWorkoutConfig({ exercise, sets, reps });
 
       // 1. Search for a waiting match with the EXACT SAME RULES
       const { data: waitingMatches, error: searchError } = await supabase
@@ -62,8 +83,8 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         .select('*')
         .eq('status', 'waiting')
         .eq('exercise_name', exercise)
-        .eq('target_sets', sets)
-        .eq('target_reps', reps)
+        .eq('target_sets', Number(sets) || 1)
+        .eq('target_reps', Number(reps) || 10)
         .neq('player1_id', userId) // Don't match with ourselves
         .limit(1);
 
@@ -74,18 +95,79 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         const match = waitingMatches[0];
         
         // Join the match by updating the database
-        const { error: updateError } = await supabase
+        const { data: updatedMatch, error: updateError } = await supabase
           .from('versus_battles')
           .update({
             player2_id: userId,
-            status: 'matched' 
+            status: 'matched'
           })
-          .eq('id', match.id);
+          .eq('id', match.id)
+          .select();
 
         if (updateError) throw updateError;
-        
-        await cleanupMatchmaking(); // Reset UI
-        navigation.navigate('LiveVersusRoutine', { matchId: match.id, isPlayer1: false });
+        if (!updatedMatch || updatedMatch.length === 0) {
+          console.error("Failed to join match: RLS policy might be preventing the update.");
+          Alert.alert('Matchmaking Error', 'Could not join the match. Please check database permissions (RLS).');
+          await cleanupWorkoutMatchmaking();
+          return;
+        }
+
+        // Fetch opponent (player1) profile and show accept/decline modal
+        try {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('username, xp, avatar_url')
+            .eq('id', match.player1_id)
+            .single();
+
+          if (!profileError && profile) {
+            setWorkoutOpponentData({ name: profile.username || 'Opponent', xp: profile.xp || 0, avatar: profile.avatar_url });
+          } else {
+            setWorkoutOpponentData({ name: 'Opponent', xp: 0 });
+          }
+        } catch (err) {
+          console.error('Error fetching opponent profile:', err);
+          setWorkoutOpponentData({ name: 'Opponent', xp: 0 });
+        }
+
+        setWorkoutMatchId(match.id);
+        isPlayer1Ref.current = false; // we're player2 here
+        setIsFinding(false);
+        setShowWorkoutMatchModal(true);
+
+        const handleUpdateP2 = async (newRow: any) => {
+          if (newRow.player1_accepted && newRow.player2_accepted) {
+            setShowWorkoutMatchModal(false);
+            await cleanupWorkoutMatchmaking(false); // DO NOT DELETE THE ROW!
+            const isPlayer1 = userId === newRow.player1_id;
+            navigation.navigate('LiveVersusRoutine', { matchId: match.id, isPlayer1 });
+          }
+          if (newRow.status === 'cancelled') {
+            setShowWorkoutMatchModal(false);
+            Alert.alert('Match Cancelled', 'The match was cancelled.');
+            await cleanupWorkoutMatchmaking();
+          }
+        };
+
+        // Subscribe to accept/decline updates for this match
+        const channel = supabase.channel(`match_${match.id}`)
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'versus_battles', filter: `id=eq.${match.id}` },
+            async (payload) => handleUpdateP2(payload.new)
+          )
+          .subscribe();
+
+        realtimeSubRef.current = channel;
+
+        // Polling fallback
+        workoutPollingRef.current = setInterval(async () => {
+          try {
+            const { data } = await supabase.from('versus_battles').select('*').eq('id', match.id).single();
+            if (data) handleUpdateP2(data);
+          } catch(e) {}
+        }, 1000);
+
         return;
       }
 
@@ -94,9 +176,9 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         .from('versus_battles')
         .insert([{
           player1_id: userId,
-          exercise_name: exercise,
-          target_sets: sets,
-          target_reps: reps,
+          exercise_name: exercise || 'Workout',
+          target_sets: Number(sets) || 1,
+          target_reps: Number(reps) || 10,
           status: 'waiting'
         }])
         .select()
@@ -107,28 +189,102 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       // Save ID so we can delete it if we hit Cancel
       myMatchIdRef.current = newMatch.id; 
 
+      const handleUpdateP1 = async (newRow: any) => {
+        // When Player 2 updates the row to 'matched', fetch opponent and show modal
+        if (newRow.status === 'matched' && newRow.player2_id) {
+          if (!hasMatchedRef.current) {
+            hasMatchedRef.current = true;
+
+            try {
+              const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('username, xp, avatar_url')
+                .eq('id', newRow.player2_id)
+                .single();
+
+              if (!profileError && profile) {
+                setWorkoutOpponentData({ name: profile.username || 'Opponent', xp: profile.xp || 0, avatar: profile.avatar_url });
+              } else {
+                setWorkoutOpponentData({ name: 'Opponent', xp: 0 });
+              }
+            } catch (err) {
+              console.error('Error fetching opponent profile:', err);
+              setWorkoutOpponentData({ name: 'Opponent', xp: 0 });
+            }
+
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+            setWorkoutMatchId(newMatch.id);
+            isPlayer1Ref.current = true; // creator is player1
+            setIsFinding(false);
+            setShowWorkoutMatchModal(true);
+          }
+        }
+
+        // If both accepted, navigate
+        if (newRow.player1_accepted && newRow.player2_accepted) {
+          setShowWorkoutMatchModal(false);
+          await cleanupWorkoutMatchmaking(false); // DO NOT DELETE THE ROW!
+          // navigate as player1 if the creator is player1
+          navigation.navigate('LiveVersusRoutine', { matchId: newMatch.id, isPlayer1: true });
+        }
+
+        if (newRow.status === 'cancelled') {
+          setShowWorkoutMatchModal(false);
+          Alert.alert('Match Cancelled', 'The match was cancelled.');
+          await cleanupWorkoutMatchmaking();
+        }
+      };
+
       // Set up a Realtime Listener on our new row
       const channel = supabase.channel(`match_${newMatch.id}`)
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'versus_battles', filter: `id=eq.${newMatch.id}` },
-          (payload) => {
-            // When Player 2 updates the row to 'matched', this fires instantly!
-            if (payload.new.status === 'matched') {
-               console.log("Opponent joined!");
-               cleanupMatchmaking().then(() => {
-                 navigation.navigate('LiveVersusRoutine', { matchId: newMatch.id, isPlayer1: true });
-               });
-            }
-          }
+          async (payload) => handleUpdateP1(payload.new)
         )
         .subscribe();
 
       realtimeSubRef.current = channel;
 
+      // Polling fallback & Race Condition Fix
+      workoutPollingRef.current = setInterval(async () => {
+        try {
+          const { data } = await supabase.from('versus_battles').select('*').eq('id', newMatch.id).single();
+          if (data) {
+            handleUpdateP1(data);
+            
+            // 🔥 RACE CONDITION FIX 🔥
+            // If we are still waiting, check if there's an OLDER match we can merge into
+            if (data.status === 'waiting' && !hasMatchedRef.current) {
+              const { data: olderMatches } = await supabase
+                .from('versus_battles')
+                .select('id')
+                .eq('status', 'waiting')
+                .eq('exercise_name', exercise)
+                .eq('target_sets', sets)
+                .eq('target_reps', reps)
+                .is('player2_id', null)
+                .neq('id', newMatch.id)
+                .lt('created_at', data.created_at) // MUST BE OLDER
+                .order('created_at', { ascending: true })
+                .limit(1);
+                
+              if (olderMatches && olderMatches.length > 0) {
+                console.log("Race condition detected! Found an older match. Merging...");
+                // Stop our current finding process and delete our newly created room
+                await cleanupWorkoutMatchmaking(); 
+                // Wait a tiny bit and restart matchmaking so we cleanly join the older room as Player 2
+                setTimeout(() => startWorkoutMatchmaking(), 500);
+              }
+            }
+          }
+        } catch(e) {}
+      }, 1500);
+
       // Automatically cancel after 30 seconds if nobody joins
       timeoutRef.current = setTimeout(async () => {
-         await cleanupMatchmaking();
+        await cleanupWorkoutMatchmaking();
          Alert.alert(
            'No Opponent Found',
            `Nobody is looking to do ${sets} sets of ${reps} ${exercise} right now. Try again later!`
@@ -137,7 +293,7 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
     } catch (error) {
       console.error('Matchmaking error:', error);
-      await cleanupMatchmaking();
+      await cleanupWorkoutMatchmaking();
       Alert.alert('Error', 'Matchmaking failed. Please try again.');
     }
   };
@@ -155,9 +311,9 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
     
     // We use a tiny timeout to let the UI render the "Finding" modal 
     // before we freeze the app with heavy network database calls!
-    setTimeout(() => {
-       startMatchmaking(exercise, sets, reps);
-    }, 100);
+     setTimeout(() => {
+       startWorkoutMatchmaking(exercise, sets, reps);
+     }, 100);
   };
 
   const handleCancelFinding = async () => {
@@ -170,7 +326,7 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
           text: 'Yes, stop', 
           style: 'destructive',
           onPress: async () => {
-            await cleanupMatchmaking(); 
+            await cleanupWorkoutMatchmaking(); 
           }
         }
       ]
@@ -195,6 +351,75 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   };
 
   const handleDistanceCancel = () => setDistanceModalVisible(false);
+
+  // Fetch current user data for use in the workout MatchFoundModal
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session?.user?.id) return;
+        const userId = session.user.id;
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('username, xp, avatar_url')
+          .eq('id', userId)
+          .single();
+        if (!error && profile) {
+          setWorkoutCurrentUserData({ name: profile.username || 'You', xp: profile.xp || 0, avatar: profile.avatar_url });
+        }
+      } catch (err) {
+        console.error('Error fetching current user for workout modal:', err);
+      }
+    })();
+  }, []);
+
+  // --- Accept / Decline handlers for workout matchmaking ---
+  const handleAcceptWorkoutMatch = async () => {
+    try {
+      if (!workoutMatchId) return;
+
+      const updates: any = {};
+      if (isPlayer1Ref.current) updates.player1_accepted = true;
+      else updates.player2_accepted = true;
+
+      const { data: updatedMatch, error: updateError } = await supabase
+        .from('versus_battles')
+        .update(updates)
+        .eq('id', workoutMatchId)
+        .select();
+
+      if (updateError) throw updateError;
+      if (!updatedMatch || updatedMatch.length === 0) {
+        console.error("Failed to accept match: RLS policy might be preventing the update.");
+        Alert.alert('Matchmaking Error', 'Could not accept the match. Please check database permissions (RLS).');
+        return;
+      }
+    } catch (err) {
+      console.error('Accept workout match error:', err);
+      Alert.alert('Error', 'Failed to accept match.');
+    }
+  };
+
+  const handleDeclineWorkoutMatch = async () => {
+    try {
+      if (!workoutMatchId) return;
+
+      // Instead of deleting, we update status to cancelled so the other player is notified
+      const { error } = await supabase
+        .from('versus_battles')
+        .update({ status: 'cancelled' })
+        .eq('id', workoutMatchId);
+        
+      if (error) throw error;
+
+      setShowWorkoutMatchModal(false);
+      Alert.alert('Match Cancelled', 'You declined the match.');
+      await cleanupWorkoutMatchmaking();
+    } catch (err) {
+      console.error('Decline workout match error:', err);
+      Alert.alert('Error', 'Failed to decline match.');
+    }
+  };
 
   useEffect(() => {
     // When a match is found, show the MatchFoundModal and fetch current user profile
@@ -404,6 +629,17 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
           setMatchModalVisible(false);
           setIsRunFinding(false);
         }}
+      />
+
+      {/* Workout Match Found Modal (two-way accept/decline) */}
+      <MatchFoundModal
+        visible={showWorkoutMatchModal}
+        currentUser={{ name: workoutCurrentUserData?.name || 'You', xp: workoutCurrentUserData?.xp || 0, avatar: workoutCurrentUserData?.avatar }}
+        opponent={{ name: workoutOpponentData?.name || 'Opponent', xp: workoutOpponentData?.xp || 0, avatar: workoutOpponentData?.avatar }}
+        isWorkoutMode={true}
+        workoutConfig={workoutConfig || undefined}
+        onAccept={handleAcceptWorkoutMatch}
+        onDecline={handleDeclineWorkoutMatch}
       />
 
       <ExerciseModal 

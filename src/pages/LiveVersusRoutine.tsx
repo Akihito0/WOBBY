@@ -10,12 +10,25 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
   const [opponentProfile, setOpponentProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Synchronization states
+  const [amReady, setAmReady] = useState(false);
+  const [opponentReady, setOpponentReady] = useState(false);
+  const readyIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const channelRef = React.useRef<any>(null);
+
   useEffect(() => {
     fetchMatchData();
 
-    // Listen for database changes (e.g., when opponent finishes a set)
-    const subscription = supabase
-      .channel(`match_${matchId}`)
+    // Remove any stale channel with this name before creating a new one
+    const sharedChannelName = `ready_${matchId}`;
+    supabase.removeChannel(supabase.channel(sharedChannelName));
+
+    const channel = supabase
+      .channel(sharedChannelName, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'READY' }, () => {
+        console.log('Opponent is READY!');
+        setOpponentReady(true);
+      })
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'versus_battles', filter: `id=eq.${matchId}` },
@@ -23,13 +36,40 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
           console.log('Match updated!', payload.new);
           setMatchData(payload.new);
         }
-      )
-      .subscribe();
+      );
+
+    channel.subscribe((status) => {
+      console.log('Lobby channel status:', status);
+    });
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(subscription);
+      if (readyIntervalRef.current) clearInterval(readyIntervalRef.current);
+      supabase.removeChannel(channel);
     };
   }, []);
+
+  // When BOTH are ready, navigate!
+  useEffect(() => {
+    if (amReady && opponentReady) {
+      if (readyIntervalRef.current) clearInterval(readyIntervalRef.current);
+      
+      const mySets = isPlayer1 ? matchData?.player1_sets : matchData?.player2_sets;
+      
+      navigation.navigate('ActiveVersusScreen', {
+        matchId,
+        isPlayer1,
+        exerciseName: matchData.exercise_name,
+        targetReps: matchData.target_reps,
+        targetSets: matchData.target_sets,
+        currentSet: (mySets || 0) + 1
+      });
+      
+      // Reset readiness so it works for the next set too!
+      setAmReady(false);
+      setOpponentReady(false);
+    }
+  }, [amReady, opponentReady]);
 
   const fetchMatchData = async () => {
     try {
@@ -64,16 +104,20 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
   };
 
   const handleStartSet = () => {
-    // We will build ActiveVersusScreen in Step 4!
-    Alert.alert("Coming Next!", "This will open the live AI camera.");
-    navigation.navigate('ActiveVersusScreen', {
-      matchId,
-      isPlayer1,
-      exerciseName: matchData.exercise_name,
-      targetReps: matchData.target_reps,
-      targetSets: matchData.target_sets,
-      currentSet: mySets + 1
-    });
+    setAmReady(true);
+    
+    // Broadcast immediately
+    if (channelRef.current) {
+      console.log('Broadcasting READY on channel:', channelRef.current.topic);
+      channelRef.current.send({ type: 'broadcast', event: 'READY', payload: {} });
+    }
+
+    // Keep broadcasting in case opponent hasn't connected to the channel yet
+    readyIntervalRef.current = setInterval(() => {
+      if (channelRef.current) {
+        channelRef.current.send({ type: 'broadcast', event: 'READY', payload: {} });
+      }
+    }, 1000);
   };
 
   if (loading || !matchData) {
@@ -105,7 +149,7 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
       <View style={styles.rulesBanner}>
         <Text style={styles.rulesLabel}>MISSION</Text>
         <Text style={styles.rulesValue}>
-          {matchData.target_sets} SETS OF {matchData.target_reps} {matchData.exercise_name.toUpperCase()}
+          {matchData?.target_sets} SETS OF {matchData?.target_reps} {matchData?.exercise_name?.toUpperCase() || 'WORKOUT'}
         </Text>
       </View>
 
@@ -143,14 +187,21 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
       </View>
 
       {/* START BUTTON */}
-      <TouchableOpacity style={styles.startBtnWrapper} activeOpacity={0.8} onPress={handleStartSet}>
+      <TouchableOpacity 
+        style={[styles.startBtnWrapper, amReady && { opacity: 0.7 }]} 
+        activeOpacity={0.8} 
+        onPress={handleStartSet}
+        disabled={amReady}
+      >
         <LinearGradient
-          colors={['#CCFF00', '#7A9900']}
+          colors={amReady ? ['#555', '#333'] : ['#CCFF00', '#7A9900']}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={styles.startBtn}
         >
-          <Text style={styles.startBtnText}>START SET {mySets + 1}</Text>
+          <Text style={[styles.startBtnText, amReady && { color: '#FFF' }]}>
+            {amReady ? 'WAITING FOR OPPONENT...' : `START SET ${mySets + 1}`}
+          </Text>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -161,18 +212,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121310', alignItems: 'center' },
   header: {
     width: '100%',
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 45,
+    paddingBottom: 15,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderColor: '#333'
   },
   headerTitle: { color: '#d1d1d1', fontSize: 28, fontFamily: 'Montserrat-Black' },
   rulesBanner: {
-    marginTop: 20,
+    marginTop: 15,
     backgroundColor: '#1A1A1A',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 15,
     alignItems: 'center',
     borderWidth: 1,
@@ -185,19 +236,20 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     paddingHorizontal: 20,
+    paddingVertical: 15,
     justifyContent: 'center',
-    gap: 20,
+    gap: 15,
   },
   playerCard: {
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 15,
+    padding: 15,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#333',
     elevation: 10,
   },
-  avatar: { width: 80, height: 80, borderRadius: 15, marginBottom: 10, backgroundColor: '#222' },
-  playerName: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat-ExtraBold', marginBottom: 15 },
+  avatar: { width: 60, height: 60, borderRadius: 12, marginBottom: 10, backgroundColor: '#222' },
+  playerName: { color: '#FFF', fontSize: 18, fontFamily: 'Montserrat-ExtraBold', marginBottom: 10 },
   scoreBoxOpponent: { backgroundColor: 'rgba(255, 68, 68, 0.1)', padding: 10, borderRadius: 10, alignItems: 'center', width: '100%', borderWidth: 1, borderColor: 'rgba(255, 68, 68, 0.3)' },
   scoreBoxYou: { backgroundColor: 'rgba(204, 255, 0, 0.1)', padding: 10, borderRadius: 10, alignItems: 'center', width: '100%', borderWidth: 1, borderColor: 'rgba(204, 255, 0, 0.3)' },
   scoreLabel: { color: '#888', fontSize: 10, fontFamily: 'Montserrat-Bold', marginBottom: 5 },
@@ -208,20 +260,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    transform: [{ translateX: -25 }, { translateY: -25 }],
-    width: 50,
-    height: 50,
+    transform: [{ translateX: -20 }, { translateY: -20 }],
+    width: 40,
+    height: 40,
     backgroundColor: '#000',
-    borderRadius: 25,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
     borderWidth: 3,
     borderColor: '#555',
   },
-  vsText: { color: '#FFF', fontSize: 18, fontFamily: 'Montserrat-Black', fontStyle: 'italic' },
+  vsText: { color: '#FFF', fontSize: 16, fontFamily: 'Montserrat-Black', fontStyle: 'italic' },
   
-  startBtnWrapper: { width: '90%', marginBottom: 40, borderRadius: 15, overflow: 'hidden' },
-  startBtn: { paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
+  startBtnWrapper: { width: '90%', marginBottom: 20, borderRadius: 15, overflow: 'hidden' },
+  startBtn: { paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
   startBtnText: { color: '#000', fontSize: 18, fontFamily: 'Montserrat-Black' }
 });

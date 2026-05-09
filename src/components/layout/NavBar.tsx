@@ -49,6 +49,7 @@ const NavBar: React.FC<NavBarProps> = ({ state, descriptors, navigation, activeT
     const innerRoute = innerState?.routes[innerIndex];
         if (
           innerRoute?.name === 'ActiveWorkoutScreen' ||
+          innerRoute?.name === 'ActiveVersusScreen' ||
           innerRoute?.name === 'AchievementsScreen' ||
           innerRoute?.name === 'LeaderboardsScreen' ||
           innerRoute?.name === 'PushScreen' ||

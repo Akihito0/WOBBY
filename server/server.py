@@ -9,15 +9,6 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaRelay
 
 mp_pose = mp.solutions.pose
-# Initialize MediaPipe Pose with optimized settings
-pose = mp_pose.Pose(
-    model_complexity=0, # 0 = Lite (Fastest), 1 = Full, 2 = Heavy
-    smooth_landmarks=True,
-    min_detection_confidence=0.5, 
-    min_tracking_confidence=0.5,
-    static_image_mode=False # Ensure it treats as video stream for faster tracking
-)
-
 relay = MediaRelay()
 
 class PoseVideoTrack(VideoStreamTrack):
@@ -31,6 +22,15 @@ class PoseVideoTrack(VideoStreamTrack):
         self.websocket = websocket
         self.processing = False      # NEW: Flag to skip frames
         self.last_landmarks = []     # NEW: Cache for repeating landmarks
+        
+        # Initialize an ISOLATED MediaPipe Pose instance for this specific video track
+        self.pose = mp_pose.Pose(
+            model_complexity=0, 
+            smooth_landmarks=True,
+            min_detection_confidence=0.5, 
+            min_tracking_confidence=0.5,
+            static_image_mode=False
+        )
 
     async def recv(self):
         # 1. Grab raw video frame from network
@@ -49,7 +49,7 @@ class PoseVideoTrack(VideoStreamTrack):
             
             # 3. Offload MediaPipe processing to a background thread so the core Python async event loop 
             #    doesn't "choke" on math calculations and let incoming UDP video frames pile up in a delayed queue!
-            results = await asyncio.to_thread(pose.process, img_rgb)
+            results = await asyncio.to_thread(self.pose.process, img_rgb)
 
             landmarks_data = []
             if results.pose_landmarks:
