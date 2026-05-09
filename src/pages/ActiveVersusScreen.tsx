@@ -36,15 +36,15 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
   const [localStream, setLocalStream] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
   const [isServerReady, setIsServerReady] = useState(false); // 🔥 Fix 10-20s Delay 🔥
   const [countdown, setCountdown] = useState(5); // 5-second countdown
   const [showCountdown, setShowCountdown] = useState(true);
   const [time, setTime] = useState(0);
   const [reps, setReps] = useState(0);
-  const [opponentReps, setOpponentReps] = useState(0); 
-  
+  const [opponentReps, setOpponentReps] = useState(0);
+
   const [isFinished, setIsFinished] = useState(false);
   const [opponentFinished, setOpponentFinished] = useState(false);
   const [myTime, setMyTime] = useState(0);
@@ -55,14 +55,14 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeData, setChallengeData] = useState<any>(null);
   const userIdRef = useRef<string | null>(null);
-  
+
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
 
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const consecutiveGoodFormFrames = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
+
   const ws = useRef<WebSocket | null>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -129,8 +129,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
       socket.onopen = async () => {
         setIsConnected(true);
-        pc.current = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }) as any; 
-        
+        pc.current = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }) as any;
+
         if (!pc.current) return;
         (pc.current as any).onicecandidate = (event: any) => {
           if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
@@ -142,16 +142,16 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
         const offer = await pc.current.createOffer({});
         await pc.current.setLocalDescription(offer);
-        
+
         if (pc.current.iceGatheringState === 'complete') {
-            ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
+          ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
         } else {
-            // @ts-ignore
-            pc.current.onicegatheringstatechange = () => {
-                if (pc.current?.iceGatheringState === 'complete') {
-                    ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-                }
-            };
+          // @ts-ignore
+          pc.current.onicegatheringstatechange = () => {
+            if (pc.current?.iceGatheringState === 'complete') {
+              ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
+            }
+          };
         }
       };
 
@@ -160,13 +160,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         const data = JSON.parse(e.data);
         if (data.type === 'answer') {
           await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
-          if (!isServerReady) setIsServerReady(true); // AI Server accepted stream and is ready!
+          if (!isServerReady) setIsServerReady(true); // Wobby Spotter accepted stream and is ready!
         } else if (data.type === 'pose' && data.landmarks?.length >= 33) {
           const lm = data.landmarks;
           const parsePoint = (i: number) => ({
-              x: (isFront ? (1 - lm[i].x) : lm[i].x) * SCREEN_WIDTH, 
-              y: lm[i].y * SCREEN_HEIGHT, 
-              conf: lm[i].visibility 
+            x: (isFront ? (1 - lm[i].x) : lm[i].x) * SCREEN_WIDTH,
+            y: lm[i].y * SCREEN_HEIGHT,
+            conf: lm[i].visibility
           });
 
           setPose({
@@ -222,7 +222,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       // 🦵 SQUAT LOGIC: Hip-Knee-Ankle
       const leftKneeAngle = calculateAngle(pose.leftHip, pose.leftKnee, pose.leftAnkle);
       const rightKneeAngle = calculateAngle(pose.rightHip, pose.rightKnee, pose.rightAnkle);
-      
+
       if (leftKneeAngle === null && rightKneeAngle === null) {
         setFormFeedback('Legs not visible');
         return;
@@ -234,7 +234,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       } else {
         avgKneeAngle = leftKneeAngle ?? rightKneeAngle ?? 0;
       }
-      
+
       // Thresholds: Down < 100 deg, Up > 160 deg
       if (exercisePhaseRef.current === 'down' && avgKneeAngle < 100) {
         exercisePhaseRef.current = 'up';
@@ -260,8 +260,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
       }
 
-      const upThreshold = isPushExercise ? 145 : 60; 
-      const downThreshold = isPushExercise ? 100 : 150; 
+      const upThreshold = isPushExercise ? 145 : 60;
+      const downThreshold = isPushExercise ? 100 : 150;
 
       if (isPushExercise) {
         if (exercisePhaseRef.current === 'up' && avgElbowAngle < downThreshold) {
@@ -285,7 +285,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const registerRep = () => {
     const newReps = reps + 1;
     setReps(newReps);
-    
+
     const name = exerciseName.toUpperCase();
     if (name.includes('SQUAT')) {
       exercisePhaseRef.current = 'down';
@@ -322,7 +322,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       event: 'FINISHED_SET',
       payload: { time: time }
     });
-    
+
     const isLastSet = Number(currentSet) >= Number(targetSets);
 
     // Save to database
@@ -330,7 +330,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       const fieldReps = isPlayer1 ? 'player1_reps' : 'player2_reps';
       const fieldSets = isPlayer1 ? 'player1_sets' : 'player2_sets';
       const fieldTime = isPlayer1 ? 'player1_time' : 'player2_time';
-      
+
       await supabase
         .from('versus_battles')
         .update({
@@ -360,12 +360,12 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           .select('*')
           .eq('id', matchId)
           .single();
-        
+
         if (data && data.player1_time > 0 && data.player2_time > 0) {
           match = data;
           break;
         }
-        
+
         console.log(`Waiting for both times... attempt ${attempt + 1} (p1=${data?.player1_time}, p2=${data?.player2_time})`);
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
@@ -408,7 +408,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       // 💰 SAVE XP TO DATABASE
       const earnedXp = iWon ? 150 : 50;
       const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
-      
+
       // Save XP to versus_battles row
       await supabase
         .from('versus_battles')
@@ -421,7 +421,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .select('xp')
         .eq('id', user.id)
         .single();
-      
+
       if (profile) {
         await supabase
           .from('profiles')
@@ -442,7 +442,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       const hrs = Math.floor(totalSecs / 3600);
       const mins = Math.floor((totalSecs % 3600) / 60);
       const secs = totalSecs % 60;
-      const durStr = `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+      const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
       setChallengeData({
         status: iWon ? 'VICTORY' : 'DEFEAT',
@@ -468,10 +468,10 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     const tSets = Number(targetSets) || 1;
 
     if (cSet < tSets) {
-      navigation.replace('LiveVersusRoutine', { 
-        matchId, 
-        isPlayer1, 
-        currentSet: cSet + 1 
+      navigation.replace('LiveVersusRoutine', {
+        matchId,
+        isPlayer1,
+        currentSet: cSet + 1
       });
     } else {
       // Last set done — determine winner!
@@ -502,7 +502,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       {localStream ? (
         <RTCView streamURL={localStream.toURL()} style={StyleSheet.absoluteFillObject} objectFit="cover" mirror={cameraFacing === 'front'} />
       ) : (
-        <View style={styles.cameraPlaceholder}><Text style={{color: 'white'}}>Connecting to Camera...</Text></View>
+        <View style={styles.cameraPlaceholder}><Text style={{ color: 'white' }}>Connecting to Camera...</Text></View>
       )}
 
       {/* SKELETON OVERLAY */}
@@ -513,7 +513,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           {drawLine(pose.leftElbow, pose.leftWrist)}
           {drawLine(pose.rightShoulder, pose.rightElbow)}
           {drawLine(pose.rightElbow, pose.rightWrist)}
-          
+
           {/* Torso & Legs */}
           {drawLine(pose.leftShoulder, pose.leftHip)}
           {drawLine(pose.rightShoulder, pose.rightHip)}
@@ -530,7 +530,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       {/* 🔴 THE LIVE SCOREBOARD 🔴 */}
       <View style={styles.scoreBoard}>
         <LinearGradient colors={['rgba(0,0,0,0.9)', 'rgba(0,0,0,0.4)']} style={styles.scoreGradient}>
-          
+
           <View style={styles.scoreCol}>
             <Text style={styles.scoreLabel}>YOU</Text>
             <Text style={styles.scoreNumberYou}>{reps} <Text style={styles.targetText}>/ {targetReps}</Text></Text>
@@ -563,14 +563,15 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       {!isServerReady && (
         <View style={styles.countdownOverlay}>
           <ActivityIndicator size="large" color="#CCFF00" />
-          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Connecting to AI Server...</Text>
+          <Text style={[styles.countdownSubText, { marginTop: 20 }]}>Activating Wobby Spotter...</Text>
+          <Text style={{ color: '#888', fontSize: 12, fontFamily: 'Montserrat-Medium', marginTop: 10 }}>Your form tracker is warming up</Text>
         </View>
       )}
 
       {/* IN-WORKOUT FEEDBACK */}
       {isWorkoutStarted && !showCountdown && (
         <View style={styles.feedbackOverlay}>
-           <Text style={styles.feedbackText}>{formFeedback}</Text>
+          <Text style={styles.feedbackText}>{formFeedback}</Text>
         </View>
       )}
 
@@ -588,7 +589,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         <View style={styles.modalOverlay}>
           <LinearGradient colors={['#1A1D12', '#2A2E1A']} style={styles.resultContainer}>
             <Text style={styles.resultTitle}>SET {currentSet} COMPLETE</Text>
-            
+
             <View style={styles.resultRow}>
               <View style={styles.resultCol}>
                 <Text style={styles.resultName}>YOU</Text>
@@ -632,7 +633,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0d0d0d' },
   cameraPlaceholder: { flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' },
-  
+
   scoreBoard: { position: 'absolute', top: 50, left: 20, right: 20, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#333' },
   scoreGradient: { flexDirection: 'row', padding: 15, alignItems: 'center', justifyContent: 'space-between' },
   scoreCol: { alignItems: 'center', flex: 1 },
@@ -640,7 +641,7 @@ const styles = StyleSheet.create({
   scoreNumberYou: { color: '#CCFF00', fontSize: 32, fontFamily: 'Montserrat-Black' },
   scoreNumberOpponent: { color: '#FF4444', fontSize: 32, fontFamily: 'Montserrat-Black' },
   targetText: { fontSize: 16, color: '#666' },
-  
+
   vsDivider: { alignItems: 'center', paddingHorizontal: 10 },
   timerText: { color: '#FFF', fontSize: 18, fontFamily: 'Barlow-Bold', marginBottom: 5 },
   vsText: { color: '#FFF', fontSize: 12, fontFamily: 'Montserrat-Black', fontStyle: 'italic', opacity: 0.5 },

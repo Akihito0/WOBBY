@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { mediaDevices, RTCPeerConnection, RTCView, RTCSessionDescription } from 'react-native-webrtc';
@@ -65,6 +66,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [formFeedback, setFormFeedback] = useState<string>('');
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [showFinishedModal, setShowFinishedModal] = useState(false);
+  const [isServerReady, setIsServerReady] = useState(false); // 🔥 Loading overlay until AI connects
 
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const lastRepTimeRef = useRef<number>(0);
@@ -232,6 +234,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           
           // Exponential moving average for smoothness
           setPose((prevPose) => {
+            if (!isServerReady) setIsServerReady(true); // 🔥 First pose received = server is ready!
             if (!prevPose) return parsedPose;
             const ALPHA = 0.5;
             const smooth = (curr: Point, prev: Point): Point => {
@@ -639,6 +642,15 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
+      {/* 🔄 SERVER LOADING OVERLAY 🔄 */}
+      {!isServerReady && !isWorkoutStarted && (
+        <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 999 }}>
+          <ActivityIndicator size="large" color="#CCFF00" />
+          <Text style={{ color: '#FFF', fontSize: 18, fontFamily: 'Montserrat-Bold', marginTop: 20 }}>Activating Wobby Spotter...</Text>
+          <Text style={{ color: '#888', fontSize: 12, fontFamily: 'Montserrat-Medium', marginTop: 10 }}>Your form tracker is warming up</Text>
+        </View>
+      )}
+
       {/* BEFORE WORKOUT STARTS: Dark Setup Menu */}
       {!isWorkoutStarted && (
         <View
@@ -657,7 +669,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
               <TouchableOpacity
                 style={styles.circleBlack}
                 activeOpacity={0.8}
-                onPress={() => setIsWorkoutStarted(true)}
+                onPress={() => {
+                  if (!isServerReady) {
+                    Alert.alert('Hold on!', 'Wobby Spotter is still warming up. Please wait a moment.');
+                    return;
+                  }
+                  setIsWorkoutStarted(true);
+                }}
               >
                 <View style={styles.playTriangleBtn} />
               </TouchableOpacity>
