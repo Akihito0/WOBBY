@@ -17,6 +17,7 @@ import ActivityFeed from '../components/ActivityFeed';
 import { supabase } from '../supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import { calculateBMI, convertWeight, convertHeight, BMIResult } from '../utils/healthCalculations';
+import { fetchStreakData } from '../utils/streakUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -46,10 +47,13 @@ export default function YouPage({ navigation }: Props) {
   const [weightUnit, setWeightUnit] = useState<string>('KG');
   const [heightUnit, setHeightUnit] = useState<string>('cm');
   const [bmiResult, setBmiResult] = useState<BMIResult | null>(null);
+  const [streakDates, setStreakDates] = useState<string[]>([]);
+  const [freezeDates, setFreezeDates] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
+      fetchStreakDates();
     }, [])
   );
 
@@ -106,6 +110,12 @@ export default function YouPage({ navigation }: Props) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchStreakDates = async () => {
+    const { streakDates: s, freezeDates: f } = await fetchStreakData();
+    setStreakDates(s);
+    setFreezeDates(f);
   };
 
   const handleDateSelect = (date: Date) => {
@@ -212,7 +222,8 @@ export default function YouPage({ navigation }: Props) {
         >
           <CustomCalendar
             onDateSelect={handleDateSelect}
-            streakDates={['2026-04-14', '2026-04-15', '2026-04-16', '2026-04-19', '2026-04-20']}
+            streakDates={streakDates}
+            freezeDates={freezeDates}
           />
         </View>
 

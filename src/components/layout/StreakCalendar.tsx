@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { fetchStreakData, StreakData } from '../../utils/streakUtils';
 
 type DayState = 'past' | 'today' | 'future';
 
@@ -38,13 +39,22 @@ const getCurrentWeek = (): WeekDay[] => {
     const isSameMonth = d.getMonth() === currentMonth;
     if (d.toDateString() === now.toDateString()) state = "today";
     else if (d < now) state = "past";
-    return { label, day: d.getDate(), state, isSameMonth };
+    
+    // Create date string for exact matching
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    return { label, day: d.getDate(), state, isSameMonth, dateStr };
   });
 };
 
 const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
   const weekDays = getCurrentWeek();
   const fireIcon: ImageSourcePropType = require("../../assets/streak.png");
+  const [streakData, setStreakData] = React.useState<StreakData>({ streakDates: [], freezeDates: [], currentStreak: 0 });
+
+  React.useEffect(() => {
+    fetchStreakData().then(data => setStreakData(data));
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -67,7 +77,7 @@ const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
             <View style={styles.fireCol}>
               <View style={styles.fireStack}>
                 <Image source={fireIcon} style={styles.fireImage} />
-                <Text style={styles.fireNumber}>0</Text>
+                <Text style={styles.fireNumber}>{streakData.currentStreak}</Text>
               </View>
               <Text style={styles.weeksLabel}>WEEKS</Text>
             </View>
@@ -75,6 +85,9 @@ const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
             <View style={styles.daysWrapper}>
               {weekDays.map((item, index) => {
                 const showCircle = item.isSameMonth;
+                const isStreak = streakData.streakDates.includes(item.dateStr);
+                const isFreeze = streakData.freezeDates.includes(item.dateStr);
+                
                 return (
                   <View key={index} style={styles.dayCol}>
                     <Text style={styles.dayLabelText}>{item.label}</Text>
@@ -82,6 +95,8 @@ const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
                       styles.circleBase,
                       showCircle && { borderWidth: 1, borderColor: "rgba(255,255,255,0.8)" },
                       showCircle && item.state === 'today' && styles.circleToday,
+                      isStreak && styles.circleStreak,
+                      isFreeze && styles.circleFreeze,
                       !showCircle && { borderWidth: 0 }
                     ]}>
                       <Text style={[
@@ -242,4 +257,14 @@ const styles = StyleSheet.create<Styles>({
   numPast: { color: "#FFFFFF" },
   numToday: { color: "#CCFF00" },
   numFuture: { color: "#939394" },
+  circleStreak: {
+    backgroundColor: 'rgba(255, 107, 0, 0.5)',
+    borderColor: '#FF6B00',
+    borderWidth: 1,
+  },
+  circleFreeze: {
+    backgroundColor: 'rgba(0, 229, 255, 0.5)',
+    borderColor: '#00E5FF',
+    borderWidth: 1,
+  },
 });
