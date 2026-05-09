@@ -144,7 +144,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         await pc.current.setLocalDescription(offer);
         
         if (pc.current.iceGatheringState === 'complete') {
-            ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
+            ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
         } else {
             // @ts-ignore
             pc.current.onicegatheringstatechange = () => {
