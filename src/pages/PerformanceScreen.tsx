@@ -14,7 +14,7 @@ import {
   SafeAreaView,
   FlatList,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 import { ACHIEVEMENT_DATA } from './Achievements';
@@ -435,8 +435,14 @@ const PerformanceScreen = () => {
     fetchProfile();
     fetchDailyXp();
     fetchWorkoutHistory();
-    fetchAchievements();
-  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory, fetchAchievements]);
+  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory]);
+
+  // Re-fetch achievements every time screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchAchievements();
+    }, [fetchAchievements])
+  );
 
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
   const [showDailyGains, setShowDailyGains] = useState(false);
