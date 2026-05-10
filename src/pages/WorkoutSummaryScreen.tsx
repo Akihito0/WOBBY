@@ -20,6 +20,13 @@ import { uploadRunMedia } from '../services/runUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const formatSetTime = (seconds: number): string => {
+  if (!seconds || isNaN(seconds)) return '--:--';
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
+
 // Helper to convert image URI to base64 for uploading
 const uriToBase64 = async (uri: string): Promise<string | null> => {
   try {
@@ -126,6 +133,34 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     },
   }), []);
 
+  // Pre-compute XP breakdown for display and saving
+  const xpCalculation = useMemo(() => {
+    let totalRepsCompleted = 0;
+    let totalSetsCompleted = 0;
+    exercises.forEach((ex: any) => {
+      if (Array.isArray(ex.sets)) {
+        ex.sets.forEach((s: any) => {
+          totalRepsCompleted += Number(s.reps) || 0;
+          totalSetsCompleted += 1;
+        });
+      }
+    });
+    const base = 50;
+    const repXp = totalRepsCompleted * 5;
+    const setXp = totalSetsCompleted * 25;
+    const durationBonus = elapsedSeconds > 300 ? 50 : 0;
+    const allFinished = exercises.every((ex: any) =>
+      Array.isArray(ex.sets) && ex.sets.every((s: any) => s.status === 'FINISHED')
+    );
+    const perfectBonus = allFinished && totalSetsCompleted > 0 ? 100 : 0;
+    const total = base + repXp + setXp + durationBonus + perfectBonus;
+    return {
+      base, repXp, setXp, durationBonus, perfectBonus, total,
+      totalRepsCompleted, totalSetsCompleted,
+      breakdown: { base, rep_xp: repXp, set_xp: setXp, duration_bonus: durationBonus, perfect_bonus: perfectBonus },
+    };
+  }, [exercises, elapsedSeconds]);
+
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -177,16 +212,21 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         }
       }
 
-      // 2. Save everything to completed_routines
+      // 2. Save everything to completed_routines (with enriched data)
       const { error } = await supabase.from('completed_routines').insert([
         {
           user_id: session.user.id,
           routine_type: routineType,
+          workout_type: 'solo_workout',
           caption: workoutTitle.trim(),
           notes: workoutNotes.trim(),
           media_url: uploadedImageUrl,
           total_duration: elapsedSeconds,
           exercises_data: exercises,
+          xp_earned: xpCalculation.total,
+          xp_breakdown: xpCalculation.breakdown,
+          total_sets_completed: xpCalculation.totalSetsCompleted,
+          total_reps_completed: xpCalculation.totalRepsCompleted,
         }
       ]);
 
@@ -196,29 +236,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         return;
       }
 
-      // 💰 CALCULATE & AWARD XP
-      let totalRepsCompleted = 0;
-      let totalSetsCompleted = 0;
-      let totalTargetReps = 0;
-
-      exercises.forEach((ex: any) => {
-        if (Array.isArray(ex.sets)) {
-          ex.sets.forEach((s: any) => {
-            totalRepsCompleted += Number(s.reps) || 0;
-            totalSetsCompleted += 1;
-            totalTargetReps += Number(s.reps) || 0; // All finished sets count as target met
-          });
-        }
-      });
-
-      const baseXP = 50;
-      const repXP = totalRepsCompleted * 5;
-      const setXP = totalSetsCompleted * 25;
-      const durationBonus = elapsedSeconds > 300 ? 50 : 0; // >5 min
-      const perfectBonus = totalRepsCompleted >= totalTargetReps && totalSetsCompleted > 0 ? 100 : 0;
-      const earnedXP = baseXP + repXP + setXP + durationBonus + perfectBonus;
-
-      // Save XP to profile
+      // 💰 AWARD XP TO PROFILE (using pre-computed values)
       try {
         const { data: profile } = await supabase
           .from('profiles')
@@ -229,14 +247,14 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         if (profile) {
           await supabase
             .from('profiles')
-            .update({ xp: (profile.xp || 0) + earnedXP })
+            .update({ xp: (profile.xp || 0) + xpCalculation.total })
             .eq('id', session.user.id);
         }
       } catch (xpErr) {
         console.log('XP save error (non-critical):', xpErr);
       }
 
-      Alert.alert('Workout Saved! 💪', `You earned +${earnedXP} XP!\n\n🏋️ ${totalRepsCompleted} reps × ${totalSetsCompleted} sets`);
+      Alert.alert('Workout Saved! 💪', `You earned +${xpCalculation.total} XP!\n\n🏋️ ${xpCalculation.totalRepsCompleted} reps × ${xpCalculation.totalSetsCompleted} sets`);
       setIsSaving(false);
       
       navigation.reset({
@@ -379,6 +397,31 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
                   </>
                 )}
 
+                {/* Per-Set Breakdown Table */}
+                {Array.isArray(item.sets) && item.sets.length > 0 && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={{flexDirection: 'row', paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', marginBottom: 8}}>
+                      <Text style={{flex: 0.4, color: '#888', fontSize: 9, fontFamily: 'Montserrat-Bold', textAlign: 'center'}}>Set</Text>
+                      <Text style={{flex: 1, color: '#888', fontSize: 9, fontFamily: 'Montserrat-Bold', textAlign: 'center'}}>Weight</Text>
+                      <Text style={{flex: 0.5, color: '#888', fontSize: 9, fontFamily: 'Montserrat-Bold', textAlign: 'center'}}>Reps</Text>
+                      <Text style={{flex: 0.7, color: '#888', fontSize: 9, fontFamily: 'Montserrat-Bold', textAlign: 'center'}}>Time</Text>
+                      <Text style={{flex: 0.6, color: '#888', fontSize: 9, fontFamily: 'Montserrat-Bold', textAlign: 'center'}}>Status</Text>
+                    </View>
+                    {item.sets.map((set: any, j: number) => (
+                      <View key={j} style={{flexDirection: 'row', paddingVertical: 5}}>
+                        <Text style={{flex: 0.4, color: '#DDD', fontSize: 11, fontFamily: 'Montserrat-Medium', textAlign: 'center'}}>{set.set}</Text>
+                        <Text style={{flex: 1, color: '#DDD', fontSize: 11, fontFamily: 'Montserrat-Medium', textAlign: 'center'}}>{set.weight}</Text>
+                        <Text style={{flex: 0.5, color: '#DDD', fontSize: 11, fontFamily: 'Montserrat-Medium', textAlign: 'center'}}>{set.reps}</Text>
+                        <Text style={{flex: 0.7, color: '#DDD', fontSize: 11, fontFamily: 'Montserrat-Medium', textAlign: 'center'}}>{formatSetTime(set.duration)}</Text>
+                        <Text style={{flex: 0.6, fontSize: 11, fontFamily: 'Montserrat-Bold', textAlign: 'center', color: set.status === 'FINISHED' ? '#CCFF00' : '#FF8800'}}>
+                          {set.status === 'FINISHED' ? '✓ Done' : '◐ Partial'}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
               </View>
             </LinearGradient>
           );
@@ -414,6 +457,37 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
             />
           </View>
         )}
+
+        {/* XP BREAKDOWN */}
+        <View style={{backgroundColor: '#111', borderRadius: 12, padding: 20, marginTop: 10, marginBottom: 20, borderWidth: 1, borderColor: '#333'}}>
+          <Text style={{color: '#888', fontSize: 10, fontFamily: 'Montserrat-Bold', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4}}>XP Earned</Text>
+          <Text style={{color: '#CCFF00', fontSize: 32, fontFamily: 'Montserrat-Black', marginBottom: 16}}>+{xpCalculation.total} XP</Text>
+          <View style={{height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 12}} />
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+            <Text style={{color: '#AAA', fontSize: 12, fontFamily: 'Montserrat-Medium'}}>Base XP</Text>
+            <Text style={{color: '#FFF', fontSize: 12, fontFamily: 'Montserrat-Bold'}}>{xpCalculation.base}</Text>
+          </View>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+            <Text style={{color: '#AAA', fontSize: 12, fontFamily: 'Montserrat-Medium'}}>Rep XP ({xpCalculation.totalRepsCompleted} × 5)</Text>
+            <Text style={{color: '#FFF', fontSize: 12, fontFamily: 'Montserrat-Bold'}}>{xpCalculation.repXp}</Text>
+          </View>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+            <Text style={{color: '#AAA', fontSize: 12, fontFamily: 'Montserrat-Medium'}}>Set XP ({xpCalculation.totalSetsCompleted} × 25)</Text>
+            <Text style={{color: '#FFF', fontSize: 12, fontFamily: 'Montserrat-Bold'}}>{xpCalculation.setXp}</Text>
+          </View>
+          {xpCalculation.durationBonus > 0 && (
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+              <Text style={{color: '#AAA', fontSize: 12, fontFamily: 'Montserrat-Medium'}}>Duration Bonus (&gt;5 min)</Text>
+              <Text style={{color: '#34D399', fontSize: 12, fontFamily: 'Montserrat-Bold'}}>+{xpCalculation.durationBonus}</Text>
+            </View>
+          )}
+          {xpCalculation.perfectBonus > 0 && (
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+              <Text style={{color: '#AAA', fontSize: 12, fontFamily: 'Montserrat-Medium'}}>Perfect Bonus (all sets complete)</Text>
+              <Text style={{color: '#FFD700', fontSize: 12, fontFamily: 'Montserrat-Bold'}}>+{xpCalculation.perfectBonus}</Text>
+            </View>
+          )}
+        </View>
 
       </ScrollView>
 
