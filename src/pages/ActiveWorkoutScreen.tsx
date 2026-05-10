@@ -297,9 +297,9 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   useFocusEffect(
     React.useCallback(() => {
       const parent = navigation.getParent();
-      parent?.setOptions({ tabBarStyle: { opacity: 0, pointerEvents: 'none' } });
+      parent?.setOptions({ tabBarStyle: { display: 'none' } });
       return () => {
-        parent?.setOptions({ tabBarStyle: { opacity: 1, pointerEvents: 'auto' } });
+        parent?.setOptions({ tabBarStyle: { display: 'flex' } });
       };
     }, [navigation])
   );
@@ -430,6 +430,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     if (reps < targetReps) {
       setShowIncompleteModal(true);
     } else {
+      stopWebRTC();
       navigateBack(false);
     }
   };
@@ -554,11 +555,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                         exerciseId, 
                         setId,
                         avgHR: sessionStats.avg, 
-                        maxHR: sessionStats.max  
+                        maxHR: sessionStats.max,
+                        duration: time,
                       },
                       merge: true,
                     });
                   };
+                  stopWebRTC();
                   navigateBack(true);
                 }}
                 activeOpacity={0.8}
@@ -626,11 +629,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                         exerciseId, 
                         setId,
                         avgHR: sessionStats.avg, 
-                        maxHR: sessionStats.max  
+                        maxHR: sessionStats.max,
+                        duration: time,
                       },
                       merge: true,
                     });
                   };
+                  stopWebRTC();
                   navigateBack(false);
                 }}
                 activeOpacity={0.8}
