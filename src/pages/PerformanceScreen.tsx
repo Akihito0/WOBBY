@@ -62,6 +62,7 @@ const PerformanceScreen = () => {
   const [filteredWorkouts, setFilteredWorkouts] = useState<WorkoutRecord[]>([]);
   const [selectedWorkoutType, setSelectedWorkoutType] = useState<WorkoutType>('ALL');
   const [selectedSort, setSelectedSort] = useState<SortBy>('DATE_NEWEST');
+  const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -411,6 +412,22 @@ const PerformanceScreen = () => {
     }
   }, []);
 
+  const fetchAchievements = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('user_achievements')
+        .select('achievement_name')
+        .eq('user_id', user.id);
+      if (data) {
+        setUnlockedAchievements(data.map(a => a.achievement_name));
+      }
+    } catch (err) {
+      console.log('Error fetching achievements:', err);
+    }
+  }, []);
+
   const [showLifetimeArchive, setShowLifetimeArchive] = useState(false);
 
   useEffect(() => {
@@ -418,12 +435,13 @@ const PerformanceScreen = () => {
     fetchProfile();
     fetchDailyXp();
     fetchWorkoutHistory();
-  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory]);
+    fetchAchievements();
+  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory, fetchAchievements]);
 
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
   const [showDailyGains, setShowDailyGains] = useState(false);
 
-  const achievements = ACHIEVEMENT_DATA.slice(0, 6);
+  const achievements = ACHIEVEMENT_DATA.filter(a => unlockedAchievements.includes(a.id)).slice(0, 6);
 
   const flowAnim = useRef(new Animated.Value(-width)).current;
 
@@ -595,7 +613,7 @@ const PerformanceScreen = () => {
 
           <View style={styles.achievementsHeader}>
             <Text style={styles.achievementsTitle}>ACHIEVEMENTS</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('AchievementsScreen' as never)}>
+            <TouchableOpacity onPress={() => (navigation.navigate as any)('AchievementsScreen', { unlockedAchievements })}>
               <Text style={styles.seeAll}>See all</Text>
             </TouchableOpacity>
           </View>

@@ -17,6 +17,7 @@ import { BarChart } from 'react-native-gifted-charts';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../supabase';
 import { uploadRunMedia } from '../services/runUpload';
+import { ACHIEVEMENT_DATA } from './Achievements';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -212,6 +213,56 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         }
       }
 
+      // 1.5 Calculate Achievements
+      let earnedAchievementIds: string[] = [];
+      try {
+        const currentExerciseTotals: Record<string, number> = {};
+        exercises.forEach((ex: any) => {
+          if (Array.isArray(ex.sets)) {
+            ex.sets.forEach((set: any) => {
+              if (set.status === 'FINISHED') {
+                currentExerciseTotals[ex.name] = (currentExerciseTotals[ex.name] || 0) + (parseInt(set.reps) || 0);
+              }
+            });
+          }
+        });
+
+        const { data: userStats } = await supabase.from('user_stats').select('*').eq('user_id', session.user.id).single();
+        let newExerciseTotals = { ...(userStats?.exercise_totals || {}) };
+        
+        Object.keys(currentExerciseTotals).forEach(key => {
+          newExerciseTotals[key] = (newExerciseTotals[key] || 0) + currentExerciseTotals[key];
+        });
+
+        const { data: existingAchievements } = await supabase.from('user_achievements').select('achievement_name').eq('user_id', session.user.id);
+        const unlockedSet = new Set(existingAchievements?.map(a => a.achievement_name) || []);
+
+        const newUnlocks: string[] = [];
+        if (!unlockedSet.has('3') && (newExerciseTotals['Push Ups'] || 0) >= 1000) newUnlocks.push('3');
+        if (!unlockedSet.has('4') && (currentExerciseTotals['Tricep Dips'] || 0) >= 50) newUnlocks.push('4');
+        if (!unlockedSet.has('5') && (newExerciseTotals['Squats'] || 0) >= 500) newUnlocks.push('5');
+        if (!unlockedSet.has('6') && (newExerciseTotals['Lunges'] || 0) >= 100) newUnlocks.push('6');
+
+        earnedAchievementIds = newUnlocks;
+
+        await supabase.from('user_stats').upsert({
+          user_id: session.user.id,
+          total_workouts: (userStats?.total_workouts || 0) + 1,
+          exercise_totals: newExerciseTotals,
+          updated_at: new Date().toISOString()
+        });
+
+        if (newUnlocks.length > 0) {
+          const achievementInserts = newUnlocks.map(id => ({
+            user_id: session.user.id,
+            achievement_name: id,
+          }));
+          await supabase.from('user_achievements').insert(achievementInserts);
+        }
+      } catch (achErr) {
+        console.error('Error processing achievements:', achErr);
+      }
+
       // 2. Save everything to completed_routines (with enriched data)
       const { error } = await supabase.from('completed_routines').insert([
         {
@@ -227,6 +278,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           xp_breakdown: xpCalculation.breakdown,
           total_sets_completed: xpCalculation.totalSetsCompleted,
           total_reps_completed: xpCalculation.totalRepsCompleted,
+          earned_achievements: earnedAchievementIds,
         }
       ]);
 
