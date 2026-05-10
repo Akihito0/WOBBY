@@ -14,11 +14,15 @@ import {
   Dimensions,
   GestureResponderEvent,
   PanResponderGestureState,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../supabase';
+import { loadUserRoutine, getDefaultExercises, RoutineExercise, RoutineType } from '../services/routineService';
 
 let persistedExercises: Exercise[] | null = null;
+let persistedRoutineType: string | null = null;
 
 interface ExerciseSet {
   id: string;
@@ -50,41 +54,24 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const routineType = route?.params?.routineType || 'PUSH';
   const screenWidth = Dimensions.get('window').width;
 
-  const exercisesData: Exercise[] = [
-    {
-      id: '1',
-      name: routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats',
-      icon: routineType === 'PUSH' || routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
-      expanded: true,
-      sets: [
-        { id: '1', set: 1, weight: 'Body Weight', reps: 10, status: 'START' },
-        { id: '2', set: 2, weight: 'Body Weight', reps: 10, status: 'WAITING' },
-        { id: '3', set: 3, weight: 'Body Weight', reps: 10, status: 'WAITING' },
-      ],
-    },
-    {
-      id: '2',
-      name: routineType === 'PUSH' ? 'Bench Press' : routineType === 'PULL' ? 'Seated Cable Row' : 'Lunges',
-      icon: require('../assets/dumbell.png'),
-      expanded: false,
-      sets: [
-        { id: '4', set: 1, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'START' },
-        { id: '5', set: 2, weight: routineType === 'PUSH' ? '40 kg' : '30 kg', reps: 12, status: 'WAITING' },
-      ],
-    },
-    {
-      id: '3',
-      name: routineType === 'PUSH' ? 'Tricep Dips' : routineType === 'PULL' ? 'Single Arm Bicep Curls' : 'Leg Extensions',
-      icon: routineType === 'PUSH' ? require('../assets/push.png') : routineType === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
-      expanded: false,
-      sets: [
-        { id: '6', set: 1, weight: 'Body Weight', reps: 15, status: 'START' },
-        { id: '7', set: 2, weight: 'Body Weight', reps: 15, status: 'WAITING' },
-      ],
-    },
-  ];
+  const [exercises, setExercises] = useState<Exercise[]>(persistedExercises || []);
+  const [isLoading, setIsLoading] = useState(!persistedExercises);
 
-  const [exercises, setExercises] = useState(() => persistedExercises || exercisesData);
+  const mapToWorkoutExercises = (customData: RoutineExercise[], type: string): Exercise[] => {
+    return customData.map((ex, exIndex) => ({
+      id: ex.id.toString(),
+      name: ex.name,
+      icon: type === 'PUSH' || type === 'PULL' ? require('../assets/push.png') : require('../assets/leg.png'),
+      expanded: exIndex === 0,
+      sets: ex.sets.map((s, sIndex) => ({
+        id: s.id.toString(),
+        set: sIndex + 1,
+        weight: s.weight,
+        reps: parseInt(s.reps, 10) || 0,
+        status: (exIndex === 0 && sIndex === 0) ? 'START' : 'WAITING'
+      }))
+    }));
+  };
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
@@ -108,6 +95,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
               style: 'destructive', 
               onPress: () => {
                 persistedExercises = null;
+                persistedRoutineType = null;
                 persistedElapsedSeconds = 0;
                 navigation.reset({
                   index: 1,
@@ -127,18 +115,47 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   // Reset persistence if the routine type changed or if we want to fresh load
   useEffect(() => {
-    if (persistedExercises && persistedExercises.length > 0) {
-      const expectedFirstExerciseName = routineType === 'PUSH' ? 'Push Ups' : routineType === 'PULL' ? 'Pull Ups' : 'Squats';
-      if (persistedExercises[0].name !== expectedFirstExerciseName) {
+    const load = async () => {
+      // If we switch routine type, reset persistence
+      if (persistedExercises && persistedRoutineType && persistedRoutineType !== routineType) {
         persistedExercises = null;
+        persistedRoutineType = null;
         persistedElapsedSeconds = 0;
         setElapsedSeconds(0);
       }
-    }
-    
-    if (!persistedExercises) {
-      setExercises(exercisesData);
-    }
+
+      if (persistedExercises) {
+        setExercises(persistedExercises);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        let data: RoutineExercise[] | null = null;
+        if (userId) {
+          data = await loadUserRoutine(userId, routineType as RoutineType);
+        }
+        const source = data || getDefaultExercises(routineType as RoutineType);
+        const mapped = mapToWorkoutExercises(source, routineType);
+        setExercises(mapped);
+        
+        // Save to persistence
+        persistedExercises = mapped;
+        persistedRoutineType = routineType;
+      } catch (err) {
+        console.error('Load routine error:', err);
+        const mapped = mapToWorkoutExercises(getDefaultExercises(routineType as RoutineType), routineType);
+        setExercises(mapped);
+        persistedExercises = mapped;
+        persistedRoutineType = routineType;
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
   }, [routineType]);
 
   // Auto-start Timer
@@ -157,8 +174,11 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   // Sync cache on every state change
   useEffect(() => {
-    persistedExercises = exercises;
-  }, [exercises]);
+    if (exercises.length > 0) {
+      persistedExercises = exercises;
+      persistedRoutineType = routineType;
+    }
+  }, [exercises, routineType]);
 
   useEffect(() => {
     // 👇 Included `duration` in the extraction
@@ -485,6 +505,14 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   const completedReps = exercises.reduce((acc, ex) => 
     acc + ex.sets.filter(s => s.status === 'FINISHED').reduce((r, s) => r + s.reps, 0), 0);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#CCFF00" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
