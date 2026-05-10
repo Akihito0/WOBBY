@@ -211,7 +211,8 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
   },
 ];
 
-const AchievementsScreen = ({ navigation }: any) => {
+const AchievementsScreen = ({ route, navigation }: any) => {
+  const unlockedAchievements: string[] = route?.params?.unlockedAchievements || [];
   // 2. MOVE STATES INSIDE THE COMPONENT
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isModalVisible, setModalVisible] = useState(false);
@@ -286,13 +287,15 @@ const AchievementsScreen = ({ navigation }: any) => {
           <View key={category} style={styles.categoryBlock}>
             <Text style={styles.categoryTitle}>{category}</Text>
             <View style={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}>
-              {groupedData[category].map((item) => (
-                viewMode === 'grid' ? (
+              {groupedData[category].map((item) => {
+                const isLocked = !unlockedAchievements.includes(item.id);
+                return viewMode === 'grid' ? (
                   <TouchableOpacity key={item.id} onPress={() => handlePressGrid(item)}>
                     <AchievementGridCard 
                       name={item.name} 
                       xp={item.xp} 
                       imageSource={item.image} 
+                      isLocked={isLocked}
                     />
                   </TouchableOpacity>
                 ) : (
@@ -302,9 +305,10 @@ const AchievementsScreen = ({ navigation }: any) => {
                     subtext={item.subtext} 
                     xp={item.xp} 
                     imageSource={item.image} 
+                    isLocked={isLocked}
                   />
-                )
-              ))}
+                );
+              })}
             </View>
           </View>
         ))}

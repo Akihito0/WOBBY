@@ -6,9 +6,10 @@ interface GridProps {
   name: string;
   xp: number;
   imageSource: any; // Local require or URI
+  isLocked?: boolean;
 }
 
-const AchievementGridCard = ({ name, xp, imageSource }: GridProps) => {
+const AchievementGridCard = ({ name, xp, imageSource, isLocked = false }: GridProps) => {
   return (
     <LinearGradient
       colors={['#1F2118', '#000000']}
@@ -17,9 +18,13 @@ const AchievementGridCard = ({ name, xp, imageSource }: GridProps) => {
       end={{ x: 0, y: 1 }}
       style={styles.gridContainer}
     >
-      <Image source={imageSource} style={styles.medalIcon} resizeMode="contain" />
-      <Text style={styles.nameText}>{name}</Text>
-      <Text style={styles.xpText}>+ {xp} XP</Text>
+      <Image 
+        source={imageSource} 
+        style={[styles.medalIcon, isLocked && { opacity: 0.3, tintColor: '#555' }]} 
+        resizeMode="contain" 
+      />
+      <Text style={[styles.nameText, isLocked && { color: '#666' }]}>{name}</Text>
+      <Text style={[styles.xpText, isLocked && { color: '#444' }]}>+ {xp} XP</Text>
     </LinearGradient>
   );
 };

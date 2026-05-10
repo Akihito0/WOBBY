@@ -7,9 +7,10 @@ interface ListProps {
   subtext: string;
   xp: number;
   imageSource: any;
+  isLocked?: boolean;
 }
 
-const AchievementListCard = ({ name, subtext, xp, imageSource }: ListProps) => {
+const AchievementListCard = ({ name, subtext, xp, imageSource, isLocked = false }: ListProps) => {
   return (
     <LinearGradient
       colors={['#000000', '#1F2118']}
@@ -17,14 +18,18 @@ const AchievementListCard = ({ name, subtext, xp, imageSource }: ListProps) => {
       end={{ x: 0.73, y: 0.5 }}
       style={styles.listContainer}
     >
-      <Image source={imageSource} style={styles.listMedal} resizeMode="contain" />
+      <Image 
+        source={imageSource} 
+        style={[styles.listMedal, isLocked && { opacity: 0.3, tintColor: '#555' }]} 
+        resizeMode="contain" 
+      />
       
       <View style={styles.contentContainer}>
         <View>
-          <Text style={styles.listName}>{name}</Text>
-          <Text style={styles.listSubtext}>{subtext}</Text>
+          <Text style={[styles.listName, isLocked && { color: '#666' }]}>{name}</Text>
+          <Text style={[styles.listSubtext, isLocked && { color: '#444' }]}>{subtext}</Text>
         </View>
-        <Text style={styles.listXp}>+ {xp} XP</Text>
+        <Text style={[styles.listXp, isLocked && { color: '#444' }]}>+ {xp} XP</Text>
       </View>
     </LinearGradient>
   );
