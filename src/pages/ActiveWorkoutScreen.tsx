@@ -12,7 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { mediaDevices, RTCPeerConnection, RTCView, RTCSessionDescription } from 'react-native-webrtc';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, CommonActions } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
 import Modal from 'react-native-modal';
 
@@ -412,19 +412,24 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const handleFinish = () => {
     const navigateBack = (isIncomplete: boolean) => {
-      navigation.navigate({
-        name: 'RoutineSelected',
-        params: { 
-          finished: true, 
-          incomplete: isIncomplete, 
-          exerciseId, 
-          setId,
-          avgHR: sessionStats.avg,
-          maxHR: sessionStats.max,
-          duration: time,
-        },
-        merge: true,
-      });
+      const state = navigation.getState();
+      const routineRoute = state.routes.find((r: any) => r.name === 'RoutineSelected');
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: 'RoutineSelected',
+          key: routineRoute?.key,
+          params: {
+            ...routineRoute?.params,
+            finished: true,
+            incomplete: isIncomplete,
+            exerciseId,
+            setId,
+            avgHR: sessionStats.avg,
+            maxHR: sessionStats.max,
+            duration: time,
+          },
+        })
+      );
     };
 
     if (reps < targetReps) {
@@ -547,19 +552,24 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                 onPress={() => {
                   setShowIncompleteModal(false);
                   const navigateBack = (isIncomplete: boolean) => {
-                    navigation.navigate({
-                      name: 'RoutineSelected',
-                      params: { 
-                        finished: true, 
-                        incomplete: isIncomplete, 
-                        exerciseId, 
-                        setId,
-                        avgHR: sessionStats.avg, 
-                        maxHR: sessionStats.max,
-                        duration: time,
-                      },
-                      merge: true,
-                    });
+                    const state = navigation.getState();
+                    const routineRoute = state.routes.find((r: any) => r.name === 'RoutineSelected');
+                    navigation.dispatch(
+                      CommonActions.navigate({
+                        name: 'RoutineSelected',
+                        key: routineRoute?.key,
+                        params: {
+                          ...routineRoute?.params,
+                          finished: true,
+                          incomplete: isIncomplete,
+                          exerciseId,
+                          setId,
+                          avgHR: sessionStats.avg,
+                          maxHR: sessionStats.max,
+                          duration: time,
+                        },
+                      })
+                    );
                   };
                   stopWebRTC();
                   navigateBack(true);
@@ -621,19 +631,24 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                 onPress={() => {
                   setShowFinishedModal(false);
                   const navigateBack = (isIncomplete: boolean) => {
-                    navigation.navigate({
-                      name: 'RoutineSelected',
-                      params: { 
-                        finished: true, 
-                        incomplete: isIncomplete, 
-                        exerciseId, 
-                        setId,
-                        avgHR: sessionStats.avg, 
-                        maxHR: sessionStats.max,
-                        duration: time,
-                      },
-                      merge: true,
-                    });
+                    const state = navigation.getState();
+                    const routineRoute = state.routes.find((r: any) => r.name === 'RoutineSelected');
+                    navigation.dispatch(
+                      CommonActions.navigate({
+                        name: 'RoutineSelected',
+                        key: routineRoute?.key,
+                        params: {
+                          ...routineRoute?.params,
+                          finished: true,
+                          incomplete: isIncomplete,
+                          exerciseId,
+                          setId,
+                          avgHR: sessionStats.avg,
+                          maxHR: sessionStats.max,
+                          duration: time,
+                        },
+                      })
+                    );
                   };
                   stopWebRTC();
                   navigateBack(false);
