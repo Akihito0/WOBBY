@@ -14,6 +14,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -105,6 +107,14 @@ export default function ActivityFeed({
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Routine edit state ──────────────────────────────────────────────────────
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editCaption, setEditCaption] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  // ───────────────────────────────────────────────────────────────────────────
+
   const flatListRef = useRef<FlatList>(null);
 
   const isRoutine = !!routineData;
@@ -116,7 +126,7 @@ export default function ActivityFeed({
   const description = isRoutine ? routineData?.notes : runData?.description;
   const dateStr = isRoutine ? routineData?.created_at : runData?.completed_at;
   const duration = isRoutine ? routineData?.total_duration || 0 : runData?.duration || 0;
-  
+
   // Calculate routine specific stats
   let totalSets = 0;
   let totalReps = 0;
@@ -162,9 +172,9 @@ export default function ActivityFeed({
             try {
               const table = isRoutine ? 'completed_routines' : 'runs';
               const { error } = await supabase.from(table).delete().eq('id', activeId);
-              
+
               if (error) throw error;
-              
+
               Alert.alert('Success', 'Post deleted successfully');
               setMenuModalVisible(false);
               onRefresh?.();
@@ -179,18 +189,52 @@ export default function ActivityFeed({
     );
   };
 
+  // Opens the appropriate edit flow for runs or routines
   const handleEditPost = () => {
-    if (isRoutine) {
-      Alert.alert('Notice', 'Editing routine posts is not supported yet.');
+    setMenuModalVisible(false);
+
+    if (isRoutine && routineData) {
+      // Pre-fill fields with current values
+      setEditCaption(routineData.caption || '');
+      setEditNotes(routineData.notes || '');
+      setEditModalVisible(true);
       return;
     }
-    
-    if (runData && navigation) {
+
+    if (isRun && runData && navigation) {
       navigation.navigate('Workout', {
         screen: 'RunScreen',
         params: { isEditing: true, runDataToEdit: runData },
       });
-      setMenuModalVisible(false);
+    }
+  };
+
+  // Persist routine edits to Supabase
+  const handleSaveRoutineEdit = async () => {
+    if (!routineData?.id) return;
+
+    const trimmedCaption = editCaption.trim();
+    if (!trimmedCaption) {
+      Alert.alert('Validation', 'Caption cannot be empty.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('completed_routines')
+        .update({ caption: trimmedCaption, notes: editNotes.trim() || null })
+        .eq('id', routineData.id);
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Workout post updated successfully.');
+      setEditModalVisible(false);
+      onRefresh?.();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to save changes.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -248,9 +292,9 @@ export default function ActivityFeed({
 
         {/* XP Badge for routines */}
         {isRoutine && routineData?.xp_earned != null && routineData.xp_earned > 0 && (
-          <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(204,255,0,0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(204,255,0,0.2)'}}>
-              <Text style={{color: '#CCFF00', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold'}}>+{routineData.xp_earned} XP</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(204,255,0,0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(204,255,0,0.2)' }}>
+              <Text style={{ color: '#CCFF00', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold' }}>+{routineData.xp_earned} XP</Text>
             </View>
           </View>
         )}
@@ -295,11 +339,11 @@ export default function ActivityFeed({
           </>
         )}
 
-        {/* DETAILS MODAL */}
+        {/* ── DETAILS MODAL ─────────────────────────────────────────────────── */}
         <Modal visible={detailsModalVisible} animationType="slide" transparent={false} onRequestClose={() => setDetailsModalVisible(false)}>
           <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
-              
+
               <View style={styles.modalHeader}>
                 <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailsModalVisible(false)}>
                   <MaterialCommunityIcons name="close" size={28} color="#FFF" />
@@ -326,7 +370,7 @@ export default function ActivityFeed({
                       <Text style={styles.modalStatValue}>{totalReps}</Text>
                     </View>
                     {routineData.xp_earned != null && routineData.xp_earned > 0 && (
-                      <View style={[styles.modalStatBox, {borderColor: 'rgba(204,255,0,0.3)'}]}>
+                      <View style={[styles.modalStatBox, { borderColor: 'rgba(204,255,0,0.3)' }]}>
                         <Text style={styles.modalStatLabel}>XP Earned</Text>
                         <Text style={styles.modalStatValue}>+{routineData.xp_earned}</Text>
                       </View>
@@ -340,22 +384,22 @@ export default function ActivityFeed({
                       <Text style={styles.exerciseBreakdownStats}>
                         {ex.sets.length} Sets  |  {ex.sets.reduce((r: number, s: any) => r + s.reps, 0)} Total Reps
                       </Text>
-                      
+
                       <View style={styles.setRowHeader}>
-                        <Text style={[styles.setRowHeaderText, {flex: 0.4}]}>Set</Text>
-                        <Text style={[styles.setRowHeaderText, {flex: 1}]}>Weight</Text>
-                        <Text style={[styles.setRowHeaderText, {flex: 0.5}]}>Reps</Text>
-                        <Text style={[styles.setRowHeaderText, {flex: 0.7}]}>Time</Text>
-                        <Text style={[styles.setRowHeaderText, {flex: 0.6}]}>Status</Text>
+                        <Text style={[styles.setRowHeaderText, { flex: 0.4 }]}>Set</Text>
+                        <Text style={[styles.setRowHeaderText, { flex: 1 }]}>Weight</Text>
+                        <Text style={[styles.setRowHeaderText, { flex: 0.5 }]}>Reps</Text>
+                        <Text style={[styles.setRowHeaderText, { flex: 0.7 }]}>Time</Text>
+                        <Text style={[styles.setRowHeaderText, { flex: 0.6 }]}>Status</Text>
                       </View>
-                      
+
                       {ex.sets.map((set: any, j: number) => (
                         <View key={j} style={styles.setRow}>
-                          <Text style={[styles.setRowText, {flex: 0.4}]}>{set.set}</Text>
-                          <Text style={[styles.setRowText, {flex: 1}]}>{set.weight}</Text>
-                          <Text style={[styles.setRowText, {flex: 0.5}]}>{set.reps}</Text>
-                          <Text style={[styles.setRowText, {flex: 0.7}]}>{formatSetTime(set.duration)}</Text>
-                          <Text style={[styles.setRowText, {flex: 0.6, color: set.status === 'FINISHED' ? '#CCFF00' : (set.status === 'INCOMPLETE' ? '#FF8800' : '#888')}]}>
+                          <Text style={[styles.setRowText, { flex: 0.4 }]}>{set.set}</Text>
+                          <Text style={[styles.setRowText, { flex: 1 }]}>{set.weight}</Text>
+                          <Text style={[styles.setRowText, { flex: 0.5 }]}>{set.reps}</Text>
+                          <Text style={[styles.setRowText, { flex: 0.7 }]}>{formatSetTime(set.duration)}</Text>
+                          <Text style={[styles.setRowText, { flex: 0.6, color: set.status === 'FINISHED' ? '#CCFF00' : (set.status === 'INCOMPLETE' ? '#FF8800' : '#888') }]}>
                             {set.status === 'FINISHED' ? '✓' : (set.status === 'INCOMPLETE' ? '◐' : '-')}
                           </Text>
                         </View>
@@ -367,31 +411,31 @@ export default function ActivityFeed({
                   {routineData.xp_breakdown && routineData.xp_earned != null && routineData.xp_earned > 0 && (
                     <>
                       <Text style={styles.modalSectionLabel}>XP Calculation</Text>
-                      <View style={[styles.exerciseBreakdownCard, {borderColor: 'rgba(204,255,0,0.15)'}]}>
-                        <Text style={{color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat_900Black', marginBottom: 12}}>+{routineData.xp_earned} XP</Text>
-                        <View style={{height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 10}} />
-                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
-                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Base XP</Text>
-                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.base}</Text>
+                      <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                        <Text style={{ color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat_900Black', marginBottom: 12 }}>+{routineData.xp_earned} XP</Text>
+                        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 10 }} />
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Base XP</Text>
+                          <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.base}</Text>
                         </View>
-                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
-                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Rep XP</Text>
-                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.rep_xp}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Rep XP</Text>
+                          <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.rep_xp}</Text>
                         </View>
-                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
-                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Set XP</Text>
-                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.set_xp}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Set XP</Text>
+                          <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.set_xp}</Text>
                         </View>
                         {routineData.xp_breakdown.duration_bonus > 0 && (
-                          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
-                            <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Duration Bonus</Text>
-                            <Text style={{color: '#34D399', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>+{routineData.xp_breakdown.duration_bonus}</Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Duration Bonus</Text>
+                            <Text style={{ color: '#34D399', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{routineData.xp_breakdown.duration_bonus}</Text>
                           </View>
                         )}
                         {routineData.xp_breakdown.perfect_bonus > 0 && (
-                          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
-                            <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Perfect Bonus</Text>
-                            <Text style={{color: '#FFD700', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>+{routineData.xp_breakdown.perfect_bonus}</Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Perfect Bonus</Text>
+                            <Text style={{ color: '#FFD700', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{routineData.xp_breakdown.perfect_bonus}</Text>
                           </View>
                         )}
                       </View>
@@ -401,7 +445,7 @@ export default function ActivityFeed({
               ) : runData ? (
                 <>
                   {runData.route_map_url && <Image source={{ uri: runData.route_map_url }} style={styles.modalMapImage} />}
-                  
+
                   <View style={styles.modalStatsGrid}>
                     <View style={styles.modalStatBox}>
                       <Text style={styles.modalStatLabel}>Distance</Text>
@@ -437,20 +481,117 @@ export default function ActivityFeed({
           </LinearGradient>
         </Modal>
 
-        {/* MENU MODAL */}
+        {/* ── ROUTINE EDIT MODAL ────────────────────────────────────────────── */}
+        <Modal
+          visible={editModalVisible}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => !isSaving && setEditModalVisible(false)}
+        >
+          <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => !isSaving && setEditModalVisible(false)}
+                    disabled={isSaving}
+                  >
+                    <MaterialCommunityIcons name="close" size={28} color={isSaving ? '#555' : '#FFF'} />
+                  </TouchableOpacity>
+                  <Text style={styles.modalTitle}>EDIT WORKOUT</Text>
+                  {/* Save button in header */}
+                  <TouchableOpacity
+                    style={[styles.editSaveHeaderBtn, isSaving && { opacity: 0.5 }]}
+                    onPress={handleSaveRoutineEdit}
+                    disabled={isSaving}
+                  >
+                    {isSaving
+                      ? <ActivityIndicator size="small" color="#000" />
+                      : <Text style={styles.editSaveHeaderBtnText}>Save</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+
+                {/* Routine type badge */}
+                <View style={styles.editBadgeRow}>
+                  <View style={styles.editBadge}>
+                    <MaterialCommunityIcons name="dumbbell" size={13} color="#CCFF00" />
+                    <Text style={styles.editBadgeText}>{routineData?.routine_type} Routine</Text>
+                  </View>
+                </View>
+
+                {/* Caption field */}
+                <Text style={styles.editFieldLabel}>Caption *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editCaption}
+                  onChangeText={setEditCaption}
+                  placeholder="Give your workout a title…"
+                  placeholderTextColor="#555"
+                  maxLength={100}
+                  returnKeyType="done"
+                  editable={!isSaving}
+                />
+                <Text style={styles.editCharCount}>{editCaption.length}/100</Text>
+
+                {/* Notes field */}
+                <Text style={[styles.editFieldLabel, { marginTop: 20 }]}>Notes</Text>
+                <TextInput
+                  style={[styles.editInput, styles.editInputMultiline]}
+                  value={editNotes}
+                  onChangeText={setEditNotes}
+                  placeholder="Add notes, how you felt, PRs…"
+                  placeholderTextColor="#555"
+                  maxLength={500}
+                  multiline
+                  numberOfLines={5}
+                  textAlignVertical="top"
+                  editable={!isSaving}
+                />
+                <Text style={styles.editCharCount}>{editNotes.length}/500</Text>
+
+                {/* Divider + read-only stats reminder */}
+                <View style={styles.editDivider} />
+                <Text style={styles.editHint}>
+                  <MaterialCommunityIcons name="information-outline" size={12} color="#555" />
+                  {' '}Exercise data, sets, reps and XP are read-only and cannot be changed.
+                </Text>
+
+                {/* Full-width save button */}
+                <TouchableOpacity
+                  style={[styles.editSaveBtn, isSaving && { opacity: 0.6 }]}
+                  onPress={handleSaveRoutineEdit}
+                  disabled={isSaving}
+                >
+                  {isSaving
+                    ? <ActivityIndicator size="small" color="#000" />
+                    : (
+                      <>
+                        <MaterialCommunityIcons name="content-save-outline" size={18} color="#000" />
+                        <Text style={styles.editSaveBtnText}>Save Changes</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </LinearGradient>
+        </Modal>
+
+        {/* ── MENU MODAL ────────────────────────────────────────────────────── */}
         <Modal visible={menuModalVisible} transparent animationType="fade" onRequestClose={() => setMenuModalVisible(false)}>
           <TouchableOpacity style={styles.menuBackdrop} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
             <View style={styles.menuContainer}>
-              
-              {!isRoutine && (
-                <>
-                  <TouchableOpacity style={styles.menuItem} onPress={handleEditPost}>
-                    <MaterialCommunityIcons name="pencil" size={20} color="#C8FF00" />
-                    <Text style={styles.menuItemText}>Edit Post</Text>
-                  </TouchableOpacity>
-                  <View style={styles.menuDivider} />
-                </>
-              )}
+
+              <TouchableOpacity style={styles.menuItem} onPress={handleEditPost}>
+                <MaterialCommunityIcons name="pencil" size={20} color="#C8FF00" />
+                <Text style={styles.menuItemText}>Edit Post</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
 
               <TouchableOpacity style={[styles.menuItem, styles.menuItemDanger]} onPress={handleDeletePost} disabled={isDeleting}>
                 {isDeleting ? <ActivityIndicator size="small" color="#FF4444" /> : <MaterialCommunityIcons name="trash-can" size={20} color="#FF4444" />}
@@ -486,8 +627,8 @@ const styles = StyleSheet.create({
   activeDot: { backgroundColor: '#EEE', width: 12 },
   seeMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8, backgroundColor: 'rgba(200, 255, 0, 0.05)' },
   seeMoreText: { color: '#C8FF00', fontSize: 13, fontFamily: 'Montserrat_700Bold', marginRight: 8 },
-  
-  // MODAL
+
+  // MODAL (shared)
   modalGradient: { flex: 1 },
   modalContent: { paddingBottom: 40 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 50 : 30, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
@@ -512,6 +653,21 @@ const styles = StyleSheet.create({
   setRowHeaderText: { flex: 1, color: '#888', fontFamily: 'Montserrat_600SemiBold', fontSize: 10, textAlign: 'center' },
   setRow: { flexDirection: 'row', paddingVertical: 6 },
   setRowText: { flex: 1, color: '#DDD', fontFamily: 'Montserrat_500Medium', fontSize: 12, textAlign: 'center' },
+
+  // EDIT MODAL
+  editBadgeRow: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 20, marginBottom: 24 },
+  editBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(204,255,0,0.08)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(204,255,0,0.2)' },
+  editBadgeText: { color: '#CCFF00', fontSize: 11, fontFamily: 'Montserrat_700Bold' },
+  editFieldLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 20, marginBottom: 8 },
+  editInput: { backgroundColor: '#1A1A1A', borderRadius: 10, borderWidth: 1, borderColor: '#333', color: '#FFF', fontSize: 14, fontFamily: 'Montserrat_500Medium', paddingHorizontal: 16, paddingVertical: 14, marginHorizontal: 20 },
+  editInputMultiline: { minHeight: 120, paddingTop: 14 },
+  editCharCount: { color: '#444', fontSize: 10, fontFamily: 'Montserrat_500Medium', textAlign: 'right', paddingHorizontal: 20, marginTop: 5 },
+  editDivider: { height: 1, backgroundColor: '#222', marginHorizontal: 20, marginTop: 24, marginBottom: 12 },
+  editHint: { color: '#555', fontSize: 11, fontFamily: 'Montserrat_400Regular', paddingHorizontal: 20, lineHeight: 16, marginBottom: 24 },
+  editSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C8FF00', borderRadius: 10, paddingVertical: 15, marginHorizontal: 20 },
+  editSaveBtnText: { color: '#000', fontSize: 15, fontFamily: 'Montserrat_800ExtraBold' },
+  editSaveHeaderBtn: { backgroundColor: '#C8FF00', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, minWidth: 64, alignItems: 'center', justifyContent: 'center' },
+  editSaveHeaderBtnText: { color: '#000', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold' },
 
   // MENU
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'flex-end' },

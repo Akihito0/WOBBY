@@ -11,6 +11,7 @@ import { supabase } from '../supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import { MediaType } from 'expo-image-picker';
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -151,7 +152,7 @@ export default function PersonalInformation({ navigation }: Props) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
@@ -201,7 +202,8 @@ export default function PersonalInformation({ navigation }: Props) {
           .from('avatars')
           .getPublicUrl(fileName);
 
-        uploadedAvatarUrl = urlData.publicUrl;
+        // Add cache-busting query parameter to force image refresh
+        uploadedAvatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
         setAvatarUri(uploadedAvatarUrl);
       }
 
@@ -226,6 +228,8 @@ export default function PersonalInformation({ navigation }: Props) {
         avatarUri: uploadedAvatarUrl,
       });
 
+      setAvatarUri(uploadedAvatarUrl);
+      setAvatarUrl(uploadedAvatarUrl);
       setSaved(true);
       showToast('Changes saved', 'saved');
     } catch (err) {
