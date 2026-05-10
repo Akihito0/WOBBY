@@ -470,6 +470,26 @@ export default function ActivityFeed({
                       </View>
                     </>
                   )}
+
+                  {/* Achievements Unlocked in this workout */}
+                  {routineData.earned_achievements && routineData.earned_achievements.length > 0 && (
+                    <>
+                      <Text style={styles.modalSectionLabel}>Achievements Unlocked</Text>
+                      {routineData.earned_achievements.map((id: string) => {
+                        const badge = ACHIEVEMENT_DATA.find((a) => a.id === id);
+                        if (!badge) return null;
+                        return (
+                          <View key={id} style={[styles.exerciseBreakdownCard, { flexDirection: 'row', alignItems: 'center', gap: 14, borderColor: 'rgba(204,255,0,0.15)' }]}>
+                            <Image source={badge.image} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#CCFF00', fontSize: 14, fontFamily: 'Montserrat_800ExtraBold' }}>{badge.name}</Text>
+                              <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium', marginTop: 3 }}>{badge.subtext}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               ) : runData ? (
                 <>
