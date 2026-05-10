@@ -88,7 +88,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const lastProcessedKeyRef = useRef<string>('');
   const [totalReps, setTotalReps] = useState(0);
   const [totalSets, setTotalSets] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(persistedElapsedSeconds);
+  const [elapsedSeconds, setElapsedSeconds] = useState(persistedExercises ? persistedElapsedSeconds : 0);
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
