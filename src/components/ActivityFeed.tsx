@@ -374,6 +374,15 @@ export default function ActivityFeed({
 
               <Text style={styles.modalRunTitle}>{title}</Text>
 
+              {description && (
+                <>
+                  <Text style={[styles.modalSectionLabel, { marginTop: 0, marginBottom: 12 }]}>Notes</Text>
+                  <View style={[styles.modalDescriptionBox, { marginBottom: 25 }]}>
+                    <Text style={styles.modalDescriptionText}>{description}</Text>
+                  </View>
+                </>
+              )}
+
               {isRoutine && routineData ? (
                 <>
                   <View style={styles.modalStatsGrid}>
@@ -439,11 +448,11 @@ export default function ActivityFeed({
                           <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.base}</Text>
                         </View>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Rep XP</Text>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Rep XP ({routineData.total_reps_completed} Reps)</Text>
                           <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.rep_xp}</Text>
                         </View>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Set XP</Text>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Set XP ({routineData.total_sets_completed} Sets)</Text>
                           <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{routineData.xp_breakdown.set_xp}</Text>
                         </View>
                         {routineData.xp_breakdown.duration_bonus > 0 && (
@@ -458,6 +467,8 @@ export default function ActivityFeed({
                             <Text style={{ color: '#FFD700', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{routineData.xp_breakdown.perfect_bonus}</Text>
                           </View>
                         )}
+                      </View>
+
                       </View>
                     </>
                   )}
@@ -489,14 +500,6 @@ export default function ActivityFeed({
                 </>
               ) : null}
 
-              {description && (
-                <>
-                  <Text style={styles.modalSectionLabel}>Notes</Text>
-                  <View style={styles.modalDescriptionBox}>
-                    <Text style={styles.modalDescriptionText}>{description}</Text>
-                  </View>
-                </>
-              )}
             </ScrollView>
           </LinearGradient>
         </Modal>
