@@ -556,6 +556,10 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           // Stop the routine timer
           if (timerRef.current) clearInterval(timerRef.current);
 
+          // Reset persisted state so next workout starts fresh
+          persistedExercises = null;
+          persistedElapsedSeconds = 0;
+
           navigation.navigate('WorkoutSummaryScreen', { 
             exercises: performedExercises, 
             elapsedSeconds, 
