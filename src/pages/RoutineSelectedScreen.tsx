@@ -91,6 +91,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(persistedElapsedSeconds);
   const [swipedRow, setSwipedRow] = useState<SwipeRow | null>(null);
   const animatedValues = useRef<{ [key: string]: Animated.Value }>({});
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Back Button Confirmation
   useEffect(() => {
@@ -142,14 +143,16 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   // Auto-start Timer
   React.useEffect(() => {
-    const timer = setInterval(() => {
+    timerRef.current = setInterval(() => {
       setElapsedSeconds((prev) => {
         const next = prev + 1;
         persistedElapsedSeconds = next;
         return next;
       });
     }, 1000);
-    return () => clearInterval(timer);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, []);
 
   // Sync cache on every state change
@@ -536,21 +539,25 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         style={styles.finishBtnWrapper}
         activeOpacity={0.8}
         onPress={() => {
-          const finishedExercises = exercises.map(ex => {
-            const finishedSets = ex.sets.filter(s => s.status === 'FINISHED');
+          // Include both FINISHED and INCOMPLETE sets for full per-set data
+          const performedExercises = exercises.map(ex => {
+            const performedSets = ex.sets.filter(s => s.status === 'FINISHED' || s.status === 'INCOMPLETE');
             return {
               ...ex,
-              sets: finishedSets
+              sets: performedSets
             };
           }).filter(ex => ex.sets.length > 0); 
 
-          if (finishedExercises.length === 0) {
+          if (performedExercises.length === 0) {
             Alert.alert('No Completed Sets', 'You need to finish at least one set to save a workout!');
             return;
           }
 
+          // Stop the routine timer
+          if (timerRef.current) clearInterval(timerRef.current);
+
           navigation.navigate('WorkoutSummaryScreen', { 
-            exercises: finishedExercises, 
+            exercises: performedExercises, 
             elapsedSeconds, 
             completedSets, 
             completedReps,
