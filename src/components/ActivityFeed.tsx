@@ -20,6 +20,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
+import { ACHIEVEMENT_DATA } from '../pages/Achievements';
 
 const { width } = Dimensions.get('window');
 
@@ -84,6 +85,7 @@ interface RoutineData {
   xp_breakdown?: { base: number; rep_xp: number; set_xp: number; duration_bonus: number; perfect_bonus: number };
   total_sets_completed?: number;
   total_reps_completed?: number;
+  earned_achievements?: string[];
 }
 
 interface ActivityFeedProps {
@@ -303,6 +305,24 @@ export default function ActivityFeed({
           <Text style={styles.seeMoreText}>See Details & Stats</Text>
           <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
         </TouchableOpacity>
+
+        {/* Achievements Earned */}
+        {isRoutine && routineData?.earned_achievements && routineData.earned_achievements.length > 0 && (
+          <View style={styles.achievementsRow}>
+            <Text style={styles.achievementsLabel}>EARNED BADGES</Text>
+            <View style={styles.badgesContainer}>
+              {routineData.earned_achievements.map((id) => {
+                const badge = ACHIEVEMENT_DATA.find((a) => a.id === id);
+                if (!badge) return null;
+                return (
+                  <View key={id} style={styles.badgeWrapper}>
+                    <Image source={badge.image} style={styles.postBadgeIcon} resizeMode="contain" />
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {workoutGallery.length > 0 && (
           <>
@@ -627,6 +647,12 @@ const styles = StyleSheet.create({
   activeDot: { backgroundColor: '#EEE', width: 12 },
   seeMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8, backgroundColor: 'rgba(200, 255, 0, 0.05)' },
   seeMoreText: { color: '#C8FF00', fontSize: 13, fontFamily: 'Montserrat_700Bold', marginRight: 8 },
+
+  achievementsRow: { marginHorizontal: 20, marginBottom: 20 },
+  achievementsLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_600SemiBold', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+  badgesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  badgeWrapper: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(255, 255, 255, 0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
+  postBadgeIcon: { width: 35, height: 35 },
 
   // MODAL (shared)
   modalGradient: { flex: 1 },
