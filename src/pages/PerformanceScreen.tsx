@@ -13,8 +13,9 @@ import {
   StatusBar,
   SafeAreaView,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 import { ACHIEVEMENT_DATA } from './Achievements';
@@ -412,19 +413,29 @@ const PerformanceScreen = () => {
     }
   }, []);
 
+  const [achievementsLoading, setAchievementsLoading] = useState(true);
+
   const fetchAchievements = useCallback(async () => {
+    setAchievementsLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_achievements')
         .select('achievement_name')
         .eq('user_id', user.id);
+      if (error) {
+        console.error('Supabase error fetching achievements:', error.message);
+        return;
+      }
       if (data) {
+        console.log('Fetched achievements:', data);
         setUnlockedAchievements(data.map(a => a.achievement_name));
       }
     } catch (err) {
       console.log('Error fetching achievements:', err);
+    } finally {
+      setAchievementsLoading(false);
     }
   }, []);
 
@@ -435,8 +446,14 @@ const PerformanceScreen = () => {
     fetchProfile();
     fetchDailyXp();
     fetchWorkoutHistory();
-    fetchAchievements();
-  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory, fetchAchievements]);
+  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory]);
+
+  // Re-fetch achievements every time screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchAchievements();
+    }, [fetchAchievements])
+  );
 
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
   const [showDailyGains, setShowDailyGains] = useState(false);
@@ -625,7 +642,11 @@ const PerformanceScreen = () => {
             scrollEventThrottle={16}
             contentContainerStyle={styles.achievementsContent}
           >
-            {achievements.length > 0 ? (
+            {achievementsLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 20, width: width - 40 }}>
+                <ActivityIndicator size="small" color="#CCFF00" />
+              </View>
+            ) : achievements.length > 0 ? (
               achievements.map((achievement) => (
                 <View 
                   key={achievement.id} 

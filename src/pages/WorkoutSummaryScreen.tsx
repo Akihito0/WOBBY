@@ -256,6 +256,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           const achievementInserts = newUnlocks.map(id => ({
             user_id: session.user.id,
             achievement_name: id,
+            unlocked_at: new Date().toISOString(),
           }));
           await supabase.from('user_achievements').insert(achievementInserts);
         }

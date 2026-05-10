@@ -385,25 +385,35 @@ export default function ActivityFeed({
 
               {isRoutine && routineData ? (
                 <>
-                  <View style={styles.modalStatsGrid}>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Total Duration</Text>
-                      <Text style={styles.modalStatValue}>{formatDuration(duration)}</Text>
-                    </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Completed Sets</Text>
-                      <Text style={styles.modalStatValue}>{totalSets}</Text>
-                    </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Total Reps</Text>
-                      <Text style={styles.modalStatValue}>{totalReps}</Text>
-                    </View>
-                    {routineData.xp_earned != null && routineData.xp_earned > 0 && (
-                      <View style={[styles.modalStatBox, { borderColor: 'rgba(204,255,0,0.3)' }]}>
-                        <Text style={styles.modalStatLabel}>XP Earned</Text>
-                        <Text style={styles.modalStatValue}>+{routineData.xp_earned}</Text>
+                  <Text style={styles.modalSectionLabel}>Workout Summary</Text>
+                  <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>DURATION</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{formatDuration(duration)}</Text>
                       </View>
-                    )}
+                      <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>SETS</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{totalSets}</Text>
+                      </View>
+                    </View>
+                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
+                    <View style={{ flexDirection: 'row' }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>TOTAL REPS</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{totalReps}</Text>
+                      </View>
+                      {routineData.xp_earned != null && routineData.xp_earned > 0 && (
+                        <>
+                          <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                          <View style={{ flex: 1, alignItems: 'center' }}>
+                            <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>XP EARNED</Text>
+                            <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>+{routineData.xp_earned}</Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
                   </View>
 
                   <Text style={styles.modalSectionLabel}>Exercises Breakdown</Text>
@@ -468,6 +478,26 @@ export default function ActivityFeed({
                           </View>
                         )}
                       </View>
+                    </>
+                  )}
+
+                  {/* Achievements Unlocked in this workout */}
+                  {routineData.earned_achievements && routineData.earned_achievements.length > 0 && (
+                    <>
+                      <Text style={styles.modalSectionLabel}>Achievements Unlocked</Text>
+                      {routineData.earned_achievements.map((id: string) => {
+                        const badge = ACHIEVEMENT_DATA.find((a) => a.id === id);
+                        if (!badge) return null;
+                        return (
+                          <View key={id} style={[styles.exerciseBreakdownCard, { flexDirection: 'row', alignItems: 'center', gap: 14, borderColor: 'rgba(204,255,0,0.15)' }]}>
+                            <Image source={badge.image} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#CCFF00', fontSize: 14, fontFamily: 'Montserrat_800ExtraBold' }}>{badge.name}</Text>
+                              <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium', marginTop: 3 }}>{badge.subtext}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
                     </>
                   )}
                 </>
