@@ -1,76 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   ScrollView, Animated, PanResponder, Alert,
-  TextInput, 
+  TextInput, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-
+import { supabase } from '../supabase';
+import { loadUserRoutine, saveUserRoutine, getDefaultExercises, RoutineExercise } from '../services/routineService';
 
 type Set = { id: number; weight: string; reps: string };
 type Exercise = { id: number; name: string; sets: Set[]; expanded: boolean };
 
 const PushScreen = ({ navigation }: any) => {
-  // Back Button Confirmation
-  React.useEffect(() => {
-    const unsub = navigation.addListener('beforeRemove', (e: any) => {
-      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
-        e.preventDefault();
-        Alert.alert(
-          'Discard Workout?',
-          'Going back will reset your progress for this routine. Are you sure?',
-          [
-            { text: 'Keep Training', style: 'cancel', onPress: () => {} },
-            { 
-              text: 'Discard', 
-              style: 'destructive', 
-              onPress: () => navigation.dispatch(e.data.action) 
-            },
-          ]
-        );
-      }
-    });
-    return unsub;
-  }, [navigation]);
-
-  const [exercises, setExercises] = useState<Exercise[]>([
-    {
-      id: 1,
-      name: 'Push Ups',
-      sets: [
-        { id: 1, weight: 'Body Weight', reps: '8' },
-        { id: 2, weight: 'Body Weight', reps: '8' },
-        { id: 3, weight: 'Body Weight', reps: '8' },
-      ],
-      expanded: false,
-    },
-    {
-      id: 2,
-      name: 'Bench Press',
-      sets: [
-        { id: 1, weight: 'Weighted', reps: '8' },
-        { id: 2, weight: 'Weighted', reps: '8' },
-        { id: 3, weight: 'Weighted', reps: '8' },
-      ],
-      expanded: false,
-    },
-    {
-      id: 3,
-      name: 'Tricep Dips',
-      sets: [
-        { id: 1, weight: 'Body Weight', reps: '8' },
-        { id: 2, weight: 'Body Weight', reps: '8' },
-        { id: 3, weight: 'Body Weight', reps: '8' },
-      ],
-      expanded: false,
-    },
-  ]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const savedSnapshotRef = useRef<string>('');
 
   const [editMode, setEditMode] = useState(false);
   const [selectedToDelete, setSelectedToDelete] = useState<number[]>([]);
   const [swipeOffsets] = useState<{ [key: string]: Animated.Value }>({});
-
-  // Editing a specific set cell
   const [editingCell, setEditingCell] = useState<{
     exerciseId: number;
     setId: number;
@@ -78,6 +27,106 @@ const PushScreen = ({ navigation }: any) => {
   } | null>(null);
   const [editingValue, setEditingValue] = useState('');
 
+  // Compute snapshot string for comparison (strips UI-only fields like expanded)
+  const getSnapshot = (exs: Exercise[]) =>
+    JSON.stringify(exs.map(ex => ({ id: ex.id, name: ex.name, sets: ex.sets.map(s => ({ id: s.id, weight: s.weight, reps: s.reps })) })));
+
+  // Dirty state: true when current exercises differ from saved snapshot
+  const isDirty = useMemo(() => {
+    if (!savedSnapshotRef.current) return false;
+    return getSnapshot(exercises) !== savedSnapshotRef.current;
+  }, [exercises]);
+
+  // ─── Load user routine on mount ────────────────────────────────────────────
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        let data: RoutineExercise[] | null = null;
+        if (userId) {
+          data = await loadUserRoutine(userId, 'PUSH');
+        }
+        const source = data || getDefaultExercises('PUSH');
+        const mapped: Exercise[] = source.map(ex => ({ ...ex, expanded: false }));
+        setExercises(mapped);
+        savedSnapshotRef.current = getSnapshot(mapped);
+      } catch (err) {
+        console.error('Load routine error:', err);
+        const defaults = getDefaultExercises('PUSH');
+        const mapped: Exercise[] = defaults.map(ex => ({ ...ex, expanded: false }));
+        setExercises(mapped);
+        savedSnapshotRef.current = getSnapshot(mapped);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  // ─── Save handler ──────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) {
+        Alert.alert('Error', 'Please log in to save.');
+        setIsSaving(false);
+        return;
+      }
+      const dataToSave: RoutineExercise[] = exercises.map(ex => ({
+        id: ex.id,
+        name: ex.name,
+        sets: ex.sets.map(s => ({ id: s.id, weight: s.weight, reps: s.reps })),
+      }));
+      const success = await saveUserRoutine(userId, 'PUSH', dataToSave);
+      if (success) {
+        savedSnapshotRef.current = getSnapshot(exercises);
+        Alert.alert('Saved! ✅', 'Your Push routine has been updated.');
+      } else {
+        Alert.alert('Error', 'Failed to save routine.');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'An unexpected error occurred.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ─── Back button with dirty check ──────────────────────────────────────────
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
+        // If no unsaved changes, allow navigation
+        if (getSnapshot(exercises) === savedSnapshotRef.current) return;
+
+        e.preventDefault();
+        Alert.alert(
+          'Unsaved Changes',
+          'You have unsaved changes to your routine. What would you like to do?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Discard',
+              style: 'destructive',
+              onPress: () => navigation.dispatch(e.data.action),
+            },
+            {
+              text: 'Save & Exit',
+              onPress: async () => {
+                await handleSave();
+                navigation.dispatch(e.data.action);
+              },
+            },
+          ]
+        );
+      }
+    });
+    return unsub;
+  }, [navigation, exercises]);
+
+  // ─── Exercise editing helpers ──────────────────────────────────────────────
   const getSwipeAnim = (key: string) => {
     if (!swipeOffsets[key]) {
       swipeOffsets[key] = new Animated.Value(0);
@@ -139,13 +188,11 @@ const PushScreen = ({ navigation }: any) => {
     );
   };
 
-  // Start editing a cell
   const startEditCell = (exerciseId: number, setId: number, field: 'weight' | 'reps', currentValue: string) => {
     setEditingCell({ exerciseId, setId, field });
     setEditingValue(currentValue);
   };
 
-  // Save edited cell value
   const saveEditCell = () => {
     if (!editingCell) return;
     const { exerciseId, setId, field } = editingCell;
@@ -165,6 +212,15 @@ const PushScreen = ({ navigation }: any) => {
     setEditingValue('');
   };
 
+  // ─── Loading state ─────────────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#CCFF00" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
 
@@ -183,9 +239,19 @@ const PushScreen = ({ navigation }: any) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Your Exercises Row */}
+        {/* Your Exercises Row + Save Button */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Your Exercises</Text>
+          <TouchableOpacity
+            style={[styles.saveBtn, isDirty ? styles.saveBtnActive : styles.saveBtnInactive]}
+            onPress={handleSave}
+            disabled={!isDirty || isSaving}
+            activeOpacity={isDirty ? 0.7 : 1}
+          >
+            <Text style={[styles.saveBtnText, isDirty ? styles.saveBtnTextActive : styles.saveBtnTextInactive]}>
+              {isSaving ? 'Saving...' : 'Save'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Exercise Cards */}
@@ -375,6 +441,33 @@ const styles = StyleSheet.create({
     fontSize: 20, 
     fontFamily: 'Montserrat-SemiBold' 
 },
+
+  // Save button styles
+  saveBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  saveBtnActive: {
+    backgroundColor: '#CCFF00',
+    borderColor: '#CCFF00',
+  },
+  saveBtnInactive: {
+    backgroundColor: 'transparent',
+    borderColor: '#333',
+  },
+  saveBtnText: {
+    fontSize: 14,
+    fontFamily: 'Montserrat-Bold',
+  },
+  saveBtnTextActive: {
+    color: '#000',
+  },
+  saveBtnTextInactive: {
+    color: '#555',
+  },
+
   pencilIcon: { 
     width: 22, 
     height: 22, 
