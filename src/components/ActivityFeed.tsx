@@ -468,8 +468,6 @@ export default function ActivityFeed({
                           </View>
                         )}
                       </View>
-
-                      </View>
                     </>
                   )}
                 </>
