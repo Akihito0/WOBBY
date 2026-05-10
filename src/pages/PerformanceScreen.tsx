@@ -613,7 +613,7 @@ const PerformanceScreen = () => {
 
           <View style={styles.achievementsHeader}>
             <Text style={styles.achievementsTitle}>ACHIEVEMENTS</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('AchievementsScreen' as never, { unlockedAchievements } as never)}>
+            <TouchableOpacity onPress={() => (navigation.navigate as any)('AchievementsScreen', { unlockedAchievements })}>
               <Text style={styles.seeAll}>See all</Text>
             </TouchableOpacity>
           </View>
