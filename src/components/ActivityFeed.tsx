@@ -34,6 +34,13 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}m`;
 };
 
+const formatSetTime = (seconds: number): string => {
+  if (!seconds || isNaN(seconds)) return '--:--';
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
+
 const formatDate = (dateString: string): string => {
   if (!dateString) return '';
   const date = new Date(dateString);
@@ -67,9 +74,14 @@ interface RoutineData {
   notes?: string;
   total_duration: number;
   routine_type: string;
+  workout_type?: string;
   created_at: string;
   media_url?: string;
   exercises_data: any[];
+  xp_earned?: number;
+  xp_breakdown?: { base: number; rep_xp: number; set_xp: number; duration_bonus: number; perfect_bonus: number };
+  total_sets_completed?: number;
+  total_reps_completed?: number;
 }
 
 interface ActivityFeedProps {
@@ -234,6 +246,15 @@ export default function ActivityFeed({
           )}
         </View>
 
+        {/* XP Badge for routines */}
+        {isRoutine && routineData?.xp_earned != null && routineData.xp_earned > 0 && (
+          <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(204,255,0,0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(204,255,0,0.2)'}}>
+              <Text style={{color: '#CCFF00', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold'}}>+{routineData.xp_earned} XP</Text>
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity style={styles.seeMoreBtn} onPress={() => setDetailsModalVisible(true)}>
           <Text style={styles.seeMoreText}>See Details & Stats</Text>
           <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
@@ -300,6 +321,16 @@ export default function ActivityFeed({
                       <Text style={styles.modalStatLabel}>Completed Sets</Text>
                       <Text style={styles.modalStatValue}>{totalSets}</Text>
                     </View>
+                    <View style={styles.modalStatBox}>
+                      <Text style={styles.modalStatLabel}>Total Reps</Text>
+                      <Text style={styles.modalStatValue}>{totalReps}</Text>
+                    </View>
+                    {routineData.xp_earned != null && routineData.xp_earned > 0 && (
+                      <View style={[styles.modalStatBox, {borderColor: 'rgba(204,255,0,0.3)'}]}>
+                        <Text style={styles.modalStatLabel}>XP Earned</Text>
+                        <Text style={styles.modalStatValue}>+{routineData.xp_earned}</Text>
+                      </View>
+                    )}
                   </View>
 
                   <Text style={styles.modalSectionLabel}>Exercises Breakdown</Text>
@@ -311,20 +342,61 @@ export default function ActivityFeed({
                       </Text>
                       
                       <View style={styles.setRowHeader}>
-                        <Text style={styles.setRowHeaderText}>Set</Text>
-                        <Text style={styles.setRowHeaderText}>Weight</Text>
-                        <Text style={styles.setRowHeaderText}>Reps</Text>
+                        <Text style={[styles.setRowHeaderText, {flex: 0.4}]}>Set</Text>
+                        <Text style={[styles.setRowHeaderText, {flex: 1}]}>Weight</Text>
+                        <Text style={[styles.setRowHeaderText, {flex: 0.5}]}>Reps</Text>
+                        <Text style={[styles.setRowHeaderText, {flex: 0.7}]}>Time</Text>
+                        <Text style={[styles.setRowHeaderText, {flex: 0.6}]}>Status</Text>
                       </View>
                       
                       {ex.sets.map((set: any, j: number) => (
                         <View key={j} style={styles.setRow}>
-                          <Text style={styles.setRowText}>{set.set}</Text>
-                          <Text style={styles.setRowText}>{set.weight}</Text>
-                          <Text style={styles.setRowText}>{set.reps}</Text>
+                          <Text style={[styles.setRowText, {flex: 0.4}]}>{set.set}</Text>
+                          <Text style={[styles.setRowText, {flex: 1}]}>{set.weight}</Text>
+                          <Text style={[styles.setRowText, {flex: 0.5}]}>{set.reps}</Text>
+                          <Text style={[styles.setRowText, {flex: 0.7}]}>{formatSetTime(set.duration)}</Text>
+                          <Text style={[styles.setRowText, {flex: 0.6, color: set.status === 'FINISHED' ? '#CCFF00' : (set.status === 'INCOMPLETE' ? '#FF8800' : '#888')}]}>
+                            {set.status === 'FINISHED' ? '✓' : (set.status === 'INCOMPLETE' ? '◐' : '-')}
+                          </Text>
                         </View>
                       ))}
                     </View>
                   ))}
+
+                  {/* XP Breakdown Transparency */}
+                  {routineData.xp_breakdown && routineData.xp_earned != null && routineData.xp_earned > 0 && (
+                    <>
+                      <Text style={styles.modalSectionLabel}>XP Calculation</Text>
+                      <View style={[styles.exerciseBreakdownCard, {borderColor: 'rgba(204,255,0,0.15)'}]}>
+                        <Text style={{color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat_900Black', marginBottom: 12}}>+{routineData.xp_earned} XP</Text>
+                        <View style={{height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 10}} />
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Base XP</Text>
+                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.base}</Text>
+                        </View>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Rep XP</Text>
+                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.rep_xp}</Text>
+                        </View>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                          <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Set XP</Text>
+                          <Text style={{color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>{routineData.xp_breakdown.set_xp}</Text>
+                        </View>
+                        {routineData.xp_breakdown.duration_bonus > 0 && (
+                          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                            <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Duration Bonus</Text>
+                            <Text style={{color: '#34D399', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>+{routineData.xp_breakdown.duration_bonus}</Text>
+                          </View>
+                        )}
+                        {routineData.xp_breakdown.perfect_bonus > 0 && (
+                          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                            <Text style={{color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium'}}>Perfect Bonus</Text>
+                            <Text style={{color: '#FFD700', fontSize: 11, fontFamily: 'Montserrat_700Bold'}}>+{routineData.xp_breakdown.perfect_bonus}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
                 </>
               ) : runData ? (
                 <>
