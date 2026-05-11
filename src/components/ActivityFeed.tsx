@@ -21,6 +21,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 import { ACHIEVEMENT_DATA } from '../pages/Achievements';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadRunMedia } from '../services/runUpload';
 
 const { width } = Dimensions.get('window');
 
@@ -52,6 +54,33 @@ const formatDate = (dateString: string): string => {
   });
 };
 
+const uriToBase64 = async (uri: string): Promise<string | null> => {
+  try {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error('Failed to read blob as data URL'));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(xhr.response);
+      };
+      xhr.onerror = reject;
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+  } catch (error) {
+    console.error('Error in uriToBase64:', error);
+    return null;
+  }
+};
+
 interface RunData {
   id?: string;
   title: string;
@@ -79,7 +108,8 @@ interface RoutineData {
   routine_type: string;
   workout_type?: string;
   created_at: string;
-  media_url?: string;
+  media_url?: string;  // legacy single-image field (backward compat)
+  media_urls?: string[];  // new multi-image field
   exercises_data: any[];
   xp_earned?: number;
   xp_breakdown?: { base: number; rep_xp: number; set_xp: number; duration_bonus: number; perfect_bonus: number };
@@ -115,7 +145,15 @@ export default function ActivityFeed({
   const [editCaption, setEditCaption] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [routineEditMedia, setRoutineEditMedia] = useState<any[]>([]); // array of { uri: string }
   // ───────────────────────────────────────────────────────────────────────────
+
+  // ── Run edit state ────────────────────────────────────────────────────────
+  const [runEditModalVisible, setRunEditModalVisible] = useState(false);
+  const [runEditTitle, setRunEditTitle] = useState('');
+  const [runEditDescription, setRunEditDescription] = useState('');
+  const [runEditMedia, setRunEditMedia] = useState<any[]>([]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -141,7 +179,11 @@ export default function ActivityFeed({
 
   const workoutGallery = useMemo(() => {
     if (isRoutine) {
-      return routineData?.media_url ? [{ uri: routineData.media_url }] : [];
+      // Support both new media_urls array and legacy media_url field
+      const urls = routineData?.media_urls && routineData.media_urls.length > 0
+        ? routineData.media_urls
+        : routineData?.media_url ? [routineData.media_url] : [];
+      return urls.length > 0 ? urls.map((url: string) => ({ uri: url })) : [];
     } else if (isRun && runData?.media_urls && runData.media_urls.length > 0) {
       return runData.media_urls.map(url => ({ uri: url }));
     }
@@ -199,15 +241,127 @@ export default function ActivityFeed({
       // Pre-fill fields with current values
       setEditCaption(routineData.caption || '');
       setEditNotes(routineData.notes || '');
+      // Load existing media as array (support both legacy media_url and new media_urls)
+      const urls = routineData.media_urls && routineData.media_urls.length > 0
+        ? routineData.media_urls
+        : routineData.media_url ? [routineData.media_url] : [];
+      setRoutineEditMedia(urls.map((url: string) => ({ uri: url })));
       setEditModalVisible(true);
       return;
     }
 
-    if (isRun && runData && navigation) {
-      navigation.navigate('Workout', {
-        screen: 'RunScreen',
-        params: { isEditing: true, runDataToEdit: runData },
+    if (isRun && runData) {
+      // Pre-fill fields with current values — edit inline, no navigation to Run screen
+      setRunEditTitle(runData.title || '');
+      setRunEditDescription(runData.description || '');
+      // Load existing media as objects with uri
+      if (runData.media_urls && runData.media_urls.length > 0) {
+        setRunEditMedia(runData.media_urls.map((url: string) => ({ uri: url })));
+      } else {
+        setRunEditMedia([]);
+      }
+      setRunEditModalVisible(true);
+    }
+  };
+
+  // ── Add photos for run edit ────────────────────────────────────────────────
+  const handleRunEditAddPhotos = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 0.7,
       });
+      if (!result.canceled) {
+        setRunEditMedia(prev => [...prev, ...result.assets]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick images.');
+    }
+  };
+
+  // ── Persist run edits to Supabase ──────────────────────────────────────────
+  const handleSaveRunEdit = async () => {
+    if (!runData?.id) return;
+
+    const trimmedTitle = runEditTitle.trim();
+    if (!trimmedTitle) {
+      Alert.alert('Validation', 'Title cannot be empty.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      // Split into existing (already on Supabase) vs new local picks
+      const existingUrls = runEditMedia
+        .filter(m => m.uri.startsWith('http'))
+        .map(m => m.uri);
+
+      const newMedia = runEditMedia.filter(m => !m.uri.startsWith('http'));
+
+      // Upload only the newly added photos
+      const newUrls: string[] = [];
+      if (userId) {
+        for (const media of newMedia) {
+          try {
+            const base64Data = await uriToBase64(media.uri);
+            if (!base64Data || base64Data.length === 0) continue;
+            const mimeType = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
+            const ext = media.type === 'video' ? 'mp4' : 'jpg';
+            const fileName = `media-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+            const mediaUrl = await uploadRunMedia(userId, base64Data, fileName, mimeType);
+            newUrls.push(mediaUrl);
+          } catch {
+            continue;
+          }
+        }
+      }
+
+      const { error } = await supabase
+        .from('runs')
+        .update({
+          title: trimmedTitle,
+          description: runEditDescription.trim() || null,
+          media_urls: [...existingUrls, ...newUrls],
+        })
+        .eq('id', runData.id);
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Run post updated successfully.');
+      setRunEditModalVisible(false);
+      onRefresh?.();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to save changes.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ── Add photos for routine edit ──────────────────────────────────────────
+  const handleRoutineEditAddPhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photos.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 0.7,
+      });
+      if (!result.canceled) {
+        setRoutineEditMedia(prev => [...prev, ...result.assets]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image.');
     }
   };
 
@@ -223,9 +377,44 @@ export default function ActivityFeed({
 
     setIsSaving(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      // Split into existing (already on Supabase) vs new local picks
+      const existingUrls = routineEditMedia
+        .filter((m: any) => m.uri.startsWith('http'))
+        .map((m: any) => m.uri);
+
+      const newMedia = routineEditMedia.filter((m: any) => !m.uri.startsWith('http'));
+
+      // Upload only the newly added photos
+      const newUrls: string[] = [];
+      if (userId) {
+        for (const media of newMedia) {
+          try {
+            const base64Data = await uriToBase64(media.uri);
+            if (!base64Data || base64Data.length === 0) continue;
+            const mimeType = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
+            const ext = media.type === 'video' ? 'mp4' : 'jpg';
+            const fileName = `routine-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+            const mediaUrl = await uploadRunMedia(userId, base64Data, fileName, mimeType);
+            newUrls.push(mediaUrl);
+          } catch {
+            continue;
+          }
+        }
+      }
+
+      const allUrls = [...existingUrls, ...newUrls];
+
       const { error } = await supabase
         .from('completed_routines')
-        .update({ caption: trimmedCaption, notes: editNotes.trim() || null })
+        .update({
+          caption: trimmedCaption,
+          notes: editNotes.trim() || null,
+          media_url: allUrls.length > 0 ? allUrls[0] : null,  // backward compat
+          media_urls: allUrls,
+        })
         .eq('id', routineData.id);
 
       if (error) throw error;
@@ -553,17 +742,7 @@ export default function ActivityFeed({
                     <MaterialCommunityIcons name="close" size={28} color={isSaving ? '#555' : '#FFF'} />
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>EDIT WORKOUT</Text>
-                  {/* Save button in header */}
-                  <TouchableOpacity
-                    style={[styles.editSaveHeaderBtn, isSaving && { opacity: 0.5 }]}
-                    onPress={handleSaveRoutineEdit}
-                    disabled={isSaving}
-                  >
-                    {isSaving
-                      ? <ActivityIndicator size="small" color="#000" />
-                      : <Text style={styles.editSaveHeaderBtnText}>Save</Text>
-                    }
-                  </TouchableOpacity>
+                  <View style={{ width: 44 }} />
                 </View>
 
                 {/* Routine type badge */}
@@ -571,6 +750,37 @@ export default function ActivityFeed({
                   <View style={styles.editBadge}>
                     <MaterialCommunityIcons name="dumbbell" size={13} color="#CCFF00" />
                     <Text style={styles.editBadgeText}>{routineData?.routine_type} Routine</Text>
+                  </View>
+                </View>
+
+                {/* Workout Stats Summary (read-only) */}
+                <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                  <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>DURATION</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{formatDuration(routineData?.total_duration || 0)}</Text>
+                    </View>
+                    <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>SETS</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{totalSets}</Text>
+                    </View>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
+                  <View style={{ flexDirection: 'row' }}>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>TOTAL REPS</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{totalReps}</Text>
+                    </View>
+                    {routineData?.xp_earned != null && routineData.xp_earned > 0 && (
+                      <>
+                        <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                        <View style={{ flex: 1, alignItems: 'center' }}>
+                          <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>XP EARNED</Text>
+                          <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>+{routineData.xp_earned}</Text>
+                        </View>
+                      </>
+                    )}
                   </View>
                 </View>
 
@@ -604,6 +814,27 @@ export default function ActivityFeed({
                 />
                 <Text style={styles.editCharCount}>{editNotes.length}/500</Text>
 
+                {/* Photos / Media */}
+                <Text style={[styles.editFieldLabel, { marginTop: 20 }]}>Photos & Media</Text>
+                <View style={styles.runEditMediaGrid}>
+                  {routineEditMedia.map((media: any, index: number) => (
+                    <View key={index} style={styles.runEditMediaItem}>
+                      <Image source={{ uri: media.uri }} style={styles.runEditMediaImage} />
+                      <TouchableOpacity
+                        style={styles.runEditMediaRemoveBtn}
+                        onPress={() => setRoutineEditMedia((prev: any[]) => prev.filter((_: any, i: number) => i !== index))}
+                        disabled={isSaving}
+                      >
+                        <MaterialCommunityIcons name="close" size={14} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.runEditAddPhotoBtn} onPress={handleRoutineEditAddPhoto} disabled={isSaving}>
+                    <MaterialCommunityIcons name="camera-plus" size={24} color="#C8FF00" />
+                    <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginTop: 6 }}>Add Photo</Text>
+                  </TouchableOpacity>
+                </View>
+
                 {/* Divider + read-only stats reminder */}
                 <View style={styles.editDivider} />
                 <Text style={styles.editHint}>
@@ -611,22 +842,190 @@ export default function ActivityFeed({
                   {' '}Exercise data, sets, reps and XP are read-only and cannot be changed.
                 </Text>
 
-                {/* Full-width save button */}
-                <TouchableOpacity
-                  style={[styles.editSaveBtn, isSaving && { opacity: 0.6 }]}
-                  onPress={handleSaveRoutineEdit}
-                  disabled={isSaving}
-                >
-                  {isSaving
-                    ? <ActivityIndicator size="small" color="#000" />
-                    : (
+                {/* Discard + Save buttons */}
+                <View style={styles.editButtonRow}>
+                  <TouchableOpacity
+                    style={styles.editDiscardBtn}
+                    onPress={() => !isSaving && setEditModalVisible(false)}
+                    disabled={isSaving}
+                  >
+                    <Text style={styles.editDiscardBtnText}>Discard Changes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editSaveBtn, isSaving && { opacity: 0.6 }]}
+                    onPress={handleSaveRoutineEdit}
+                    disabled={isSaving}
+                  >
+                    {isSaving
+                      ? <ActivityIndicator size="small" color="#000" />
+                      : (
+                        <>
+                          <MaterialCommunityIcons name="content-save-outline" size={18} color="#000" />
+                          <Text style={styles.editSaveBtnText}>Save Changes</Text>
+                        </>
+                      )
+                    }
+                  </TouchableOpacity>
+                </View>
+
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </LinearGradient>
+        </Modal>
+
+        {/* ── RUN EDIT MODAL ─────────────────────────────────────────────── */}
+        <Modal
+          visible={runEditModalVisible}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => !isSaving && setRunEditModalVisible(false)}
+        >
+          <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => !isSaving && setRunEditModalVisible(false)}
+                    disabled={isSaving}
+                  >
+                    <MaterialCommunityIcons name="close" size={28} color={isSaving ? '#555' : '#FFF'} />
+                  </TouchableOpacity>
+                  <Text style={styles.modalTitle}>EDIT RUN</Text>
+                  <View style={{ width: 44 }} />
+                </View>
+
+                {/* Run type badge */}
+                <View style={styles.editBadgeRow}>
+                  <View style={styles.editBadge}>
+                    <MaterialCommunityIcons name="run" size={13} color="#CCFF00" />
+                    <Text style={styles.editBadgeText}>{runData?.workout_type || 'Run'}</Text>
+                  </View>
+                </View>
+
+                {/* Run Stats Summary (read-only) */}
+                <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                  <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>DISTANCE</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData?.distance?.toFixed(2)} km</Text>
+                    </View>
+                    <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>PACE</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData?.pace}</Text>
+                    </View>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
+                  <View style={{ flexDirection: 'row' }}>
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>DURATION</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{formatDuration(runData?.duration || 0)}</Text>
+                    </View>
+                    {runData?.elevation_gain != null && runData.elevation_gain > 0 && (
                       <>
-                        <MaterialCommunityIcons name="content-save-outline" size={18} color="#000" />
-                        <Text style={styles.editSaveBtnText}>Save Changes</Text>
+                        <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                        <View style={{ flex: 1, alignItems: 'center' }}>
+                          <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>ELEV. GAIN</Text>
+                          <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.elevation_gain}m</Text>
+                        </View>
                       </>
-                    )
-                  }
-                </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* Route Map */}
+                {runData?.route_map_url && (
+                  <View style={{ marginHorizontal: 20, marginBottom: 20, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
+                    <Image source={{ uri: runData.route_map_url }} style={{ width: '100%', height: 160, borderRadius: 10 }} />
+                  </View>
+                )}
+
+                {/* Title field */}
+                <Text style={styles.editFieldLabel}>Title *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={runEditTitle}
+                  onChangeText={setRunEditTitle}
+                  placeholder="Give your run a title…"
+                  placeholderTextColor="#555"
+                  maxLength={100}
+                  returnKeyType="done"
+                  editable={!isSaving}
+                />
+                <Text style={styles.editCharCount}>{runEditTitle.length}/100</Text>
+
+                {/* Description field */}
+                <Text style={[styles.editFieldLabel, { marginTop: 20 }]}>Description</Text>
+                <TextInput
+                  style={[styles.editInput, styles.editInputMultiline]}
+                  value={runEditDescription}
+                  onChangeText={setRunEditDescription}
+                  placeholder="How did it go? Add notes…"
+                  placeholderTextColor="#555"
+                  maxLength={500}
+                  multiline
+                  numberOfLines={5}
+                  textAlignVertical="top"
+                  editable={!isSaving}
+                />
+                <Text style={styles.editCharCount}>{runEditDescription.length}/500</Text>
+
+                {/* Photos / Media */}
+                <Text style={[styles.editFieldLabel, { marginTop: 20 }]}>Photos & Media</Text>
+                <View style={styles.runEditMediaGrid}>
+                  {runEditMedia.map((media, index) => (
+                    <View key={index} style={styles.runEditMediaItem}>
+                      <Image source={{ uri: media.uri }} style={styles.runEditMediaImage} />
+                      <TouchableOpacity
+                        style={styles.runEditMediaRemoveBtn}
+                        onPress={() => setRunEditMedia(prev => prev.filter((_, i) => i !== index))}
+                        disabled={isSaving}
+                      >
+                        <MaterialCommunityIcons name="close" size={14} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.runEditAddPhotoBtn} onPress={handleRunEditAddPhotos} disabled={isSaving}>
+                    <MaterialCommunityIcons name="camera-plus" size={24} color="#C8FF00" />
+                    <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginTop: 6 }}>Add Photo</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Divider + read-only stats reminder */}
+                <View style={styles.editDivider} />
+                <Text style={styles.editHint}>
+                  <MaterialCommunityIcons name="information-outline" size={12} color="#555" />
+                  {' '}Distance, pace, duration and route data are read-only and cannot be changed.
+                </Text>
+
+                {/* Discard + Save buttons */}
+                <View style={styles.editButtonRow}>
+                  <TouchableOpacity
+                    style={styles.editDiscardBtn}
+                    onPress={() => !isSaving && setRunEditModalVisible(false)}
+                    disabled={isSaving}
+                  >
+                    <Text style={styles.editDiscardBtnText}>Discard Changes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editSaveBtn, isSaving && { opacity: 0.6 }]}
+                    onPress={handleSaveRunEdit}
+                    disabled={isSaving}
+                  >
+                    {isSaving
+                      ? <ActivityIndicator size="small" color="#000" />
+                      : (
+                        <>
+                          <MaterialCommunityIcons name="content-save-outline" size={18} color="#000" />
+                          <Text style={styles.editSaveBtnText}>Save Changes</Text>
+                        </>
+                      )
+                    }
+                  </TouchableOpacity>
+                </View>
 
               </ScrollView>
             </KeyboardAvoidingView>
@@ -721,10 +1120,18 @@ const styles = StyleSheet.create({
   editCharCount: { color: '#444', fontSize: 10, fontFamily: 'Montserrat_500Medium', textAlign: 'right', paddingHorizontal: 20, marginTop: 5 },
   editDivider: { height: 1, backgroundColor: '#222', marginHorizontal: 20, marginTop: 24, marginBottom: 12 },
   editHint: { color: '#555', fontSize: 11, fontFamily: 'Montserrat_400Regular', paddingHorizontal: 20, lineHeight: 16, marginBottom: 24 },
-  editSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C8FF00', borderRadius: 10, paddingVertical: 15, marginHorizontal: 20 },
-  editSaveBtnText: { color: '#000', fontSize: 15, fontFamily: 'Montserrat_800ExtraBold' },
-  editSaveHeaderBtn: { backgroundColor: '#C8FF00', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, minWidth: 64, alignItems: 'center', justifyContent: 'center' },
-  editSaveHeaderBtnText: { color: '#000', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold' },
+  editButtonRow: { flexDirection: 'row', gap: 10, marginHorizontal: 20 },
+  editDiscardBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingVertical: 15, backgroundColor: '#222', borderWidth: 1, borderColor: '#333' },
+  editDiscardBtnText: { color: '#FF4444', fontSize: 13, fontFamily: 'Montserrat_700Bold' },
+  editSaveBtn: { flex: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#C8FF00', borderRadius: 10, paddingVertical: 15 },
+  editSaveBtnText: { color: '#000', fontSize: 13, fontFamily: 'Montserrat_800ExtraBold' },
+
+  // RUN EDIT MEDIA
+  runEditMediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 20, marginTop: 4 },
+  runEditMediaItem: { position: 'relative', width: 90, height: 90, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#333' },
+  runEditMediaImage: { width: '100%', height: '100%', borderRadius: 10 },
+  runEditMediaRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,68,68,0.9)', alignItems: 'center', justifyContent: 'center' },
+  runEditAddPhotoBtn: { width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)' },
 
   // MENU
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'flex-end' },
