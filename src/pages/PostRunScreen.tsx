@@ -392,9 +392,15 @@ if (isEditing && editingPostId) {
         if (!unlockedSet.has('11') && totalElev >= 250) earnedAchievements.push('11');
         if (!unlockedSet.has('14') && totalElev >= 500) earnedAchievements.push('14');
         
-        if (!unlockedSet.has('9') && elapsed >= 600) earnedAchievements.push('9');
-        if (!unlockedSet.has('12') && elapsed >= 1200) earnedAchievements.push('12');
-        if (!unlockedSet.has('15') && elapsed >= 1800) earnedAchievements.push('15');
+        // PACER: Pace-based (seconds per km) — lower is faster
+        const paceSecsPerKmForAch = distance > 0 ? elapsed / distance : Infinity;
+        if (!unlockedSet.has('9') && paceSecsPerKmForAch <= 600) earnedAchievements.push('9');    // ≤ 10:00/km
+        if (!unlockedSet.has('12') && paceSecsPerKmForAch <= 360) earnedAchievements.push('12');  // ≤ 6:00/km
+        if (!unlockedSet.has('15') && paceSecsPerKmForAch <= 180) earnedAchievements.push('15');  // ≤ 3:00/km
+
+        // Add 1000 XP per achievement earned
+        const achievementXp = earnedAchievements.length * 1000;
+        earnedXp += achievementXp;
 
         // Update profile XP
         const { data: profile } = await supabase

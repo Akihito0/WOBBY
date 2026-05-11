@@ -8,6 +8,7 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
 
   const [matchData, setMatchData] = useState<any>(null);
   const [opponentProfile, setOpponentProfile] = useState<any>(null);
+  const [myProfile, setMyProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // Synchronization states
@@ -103,6 +104,22 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
     }
   };
 
+  // Fetch my own profile for avatar
+  useEffect(() => {
+    const fetchMyProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', user.id)
+          .single();
+        if (data) setMyProfile(data);
+      }
+    };
+    fetchMyProfile();
+  }, []);
+
   const handleStartSet = () => {
     setAmReady(true);
     
@@ -176,7 +193,10 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
 
         {/* YOUR CARD */}
         <LinearGradient colors={['#193845', '#000000']} style={styles.playerCard}>
-          <Image source={require('../assets/profile.png')} style={[styles.avatar, { tintColor: '#fff' }]} />
+          <Image 
+            source={myProfile?.avatar_url ? { uri: myProfile.avatar_url } : require('../assets/user.png')} 
+            style={styles.avatar} 
+          />
           <Text style={styles.playerName}>YOU</Text>
           <View style={styles.scoreBoxYou}>
             <Text style={styles.scoreLabel}>SETS DONE</Text>

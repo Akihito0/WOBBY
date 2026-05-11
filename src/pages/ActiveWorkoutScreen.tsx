@@ -337,8 +337,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const leftElbowAngle = pose ? calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist) : null;
   const rightElbowAngle = pose ? calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist) : null;
 
-  const drawLine = (p1: Point, p2: Point) => {
-    if (p1.conf < 0.2 || p2.conf < 0.2) return null;
+  const drawLine = (p1?: Point, p2?: Point) => {
+    if (!p1 || !p2 || p1.conf < 0.2 || p2.conf < 0.2) return null;
     return <Line key={`${p1.x}-${p1.y}-${p2.x}-${p2.y}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="white" strokeWidth="2" />;
   };
 

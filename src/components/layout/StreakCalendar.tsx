@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 import { fetchStreakData, StreakData } from '../../utils/streakUtils';
 
 type DayState = 'past' | 'today' | 'future';
@@ -53,9 +54,11 @@ const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
   const fireIcon: ImageSourcePropType = require("../../assets/streak.png");
   const [streakData, setStreakData] = React.useState<StreakData>({ streakDates: [], freezeDates: [], currentStreak: 0 });
 
-  React.useEffect(() => {
-    fetchStreakData().then(data => setStreakData(data));
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchStreakData().then(data => setStreakData(data));
+    }, [])
+  );
 
   return (
     <View style={styles.container}>
@@ -80,7 +83,7 @@ const StreakCalendar: React.FC<{ navigation: any }> = ({ navigation }) => {
                 <Image source={fireIcon} style={styles.fireImage} />
                 <Text style={styles.fireNumber}>{streakData.currentStreak}</Text>
               </View>
-              <Text style={styles.weeksLabel}>WEEKS</Text>
+              <Text style={styles.weeksLabel}>DAYS</Text>
             </View>
 
             <View style={styles.daysWrapper}>

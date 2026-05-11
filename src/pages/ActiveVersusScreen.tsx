@@ -55,6 +55,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeData, setChallengeData] = useState<any>(null);
   const userIdRef = useRef<string | null>(null);
+  const [myProfile, setMyProfile] = useState<any>(null);
 
   const [pose, setPose] = useState<Pose | null>(null);
   const [formFeedback, setFormFeedback] = useState<string>('');
@@ -97,6 +98,68 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     };
   }, []);
 
+  // Fetch my own profile for avatar
+  useEffect(() => {
+    const fetchMyProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userIdRef.current = user.id;
+        const { data } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', user.id)
+          .single();
+        if (data) setMyProfile(data);
+      }
+    };
+    fetchMyProfile();
+  }, []);
+
+  // Prevent users from leaving the screen while a match is in progress
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: {preventDefault: () => void; data: {action: any}}) => {
+      // If challengeData is null, the match result hasn't been finalized yet
+      if (!challengeData) {
+        e.preventDefault();
+        
+        Alert.alert(
+          '⚠️ Versus Match In Progress',
+          'You are still in an active versus match. If you leave now, you will forfeit the match. Continue?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Forfeit & Exit',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  stopWebRTC();
+                  
+                  // Declare opponent as winner
+                  const { data } = await supabase.from('versus_battles').select('player1_id, player2_id').eq('id', matchId).single();
+                  const opponentId = data ? (isPlayer1 ? data.player2_id : data.player1_id) : null;
+
+                  await supabase
+                    .from('versus_battles')
+                    .update({
+                      status: 'forfeited',
+                      winner_id: opponentId,
+                    })
+                    .eq('id', matchId);
+                  
+                  navigation.dispatch(e.data.action);
+                } catch (error) {
+                  navigation.dispatch(e.data.action);
+                }
+              }
+            }
+          ]
+        );
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, challengeData]);
+
   // ─── 2. WEBRTC & AI CAMERA SETUP ───
   useEffect(() => {
     startWebRTC(cameraFacing);
@@ -123,7 +186,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       });
       setLocalStream(stream);
 
-      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
+      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL;
       const socket = new WebSocket(serverUrl);
       ws.current = socket;
 
@@ -143,15 +206,11 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         const offer = await pc.current.createOffer({});
         await pc.current.setLocalDescription(offer);
 
-        if (pc.current.iceGatheringState === 'complete') {
-          ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-        } else {
-          // @ts-ignore
-          pc.current.onicegatheringstatechange = () => {
-            if (pc.current?.iceGatheringState === 'complete') {
-              ws.current?.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-            }
-          };
+        // 🚀 TRICKLE ICE: Send offer IMMEDIATELY, don't wait for ICE gathering.
+        // ICE candidates trickle in separately via onicecandidate above.
+        if (ws.current?.readyState === WebSocket.OPEN) {
+          console.log('Sending SDP offer immediately (trickle ICE)');
+          ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
         }
       };
 
@@ -346,13 +405,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     }
   };
 
-  const determineAndSaveWinner = async (localTime: number, remoteTime: number) => {
+  const determineAndSaveWinner = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       userIdRef.current = user.id;
 
-      // WAIT until both players' times are saved to DB (poll with retries)
+      // WAIT until both players' set counts are saved to DB (poll with retries)
       let match: any = null;
       for (let attempt = 0; attempt < 10; attempt++) {
         const { data } = await supabase
@@ -361,58 +420,70 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           .eq('id', matchId)
           .single();
 
-        if (data && data.player1_time > 0 && data.player2_time > 0) {
+        // Both players must have their final set data written
+        if (data && (data.player1_sets > 0 || data.player1_time > 0) && (data.player2_sets > 0 || data.player2_time > 0)) {
           match = data;
           break;
         }
 
-        console.log(`Waiting for both times... attempt ${attempt + 1} (p1=${data?.player1_time}, p2=${data?.player2_time})`);
+        console.log(`Waiting for both players' data... attempt ${attempt + 1}`);
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
       if (!match) {
-        // Fallback: use whatever we have
         const { data } = await supabase.from('versus_battles').select('*').eq('id', matchId).single();
         match = data;
       }
       if (!match) return;
 
-      // Lower cumulative time = faster = winner
-      const p1TotalTime = match.player1_time || 999999;
-      const p2TotalTime = match.player2_time || 999999;
-      const winnerId = p1TotalTime <= p2TotalTime ? match.player1_id : match.player2_id;
-      const iWon = winnerId === user.id;
+      // COMPLETION-BASED WIN LOGIC
+      const p1Completed = (match.player1_sets || 0) >= (match.target_sets || 1);
+      const p2Completed = (match.player2_sets || 0) >= (match.target_sets || 1);
 
-      // Only player1 writes the winner to avoid both overwriting each other
+      let winnerId: string | null = null;
+      let matchStatus = 'completed';
+      let myXp = 0;
+
+      if (p1Completed && p2Completed) {
+        // Both completed all sets — both win!
+        winnerId = null;
+        matchStatus = 'both_won';
+        myXp = 150;
+      } else if (!p1Completed && !p2Completed) {
+        // Neither completed — both lose
+        winnerId = null;
+        matchStatus = 'both_lost';
+        myXp = 25;
+      } else {
+        // Only one completed — they win
+        winnerId = p1Completed ? match.player1_id : match.player2_id;
+        matchStatus = 'completed';
+        const iWon = winnerId === user.id;
+        myXp = iWon ? 150 : 50;
+      }
+
+      const iWon = matchStatus === 'both_won' || winnerId === user.id;
+
+      // Only player1 writes the result to avoid race conditions
       if (isPlayer1) {
         await supabase
           .from('versus_battles')
           .update({
             winner_id: winnerId,
-            status: 'completed'
+            status: matchStatus,
           })
           .eq('id', matchId);
-        console.log('✅ Winner saved:', winnerId === match.player1_id ? 'Player 1' : 'Player 2');
+        console.log('✅ Result saved:', matchStatus);
       } else {
-        // Player 2: wait briefly for Player 1 to write the winner
+        // Player 2: wait briefly for Player 1 to write the result
         await new Promise(resolve => setTimeout(resolve, 2000));
-        const { data: finalMatch } = await supabase.from('versus_battles').select('winner_id').eq('id', matchId).single();
-        if (finalMatch?.winner_id) {
-          const actuallyWon = finalMatch.winner_id === user.id;
-          if (actuallyWon !== iWon) {
-            // Player 1's write is the source of truth
-          }
-        }
       }
 
       // 💰 SAVE XP TO DATABASE
-      const earnedXp = iWon ? 150 : 50;
       const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
-
-      // Save XP to versus_battles row
       await supabase
         .from('versus_battles')
-        .update({ [xpField]: earnedXp })
+        .update({ [xpField]: myXp })
         .eq('id', matchId);
 
       // Add XP to user's profile
@@ -425,9 +496,9 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       if (profile) {
         await supabase
           .from('profiles')
-          .update({ xp: (profile.xp || 0) + earnedXp })
+          .update({ xp: (profile.xp || 0) + myXp })
           .eq('id', user.id);
-        console.log(`💰 Added ${earnedXp} XP to profile (total: ${(profile.xp || 0) + earnedXp})`);
+        console.log(`💰 Added ${myXp} XP to profile (total: ${(profile.xp || 0) + myXp})`);
       }
 
       // Fetch opponent username
@@ -438,21 +509,26 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .eq('id', opponentId)
         .single();
 
-      const totalSecs = localTime;
+      const totalSecs = myTime;
       const hrs = Math.floor(totalSecs / 3600);
       const mins = Math.floor((totalSecs % 3600) / 60);
       const secs = totalSecs % 60;
       const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
+      let statusText = 'DEFEAT';
+      if (matchStatus === 'both_won') statusText = 'BOTH WON';
+      else if (matchStatus === 'both_lost') statusText = 'BOTH LOST';
+      else if (iWon) statusText = 'VICTORY';
+
       setChallengeData({
-        status: iWon ? 'VICTORY' : 'DEFEAT',
+        status: statusText,
         exerciseName: exerciseName,
         reps: targetReps,
         sets: targetSets,
         date: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
         duration: durStr,
         opponent: oppProfile?.username || 'Opponent',
-        xp: iWon ? 150 : 50,
+        xp: myXp,
       });
       setShowResultModal(false);
       setShowChallengeModal(true);
@@ -474,8 +550,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         currentSet: cSet + 1
       });
     } else {
-      // Last set done — determine winner!
-      determineAndSaveWinner(myTime, opponentTime);
+      // Last set done — determine winner based on completion!
+      determineAndSaveWinner();
     }
   };
 
@@ -593,19 +669,23 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
             <View style={styles.resultRow}>
               <View style={styles.resultCol}>
                 <Text style={styles.resultName}>YOU</Text>
-                <Text style={styles.resultTime}>{myTime}s</Text>
+                <Text style={[styles.resultTime, { color: reps >= targetReps ? '#CCFF00' : '#FF4444' }]}>
+                  {reps >= targetReps ? 'COMPLETED ✓' : `${reps}/${targetReps}`}
+                </Text>
               </View>
               <View style={styles.vsCircle}>
                 <Text style={styles.resultVs}>VS</Text>
               </View>
               <View style={styles.resultCol}>
                 <Text style={styles.resultName}>OPPONENT</Text>
-                <Text style={styles.resultTime}>{opponentTime}s</Text>
+                <Text style={[styles.resultTime, { color: opponentReps >= targetReps ? '#CCFF00' : '#FF4444' }]}>
+                  {opponentReps >= targetReps ? 'COMPLETED ✓' : `${opponentReps}/${targetReps}`}
+                </Text>
               </View>
             </View>
 
-            <Text style={[styles.winnerMsg, { color: myTime < opponentTime ? '#CCFF00' : '#FF4444' }]}>
-              {myTime < opponentTime ? 'YOU WON THIS SET! 🎉' : (myTime === opponentTime ? "IT'S A TIE! 🤝" : 'OPPONENT WON THIS SET! 📉')}
+            <Text style={[styles.winnerMsg, { color: reps >= targetReps ? '#CCFF00' : '#FF4444' }]}>
+              {reps >= targetReps ? 'SET COMPLETED! 🎉' : 'SET INCOMPLETE 📉'}
             </Text>
 
             <TouchableOpacity style={styles.nextButton} onPress={handleNextStep}>

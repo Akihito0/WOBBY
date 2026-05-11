@@ -338,7 +338,7 @@ const PerformanceScreen = () => {
 
       interface ChallengeLog {
         id: string;
-        status: 'VICTORY' | 'DEFEAT';
+        status: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST';
         name: string;
         r: string | number;
         s: string | number;
@@ -356,10 +356,15 @@ const PerformanceScreen = () => {
         battles.forEach(b => {
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
-          const isVictory = b.winner_id === userId;
+          
+          let derivedStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' = 'DEFEAT';
+          if (b.status === 'both_won') derivedStatus = 'BOTH WON';
+          else if (b.status === 'both_lost') derivedStatus = 'BOTH LOST';
+          else if (b.winner_id === userId) derivedStatus = 'VICTORY';
+
           merged.push({
             id: `battle_${b.id}`,
-            status: isVictory ? 'VICTORY' : 'DEFEAT',
+            status: derivedStatus,
             name: b.exercise_name || 'VERSUS BATTLE',
             r: isPlayer1 ? b.player1_reps : b.player2_reps,
             s: isPlayer1 ? b.player1_sets : b.player2_sets,
@@ -665,7 +670,7 @@ const PerformanceScreen = () => {
 
           <View style={styles.challengeLogsContainer}>
             {challengeLogs.length > 0 ? challengeLogs.map((item) => {
-              const isVictory = item.status === 'VICTORY';
+              const isVictory = item.status === 'VICTORY' || item.status === 'BOTH WON';
               
               return (
                 <TouchableOpacity 
@@ -691,8 +696,8 @@ const PerformanceScreen = () => {
                       styles.resultBanner, 
                       { backgroundColor: isVictory ? '#416F00' : '#740000' }
                     ]}>
-                      <Text style={styles.resultText}>
-                        {isVictory ? 'WIN' : 'LOSE'}
+                      <Text style={[styles.resultText, item.status.includes('BOTH') && { fontSize: 10, paddingHorizontal: 2 }]}>
+                        {item.status}
                       </Text>
                     </View>
 
