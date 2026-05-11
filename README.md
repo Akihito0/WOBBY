@@ -1,6 +1,6 @@
-<img src="wbby.png" width="100%" alt="Wobby Header">
+<img src="src/assets/wbby.png" width="100%" alt="Wobby Header">
 
-**Wobby** is Wobby is a mobile-based fitness ecosystem designed to solve two of the biggest problems in home-based exercise: high injury risk and low user retention. Most fitness apps act as passive video libraries, but Wobby uses Computer Vision and Biometric Data to turn the smartphone into an active training partner. By analyzing movement through the device’s camera, the app provides real-time form correction, ensuring users train safely without needing a physical coach.
+**Wobby** is a mobile-based fitness ecosystem designed to solve two of the biggest problems in home-based exercise: high injury risk and low user retention. Most fitness apps act as passive video libraries, but Wobby uses Computer Vision and Biometric Data to turn the smartphone into an active training partner. By analyzing movement through the device’s camera, the app provides real-time form correction, ensuring users train safely without needing a physical coach.
 # Features
 
 # Tech Stack
@@ -16,9 +16,9 @@
 | IDK| IDK | IDK |
 
 # Developer Profiles
- **Noah Gabriel R. Suan** -     Project Manager & Full Stack Developer >> [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Akihito0) </br>
- **Cliff Edward E. Alsonado** - Full Stack Developer >> [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Klipshin) </br>
- **Nesserain C. De La Cruz** -  Full Stack Developer >> [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/aptrai) </br>
- **Clark Lourence L. Jaca** -   Full Stack Developer >> [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/clark2405) </br>
- **Tweetie M. Zapanta** -       UI/UX Designer & Full Stack Developer >> [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Twitzie) </br>
+ [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Akihito0) >> **Noah Gabriel R. Suan** -     Project Manager & Full Stack Developer </br>
+ [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Klipshin) >> **Cliff Edward E. Alsonado** - Full Stack Developer </br>
+ [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/aptrai) >> **Nesserain C. De La Cruz** -  Full Stack Developer </br>
+ [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/clark2405) >> **Clark Lourence L. Jaca** -   Full Stack Developer </br>
+ [![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Twitzie) >> **Tweetie M. Zapanta** -       UI/UX Designer & Full Stack Developer </br>
 
