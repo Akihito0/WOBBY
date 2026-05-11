@@ -298,6 +298,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
       ]);
 
       if (error) {
+        console.error('❌ Supabase insert error:', JSON.stringify(error));
         Alert.alert('Error', `Failed to save workout: ${error.message}`);
         setIsSaving(false);
         return;
@@ -428,7 +429,9 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         {/* MEDIA UPLOAD SECTION */}
         <TouchableOpacity style={styles.addPhotosBtn} activeOpacity={0.7} onPress={handlePickImage}>
           <Text style={{ fontSize: 24, marginBottom: 8 }}>📷</Text>
-          <Text style={styles.addPhotosBtnText}>Add Photos</Text>
+          <Text style={{ color: '#1F78FF', fontSize: 12, fontFamily: 'Montserrat-SemiBold' }}>
+            Add Photos / Videos
+          </Text>
         </TouchableOpacity>
 
         {selectedMedia.length > 0 && (
@@ -437,7 +440,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
               <View key={index} style={styles.mediaPreviewContainer}>
                 <Image source={{ uri: media.uri }} style={styles.mediaPreviewImage} />
                 <TouchableOpacity style={styles.removeMediaBtn} onPress={() => removeMediaItem(index)}>
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>✕</Text>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -699,45 +702,43 @@ const styles = StyleSheet.create({
     height: 120,
   },
   addPhotosBtn: {
-    height: 100,
+    height: 120,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#1F78FF',
     borderStyle: 'dashed',
-    borderRadius: 12,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
-    backgroundColor: '#1E1E1E',
-  },
-  addPhotosBtnText: {
-    color: '#888',
-    fontFamily: 'Montserrat-Bold',
-    fontSize: 12,
+    backgroundColor: '#1A1A1A',
   },
   mediaPreviewScroll: {
     marginBottom: 30,
   },
   mediaPreviewContainer: {
-    marginRight: 12,
     position: 'relative',
     width: 120,
     height: 120,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 12,
   },
   mediaPreviewImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 12,
+    borderRadius: 8,
   },
   removeMediaBtn: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
+    top: -8,
+    right: -8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FF4444',
     alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   },
   exerciseCardGradient: {
     borderRadius: 12,

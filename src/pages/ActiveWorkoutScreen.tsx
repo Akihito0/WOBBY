@@ -10,31 +10,21 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { mediaDevices, RTCPeerConnection, RTCView, RTCSessionDescription } from 'react-native-webrtc';
+import { RTCView } from 'react-native-webrtc';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, CommonActions } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, CommonActions } from '@react-navigation/native';
 import Svg, { Line, Circle } from 'react-native-svg';
 import Modal from 'react-native-modal';
 
 // Health context and native module
 import { useHealth } from '../context/HealthContext';
 import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
+import { webrtcManager, Pose } from '../services/webrtcManager';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type Point = { x: number; y: number; conf: number };
-export type Pose = {
-  leftShoulder: Point;
-  rightShoulder: Point;
-  leftElbow: Point;
-  rightElbow: Point;
-  leftWrist: Point;
-  rightWrist: Point;
-  leftHip: Point;
-  rightHip: Point;
-  leftKnee: Point;
-  rightKnee: Point;
-};
+export type { Pose } from '../services/webrtcManager';
 
 const calculateAngle = (A: Point | undefined, B: Point | undefined, C: Point | undefined) => {
   if (!A || !B || !C || A.conf < 0.3 || B.conf < 0.3 || C.conf < 0.3) return null;
@@ -48,6 +38,8 @@ const COLLAPSED_HEIGHT = 140;
 const EXPANDED_HEIGHT = 190;
 
 export default function ActiveWorkoutScreen({ navigation, route }: any) {
+  const isFocused = useIsFocused();
+
   // Heart Rate States
   const { heartRate: contextHR } = useHealth();
   const [activeHR, setActiveHR] = useState<number | null>(null);
@@ -55,7 +47,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
   const [localStream, setLocalStream] = useState<any>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(webrtcManager.isConnected);
 
   const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
   const [isResting, setIsResting] = useState(false);
@@ -66,16 +58,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [formFeedback, setFormFeedback] = useState<string>('');
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [showFinishedModal, setShowFinishedModal] = useState(false);
-  const [isServerReady, setIsServerReady] = useState(false); // 🔥 Loading overlay until AI connects
+  const [isServerReady, setIsServerReady] = useState(webrtcManager.isServerReady);
 
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const lastRepTimeRef = useRef<number>(0);
   const consecutiveGoodFormFrames = useRef<number>(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const ws = useRef<WebSocket | null>(null);
-  const pc = useRef<RTCPeerConnection | null>(null);
 
   // Aggressive 2-second Polling for Live Heart Rate
   useEffect(() => {
@@ -116,162 +105,50 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     max: sessionHRData.length > 0 ? Math.max(...sessionHRData) : 0,
   };
 
+  // ─── WebRTC Manager Integration ──────────────────────────────────────────
+  // Connect on first mount; persist connection across navigations.
   useEffect(() => {
-    startWebRTC(cameraFacing);
-    return () => stopWebRTC();
+    webrtcManager.connect(cameraFacing);
   }, [cameraFacing]);
 
-  const stopWebRTC = () => {
-    if (ws.current) ws.current.close();
-    if (pc.current) pc.current.close();
-    if (localStream) {
-      localStream.getTracks().forEach((t: any) => t.stop());
-      setLocalStream(null);
-    }
-    setIsConnected(false);
-  };
-
-  const startWebRTC = async (facing: 'front' | 'back') => {
-    stopWebRTC();
-    try {
-      const isFront = facing === 'front';
-      const stream = await mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: isFront ? 'user' : 'environment',
-          frameRate: 20,
-          width: 480,
-          height: 360
-        }
+  // Register/unregister callbacks when screen is focused
+  useEffect(() => {
+    if (isFocused) {
+      // Register pose callback — only process poses when this screen is focused
+      webrtcManager.registerPoseCallback((newPose) => {
+        setPose(newPose);
       });
-      setLocalStream(stream);
 
-      // Connect directly using Environment Variables (ngrok or Wi-Fi)
-      const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
-      console.log(`Connecting instantly to signaling server at: ${serverUrl}`);
-
-      // Adding headers to bypass ngrok free tier interstitial warnings which block WebSockets
-      const socket = new (WebSocket as any)(serverUrl, null, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true',
-          'User-Agent': 'WobbyApp/1.0'
-        }
+      // Register status callback
+      webrtcManager.registerStatusCallback(({ isConnected: conn, isServerReady: ready }) => {
+        setIsConnected(conn);
+        setIsServerReady(ready);
       });
-      ws.current = socket;
 
-      socket.onopen = async () => {
-        setIsConnected(true);
-        console.log("WebSocket Connected!");
+      // Register stream callback
+      webrtcManager.registerStreamCallback((stream) => {
+        setLocalStream(stream);
+      });
 
-        pc.current = new RTCPeerConnection({
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-          ]
-        }) as any;
-
-        if (!pc.current) return;
-
-        (pc.current as any).onicecandidate = (event: any) => {
-          if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({
-              type: 'ice-candidate',
-              candidate: event.candidate,
-            }));
-          }
-        };
-
-        stream.getTracks().forEach((track: any) => pc.current?.addTrack(track, stream));
-
-        const offer = await pc.current.createOffer({});
-        await pc.current.setLocalDescription(offer);
-
-        const sendSDP = () => {
-          if (ws.current?.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-          }
-        };
-
-        if (pc.current.iceGatheringState === 'complete') {
-          sendSDP();
-        } else {
-          // @ts-ignore
-          pc.current.onicegatheringstatechange = () => {
-            if (pc.current?.iceGatheringState === 'complete') sendSDP();
-          };
-        }
-      };
-
-      socket.onerror = (e) => {
-        console.log('WebSocket Error:', e);
-      };
-
-      socket.onclose = () => {
-        setIsConnected(false);
-      };
-
-      socket.onmessage = async (e) => {
-        const data = JSON.parse(e.data);
-        if (data.type === 'answer') {
-          await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
-        } else if (data.type === 'pose') {
-          if (!data.landmarks || data.landmarks.length < 33) return;
-
-          const lm = data.landmarks;
-
-          // Using MediaPipe landmark format mapping
-          const parsePoint = (i: number) => {
-            // Note: Mediapipe WebRTC stream coordinates are normalized [0, 1]
-            let x = isFront ? (1 - lm[i].x) : lm[i].x;
-            return { x: x * SCREEN_WIDTH, y: lm[i].y * SCREEN_HEIGHT, conf: lm[i].visibility };
-          };
-
-          const parsedPose: Pose = {
-            leftShoulder: parsePoint(11),
-            rightShoulder: parsePoint(12),
-            leftElbow: parsePoint(13),
-            rightElbow: parsePoint(14),
-            leftWrist: parsePoint(15),
-            rightWrist: parsePoint(16),
-            leftHip: parsePoint(23),
-            rightHip: parsePoint(24),
-            leftKnee: parsePoint(25),
-            rightKnee: parsePoint(26),
-          };
-
-          // Exponential moving average for smoothness
-          setPose((prevPose) => {
-            if (!isServerReady) setIsServerReady(true); // 🔥 First pose received = server is ready!
-            if (!prevPose) return parsedPose;
-            const ALPHA = 0.5;
-            const smooth = (curr: Point, prev: Point): Point => {
-              if (curr.conf < 0.15) return { ...prev, conf: prev.conf * 0.85 };
-              return {
-                x: prev.x + ALPHA * (curr.x - prev.x),
-                y: prev.y + ALPHA * (curr.y - prev.y),
-                conf: curr.conf,
-              };
-            };
-            return {
-              leftShoulder: smooth(parsedPose.leftShoulder, prevPose.leftShoulder),
-              rightShoulder: smooth(parsedPose.rightShoulder, prevPose.rightShoulder),
-              leftElbow: smooth(parsedPose.leftElbow, prevPose.leftElbow),
-              rightElbow: smooth(parsedPose.rightElbow, prevPose.rightElbow),
-              leftWrist: smooth(parsedPose.leftWrist, prevPose.leftWrist),
-              rightWrist: smooth(parsedPose.rightWrist, prevPose.rightWrist),
-              leftHip: smooth(parsedPose.leftHip, prevPose.leftHip),
-              rightHip: smooth(parsedPose.rightHip, prevPose.rightHip),
-              leftKnee: smooth(parsedPose.leftKnee, prevPose.leftKnee),
-              rightKnee: smooth(parsedPose.rightKnee, prevPose.rightKnee),
-            };
-          });
-        }
-      };
-
-    } catch (err) {
-      console.log('WebRTC Error:', err);
+      // Sync current state from manager
+      setIsConnected(webrtcManager.isConnected);
+      setIsServerReady(webrtcManager.isServerReady);
+      if (webrtcManager.localStream) {
+        setLocalStream(webrtcManager.localStream);
+      }
+    } else {
+      // When screen loses focus, unregister callbacks so pose/rep processing stops
+      webrtcManager.unregisterPoseCallback();
+      webrtcManager.unregisterStatusCallback();
+      webrtcManager.unregisterStreamCallback();
     }
-  };
+
+    return () => {
+      webrtcManager.unregisterPoseCallback();
+      webrtcManager.unregisterStatusCallback();
+      webrtcManager.unregisterStreamCallback();
+    };
+  }, [isFocused]);
 
   const exerciseId = route.params?.exerciseId;
   const setId = route.params?.setId;
@@ -319,7 +196,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   };
 
   useEffect(() => {
-    if (!isWorkoutStarted || isResting || !pose) return;
+    if (!isFocused || !isWorkoutStarted || isResting || !pose) return;
 
     const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
     const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
@@ -405,10 +282,12 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         }
       }
     }
-  }, [pose, isWorkoutStarted, isResting, exerciseName, reps, targetReps]);
+  }, [pose, isWorkoutStarted, isResting, exerciseName, reps, targetReps, isFocused]);
 
   const toggleCameraFacing = () => {
-    setCameraFacing(c => c === 'back' ? 'front' : 'back');
+    const newFacing = cameraFacing === 'back' ? 'front' : 'back';
+    setCameraFacing(newFacing);
+    webrtcManager.connect(newFacing);
   };
 
   const formatTime = (s: number) => {
@@ -441,7 +320,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     if (reps < targetReps) {
       setShowIncompleteModal(true);
     } else {
-      stopWebRTC();
+      // Don't disconnect — connection persists for next set
       navigateBack(false);
     }
   };
@@ -576,7 +455,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                       })
                     );
                   };
-                  stopWebRTC();
+                  // Don't disconnect — connection persists for next set
                   navigateBack(true);
                 }}
                 activeOpacity={0.8}
@@ -654,7 +533,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                       })
                     );
                   };
-                  stopWebRTC();
+                  // Don't disconnect — connection persists for next set
                   navigateBack(false);
                 }}
                 activeOpacity={0.8}

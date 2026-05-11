@@ -20,6 +20,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
 import { loadUserRoutine, getDefaultExercises, RoutineExercise, RoutineType } from '../services/routineService';
+import { webrtcManager } from '../services/webrtcManager';
 
 let persistedExercises: Exercise[] | null = null;
 let persistedRoutineType: string | null = null;
@@ -97,6 +98,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
                 persistedExercises = null;
                 persistedRoutineType = null;
                 persistedElapsedSeconds = 0;
+                webrtcManager.disconnect();
                 navigation.reset({
                   index: 1,
                   routes: [
@@ -587,6 +589,9 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
           // Reset persisted state so next workout starts fresh
           persistedExercises = null;
           persistedElapsedSeconds = 0;
+
+          // Disconnect WebRTC — workout session is over
+          webrtcManager.disconnect();
 
           navigation.navigate('WorkoutSummaryScreen', { 
             exercises: performedExercises, 
