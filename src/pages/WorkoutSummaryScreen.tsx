@@ -273,6 +273,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           caption: workoutTitle.trim(),
           notes: workoutNotes.trim(),
           media_url: uploadedImageUrl,
+          media_urls: uploadedImageUrl ? [uploadedImageUrl] : [],
           total_duration: elapsedSeconds,
           exercises_data: exercises,
           xp_earned: xpCalculation.total,
