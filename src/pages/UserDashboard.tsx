@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -24,16 +24,18 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../supabase";
 
 // ─── COMPONENT ─────────────────────────────────────────────────────────────
-export default function UserDashboard() {
+export default function UserDashboard({ route }: any) {
+  const prefetched = route?.params?.prefetchedData;
   const [bmiModalVisible, setBmiModalVisible] = useState(false);
   const [refreshStats, setRefreshStats] = useState(0);
-  const [username, setUsername] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [username, setUsername] = useState(prefetched?.username ?? '');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(prefetched?.avatarUrl ?? null);
 
   // Merged list of runs and routines, sorted newest-first.
   // Each entry: { kind: 'run' | 'routine', data, timestamp }
-  const [posts, setPosts] = useState<Array<{ kind: 'run' | 'routine'; data: any; timestamp: number }>>([]);
+  const [posts, setPosts] = useState<Array<{ kind: 'run' | 'routine'; data: any; timestamp: number }>>(prefetched?.posts ?? []);
   const navigation = useNavigation<any>();
+  const hasUsedPrefetchRef = useRef(!!prefetched);
 
   const [fontsLoaded] = useFonts({
     Montserrat_900Black,
@@ -107,6 +109,11 @@ export default function UserDashboard() {
 
   useFocusEffect(
     useCallback(() => {
+      // Skip the first fetch if we already have prefetched data
+      if (hasUsedPrefetchRef.current) {
+        hasUsedPrefetchRef.current = false;
+        return;
+      }
       fetchProfile();
       fetchLatestActivity();
     }, [fetchProfile, fetchLatestActivity])

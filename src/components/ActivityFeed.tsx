@@ -54,6 +54,18 @@ const formatDate = (dateString: string): string => {
   });
 };
 
+// Normalize legacy pace format (e.g. 5'30") to Strava-style (5:30)
+const normalizePace = (pace: string | undefined): string => {
+  if (!pace) return '--:--';
+  // Already in mm:ss format
+  if (/^\d+:\d{2}$/.test(pace)) return pace;
+  // Legacy format like 5'30"
+  const legacy = pace.match(/^(\d+)'(\d{2})"?$/);
+  if (legacy) return `${legacy[1]}:${legacy[2]}`;
+  // Fallback: return as-is
+  return pace;
+};
+
 const uriToBase64 = async (uri: string): Promise<string | null> => {
   try {
     return new Promise((resolve, reject) => {
@@ -98,6 +110,9 @@ interface RunData {
   min_elevation?: number;
   max_elevation?: number;
   route_map_url?: string;
+  xp_earned?: number;
+  xp_breakdown?: { base: number; long_distance_bonus: number; elevation_bonus: number; pace_bonus: number };
+  earned_achievements?: string[];
 }
 
 interface RoutineData {
@@ -475,7 +490,7 @@ export default function ActivityFeed({
               </View>
               <View style={styles.statItem}>
                 <Text style={[styles.statLabel, { textAlign: 'right' }]}>Pace</Text>
-                <Text style={[styles.statValue, { textAlign: 'right', color: '#CCFF00' }]}>{runData?.pace}</Text>
+                <Text style={[styles.statValue, { textAlign: 'right', color: '#CCFF00' }]}>{normalizePace(runData?.pace)}</Text>
               </View>
             </>
           )}
@@ -694,26 +709,101 @@ export default function ActivityFeed({
                 <>
                   {runData.route_map_url && <Image source={{ uri: runData.route_map_url }} style={styles.modalMapImage} />}
 
-                  <View style={styles.modalStatsGrid}>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Distance</Text>
-                      <Text style={styles.modalStatValue}>{runData.distance.toFixed(2)}</Text>
-                      <Text style={styles.modalStatUnit}>km</Text>
+                  <Text style={styles.modalSectionLabel}>Run Summary</Text>
+                  <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>DISTANCE</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.distance.toFixed(2)} <Text style={{ fontSize: 12 }}>km</Text></Text>
+                      </View>
+                      <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>AVG PACE</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{normalizePace(runData.pace)} <Text style={{ fontSize: 12 }}>/km</Text></Text>
+                      </View>
                     </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Duration</Text>
-                      <Text style={styles.modalStatValue}>{formatDuration(duration)}</Text>
+                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
+                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>MOVING TIME</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{formatDuration(duration)}</Text>
+                      </View>
+                      <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>ELEVATION GAIN</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.elevation_gain || 0} <Text style={{ fontSize: 12 }}>m</Text></Text>
+                      </View>
                     </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Pace</Text>
-                      <Text style={styles.modalStatValue}>{runData.pace}</Text>
-                      <Text style={styles.modalStatUnit}>/km</Text>
-                    </View>
-                    <View style={styles.modalStatBox}>
-                      <Text style={styles.modalStatLabel}>Mode</Text>
-                      <Text style={styles.modalStatValue}>{runData.workout_type || 'Solo'}</Text>
+                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
+                    <View style={{ flexDirection: 'row' }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>MAX ELEVATION</Text>
+                        <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.max_elevation || 0} <Text style={{ fontSize: 12 }}>m</Text></Text>
+                      </View>
+                      {runData.xp_earned != null && runData.xp_earned > 0 && (
+                        <>
+                          <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                          <View style={{ flex: 1, alignItems: 'center' }}>
+                            <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>XP EARNED</Text>
+                            <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>+{runData.xp_earned}</Text>
+                          </View>
+                        </>
+                      )}
                     </View>
                   </View>
+
+                  {/* XP Breakdown Transparency */}
+                  {runData.xp_breakdown && runData.xp_earned != null && runData.xp_earned > 0 && (
+                    <>
+                      <Text style={styles.modalSectionLabel}>XP Calculation</Text>
+                      <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
+                        <Text style={{ color: '#CCFF00', fontSize: 24, fontFamily: 'Montserrat_900Black', marginBottom: 12 }}>+{runData.xp_earned} XP</Text>
+                        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 10 }} />
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Base XP ({runData.distance.toFixed(2)} km)</Text>
+                          <Text style={{ color: '#FFF', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>{runData.xp_breakdown.base}</Text>
+                        </View>
+                        {runData.xp_breakdown.long_distance_bonus > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Long Distance Bonus</Text>
+                            <Text style={{ color: '#34D399', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{runData.xp_breakdown.long_distance_bonus}</Text>
+                          </View>
+                        )}
+                        {runData.xp_breakdown.elevation_bonus > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Elevation Bonus</Text>
+                            <Text style={{ color: '#34D399', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{runData.xp_breakdown.elevation_bonus}</Text>
+                          </View>
+                        )}
+                        {runData.xp_breakdown.pace_bonus > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium' }}>Pace Bonus</Text>
+                            <Text style={{ color: '#FFD700', fontSize: 11, fontFamily: 'Montserrat_700Bold' }}>+{runData.xp_breakdown.pace_bonus}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* Achievements Unlocked in this run */}
+                  {runData.earned_achievements && runData.earned_achievements.length > 0 && (
+                    <>
+                      <Text style={styles.modalSectionLabel}>Achievements Unlocked</Text>
+                      {runData.earned_achievements.map((id: string) => {
+                        const badge = ACHIEVEMENT_DATA.find((a) => a.id === id);
+                        if (!badge) return null;
+                        return (
+                          <View key={id} style={[styles.exerciseBreakdownCard, { flexDirection: 'row', alignItems: 'center', gap: 14, borderColor: 'rgba(204,255,0,0.15)' }]}>
+                            <Image source={badge.image} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#CCFF00', fontSize: 14, fontFamily: 'Montserrat_800ExtraBold' }}>{badge.name}</Text>
+                              <Text style={{ color: '#AAA', fontSize: 11, fontFamily: 'Montserrat_500Medium', marginTop: 3 }}>{badge.subtext}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               ) : null}
 
@@ -915,7 +1005,7 @@ export default function ActivityFeed({
                     <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
                     <View style={{ flex: 1, alignItems: 'center' }}>
                       <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>PACE</Text>
-                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData?.pace}</Text>
+                      <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{normalizePace(runData?.pace)}</Text>
                     </View>
                   </View>
                   <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 16 }} />
@@ -1132,6 +1222,15 @@ const styles = StyleSheet.create({
   runEditMediaImage: { width: '100%', height: '100%', borderRadius: 10 },
   runEditMediaRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,68,68,0.9)', alignItems: 'center', justifyContent: 'center' },
   runEditAddPhotoBtn: { width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)' },
+
+  // STRAVA-STYLE RUN DETAIL STATS
+  stravaStatsCard: { marginHorizontal: 20, marginBottom: 20, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, paddingVertical: 16, paddingHorizontal: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  stravaStatsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  stravaStatItem: { flex: 1, paddingVertical: 6 },
+  stravaStatLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 },
+  stravaStatValue: { color: '#FFF', fontSize: 16, fontFamily: 'Montserrat_800ExtraBold' },
+  stravaStatUnit: { color: '#888', fontSize: 12, fontFamily: 'Montserrat_500Medium' },
+  stravaStatsDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 4 },
 
   // MENU
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'flex-end' },
