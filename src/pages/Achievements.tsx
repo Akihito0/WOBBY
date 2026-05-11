@@ -52,7 +52,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
    {
     id: '4',
     name: 'Dips Dynamo',
-    subtext: 'Completing 50 repetitions of tricep dips in a single session.',
+    subtext: 'Completing a cumulative total of 500 tricep dips.',
     xp: 1000,
     category: '   Bodyweight Mastery',
     image: require('../assets/dips_dynamo.png'),
@@ -92,7 +92,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
   {
     id: '9',
     name: 'The Pacer I ',
-    subtext: 'Maintaining your target pace for 10 minutes.',
+    subtext: 'Achieving an average pace of 10:00/km or faster in a single run.',
     xp: 1000,
     category: '   Strides & Summits',
     image: require('../assets/pacerI.png'),
@@ -116,7 +116,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
    {
     id: '12',
     name: 'The Pacer II ',
-    subtext: 'Maintaining your target pace for 20 minutes.',
+    subtext: 'Achieving an average pace of 6:00/km or faster in a single run.',
     xp: 1000,
     category: '   Strides & Summits',
     image: require('../assets/pacerII.png'),
@@ -140,7 +140,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
    {
     id: '15',
     name: 'The Pacer III ',
-    subtext: 'Maintaining your target pace for 30+ minutes.',
+    subtext: 'Achieving an average pace of 3:00/km or faster in a single run.',
     xp: 1000,
     category: '   Strides & Summits',
     image: require('../assets/pacerIII.png'),
@@ -169,14 +169,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Hybrid Health & Biometrics',
     image: require('../assets/bmi_voyager.png'),
   },
-  {
-    id: '19',
-    name: 'Heart Rate Hero',
-    subtext: 'Maintaining a target heart rate zone (tracked via API) for the duration of a session.',
-    xp: 1000,
-    category: '   Hybrid Health & Biometrics',
-    image: require('../assets/heart_rate_hero.png'),
-  },
+
   {
     id: '20',
     name: '7 - Day Streak',

@@ -252,7 +252,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
 
         const newUnlocks: string[] = [];
         if (!unlockedSet.has('3') && (newExerciseTotals['Push Ups'] || 0) >= 1000) newUnlocks.push('3');
-        if (!unlockedSet.has('4') && (currentExerciseTotals['Tricep Dips'] || 0) >= 50) newUnlocks.push('4');
+        if (!unlockedSet.has('4') && (newExerciseTotals['Tricep Dips'] || 0) >= 500) newUnlocks.push('4');
         if (!unlockedSet.has('5') && (newExerciseTotals['Squats'] || 0) >= 500) newUnlocks.push('5');
         if (!unlockedSet.has('6') && (newExerciseTotals['Lunges'] || 0) >= 100) newUnlocks.push('6');
 
@@ -313,9 +313,12 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           .single();
 
         if (profile) {
+          // Add achievement XP (1000 per unlock) on top of workout XP
+          const achievementXp = earnedAchievementIds.length * 1000;
+          const totalXp = xpCalculation.total + achievementXp;
           await supabase
             .from('profiles')
-            .update({ xp: (profile.xp || 0) + xpCalculation.total })
+            .update({ xp: (profile.xp || 0) + totalXp })
             .eq('id', session.user.id);
         }
       } catch (xpErr) {

@@ -154,7 +154,46 @@ const BMIModal: React.FC<BMIModalProps> = ({ isVisible, onClose, onBMIUpdated })
       }
 
       setCurrentBMI(newBMI);
-      Alert.alert('Success', `BMI updated to ${newBMI}`);
+
+      // 🏆 Check for BMI Voyager Achievement (ID 18) — one-time
+      try {
+        const { data: existing } = await supabase
+          .from('user_achievements')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('achievement_name', '18')
+          .single();
+
+        if (!existing) {
+          await supabase.from('user_achievements').insert([{
+            user_id: user.id,
+            achievement_name: '18',
+            unlocked_at: new Date().toISOString(),
+          }]);
+
+          // Award 1000 XP
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('xp')
+            .eq('id', user.id)
+            .single();
+
+          if (profile) {
+            await supabase
+              .from('profiles')
+              .update({ xp: (profile.xp || 0) + 1000 })
+              .eq('id', user.id);
+          }
+
+          Alert.alert('🏆 Achievement Unlocked!', 'BMI Voyager — You recorded your first BMI measurement! +1000 XP');
+        } else {
+          Alert.alert('Success', `BMI updated to ${newBMI}`);
+        }
+      } catch (achErr) {
+        console.log('Achievement check error (non-critical):', achErr);
+        Alert.alert('Success', `BMI updated to ${newBMI}`);
+      }
+
       onBMIUpdated?.();
       fetchUserData(); // Refresh data
     } catch (error: any) {

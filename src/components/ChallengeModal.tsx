@@ -5,7 +5,7 @@ interface ChallengeModalProps {
   visible: boolean;
   onClose: () => void;
   data: {
-    status: 'VICTORY' | 'DEFEAT';
+    status: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST';
     exerciseName: string;
     reps: number | string;
     sets: number | string;
@@ -19,7 +19,7 @@ interface ChallengeModalProps {
 const ChallengeModal: React.FC<ChallengeModalProps> = ({ visible, onClose, data }) => {
   if (!data) return null;
 
-  const isVictory = data.status === 'VICTORY';
+  const isVictory = data.status === 'VICTORY' || data.status === 'BOTH WON';
 
   // Dynamic Theme based on victory/defeat
   const theme = {
@@ -36,7 +36,7 @@ const ChallengeModal: React.FC<ChallengeModalProps> = ({ visible, onClose, data 
           
           {/* Status Header */}
           <Text style={[styles.statusTitle, { color: theme.title }]}>
-            {data.status === 'VICTORY' ? 'VICTORY' : 'DEFEAT'}
+            {data.status}
           </Text>
 
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />

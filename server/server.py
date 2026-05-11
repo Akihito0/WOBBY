@@ -99,6 +99,9 @@ async def handler(websocket):
             local_video = PoseVideoTrack(relay.subscribe(track), websocket)
             pc.addTrack(local_video)
 
+    # Buffer for ICE candidates that arrive before the offer is processed
+    pending_ice_candidates = []
+
     try:
         async for message in websocket:
             try:
@@ -118,11 +121,21 @@ async def handler(websocket):
                         "sdp": pc.localDescription.sdp
                     }))
                     print("Sent answer to client")
+
+                    # Flush any buffered ICE candidates now that remoteDescription is set
+                    if pending_ice_candidates:
+                        print(f"Flushing {len(pending_ice_candidates)} buffered ICE candidates")
+                        for buffered_candidate in pending_ice_candidates:
+                            try:
+                                await pc.addIceCandidate(buffered_candidate)
+                            except Exception as e:
+                                print(f"Error adding buffered ICE candidate: {e}")
+                        pending_ice_candidates.clear()
                     
                 elif data["type"] == "ice-candidate":
-                    # Fixed: Properly handle ICE candidates
+                    # Handle trickle ICE candidates
                     candidate_data = data.get("candidate")
-                    if candidate_data and pc.remoteDescription is not None:
+                    if candidate_data:
                         try:
                             from aiortc import RTCIceCandidate
                             
@@ -138,19 +151,21 @@ async def handler(websocket):
                                 sdpMLineIndex = data.get("sdpMLineIndex")
 
                             if cand:
-                                ice_candidate = RTCIceCandidate(
-                                    candidate=cand,
-                                    sdpMid=sdpMid,
-                                    sdpMLineIndex=sdpMLineIndex
-                                )
-                                await pc.addIceCandidate(ice_candidate)
-                                print("Added ICE candidate")
+                                from aiortc.sdp import candidate_from_sdp
+                                cand_str = cand.split(":", 1)[1] if cand.startswith("candidate:") else cand
+                                ice_candidate = candidate_from_sdp(cand_str)
+                                ice_candidate.sdpMid = sdpMid
+                                ice_candidate.sdpMLineIndex = sdpMLineIndex
+                                
+                                if pc.remoteDescription is not None:
+                                    await pc.addIceCandidate(ice_candidate)
+                                    print("Added ICE candidate")
+                                else:
+                                    # Buffer until remoteDescription is set
+                                    pending_ice_candidates.append(ice_candidate)
+                                    print("Buffered ICE candidate (waiting for offer)")
                         except Exception as e:
                             print(f"Error adding ICE candidate: {e}")
-                    else:
-                        # If remote description isn't set yet, we should ideally queue these,
-                        # but often skipping them initially is okay if enough follow.
-                        pass
             except Exception as e:
                 import traceback
                 print(f"Error processing message: {e}")

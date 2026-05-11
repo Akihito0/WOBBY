@@ -22,6 +22,8 @@ export type Pose = {
   rightHip: Point;
   leftKnee: Point;
   rightKnee: Point;
+  leftAnkle: Point;
+  rightAnkle: Point;
 };
 
 type PoseCallback = (pose: Pose) => void;
@@ -174,21 +176,14 @@ class WebRTCManager {
         const offer = await this.pc.createOffer({});
         await this.pc.setLocalDescription(offer);
 
-        const sendSDP = () => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(
-              JSON.stringify({ type: 'offer', sdp: this.pc?.localDescription?.sdp })
-            );
-          }
-        };
-
-        if (this.pc.iceGatheringState === 'complete') {
-          sendSDP();
-        } else {
-          // @ts-ignore
-          this.pc.onicegatheringstatechange = () => {
-            if (this.pc?.iceGatheringState === 'complete') sendSDP();
-          };
+        // 🚀 TRICKLE ICE: Send offer IMMEDIATELY, don't wait for ICE gathering.
+        // ICE candidates will be sent separately via onicecandidate handler above.
+        // This eliminates the 30-60s delay caused by waiting for STUN resolution.
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          console.log('[WebRTCManager] Sending SDP offer immediately (trickle ICE)');
+          this.ws.send(
+            JSON.stringify({ type: 'offer', sdp: this.pc?.localDescription?.sdp })
+          );
         }
       };
 
@@ -235,6 +230,8 @@ class WebRTCManager {
             rightHip: parsePoint(24),
             leftKnee: parsePoint(25),
             rightKnee: parsePoint(26),
+            leftAnkle: parsePoint(27),
+            rightAnkle: parsePoint(28),
           };
 
           // Exponential moving average for smoothness
@@ -261,6 +258,8 @@ class WebRTCManager {
               rightHip: smooth(parsedPose.rightHip, this.lastPose.rightHip),
               leftKnee: smooth(parsedPose.leftKnee, this.lastPose.leftKnee),
               rightKnee: smooth(parsedPose.rightKnee, this.lastPose.rightKnee),
+              leftAnkle: smooth(parsedPose.leftAnkle, this.lastPose.leftAnkle),
+              rightAnkle: smooth(parsedPose.rightAnkle, this.lastPose.rightAnkle),
             };
           } else {
             smoothedPose = parsedPose;
