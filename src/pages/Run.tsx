@@ -132,7 +132,7 @@ const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] =
 
   // Enforce a minimum bounding box size for short runs
   // This prevents Mapbox from failing to zoom or glitching on tiny routes
-  const MIN_DELTA = 0.005; // Adjust this to tweak the maximum zoom-in level
+  const MIN_DELTA = 0.002; // Tweaked for closer zoom on short routes
   
   if (maxLat - minLat < MIN_DELTA) {
     const centerLat = (maxLat + minLat) / 2;
@@ -202,7 +202,7 @@ const RunScreen = ({ navigation, route }: any) => {
   const [elevationMetrics, setElevationMetrics] = useState({ gain: 0, loss: 0, min: 0, max: 0 });
   const [snappedRoute, setSnappedRoute] = useState<any>(null);
   const [mapSnapshot, setMapSnapshot] = useState<string | null>(null); 
-  
+  const [isCapturingFinish, setIsCapturingFinish] = useState(false);
   const mapViewRef = useRef<MapboxGL.MapView>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraRef = useRef<MapboxGL.Camera>(null);
@@ -330,9 +330,9 @@ const RunScreen = ({ navigation, route }: any) => {
 
       locationSubscription.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 1000,
-          distanceInterval: 5, 
+          accuracy: Location.Accuracy.Highest,
+          timeInterval: 2000,
+          distanceInterval: 2, 
         },
         (location) => {
           const coord: Coordinate = {
@@ -344,8 +344,8 @@ const RunScreen = ({ navigation, route }: any) => {
           if (!gpsReady) setGpsReady(true);
 
           if (runState === 'running') {
-            // INCREASED THRESHOLD: 40 meters is a much more realistic cutoff for mobile GPS
-            const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 40;
+            // TIGHTENED THRESHOLD: 20 meters to reduce jitter on recorded routes
+            const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 20;
             
             if (hasGoodAccuracy) {
               setRouteCoords(prev => {
@@ -413,7 +413,8 @@ const RunScreen = ({ navigation, route }: any) => {
   const handlePause = () => setRunState('paused');
   
   const handleTriggerFinish = async () => {
-    setRunState('finished');
+    if (isCapturingFinish) return;
+    setIsCapturingFinish(true);
     
     if (routeCoords.length >= 2) {
       const bounds = getBounds(routeCoords);
@@ -440,7 +441,9 @@ const RunScreen = ({ navigation, route }: any) => {
       }
     }
  
-    captureAndStoreMapSnapshot();
+    await captureAndStoreMapSnapshot();
+    setRunState('finished');
+    setIsCapturingFinish(false);
   };
 
   const captureAndStoreMapSnapshot = async () => {
@@ -481,20 +484,21 @@ const RunScreen = ({ navigation, route }: any) => {
   };
 
   const handleDiscardOrReset = () => {
-  setRunState('idle');
-  setElapsed(0);
-  setDistance(0);
-  setRouteCoords([]);
-  setSessionHRData([]); 
-  setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
-  setMapSnapshot(null);
-  setSnappedRoute(null);
-  
-  // ADD THESE:
-  setIsEditingMode(false);
-  setEditingPostId(null);
-  setEditingPostData(null);
-};
+    setRunState('idle');
+    setElapsed(0);
+    setDistance(0);
+    setRouteCoords([]);
+    setSessionHRData([]); 
+    setElevationMetrics({ gain: 0, loss: 0, min: 0, max: 0 });
+    setMapSnapshot(null);
+    setSnappedRoute(null);
+    setIsCapturingFinish(false);
+    
+    // ADD THESE:
+    setIsEditingMode(false);
+    setEditingPostId(null);
+    setEditingPostData(null);
+  };
   const pace = calcPace(distance, elapsed);
   const distanceDisplay = distance.toFixed(2);
 
@@ -683,9 +687,16 @@ const RunScreen = ({ navigation, route }: any) => {
                 <Text style={styles.resumeLabel}>RESUME</Text>
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.finishSplitBtn} onPress={handleTriggerFinish} activeOpacity={0.85}>
-                <View style={styles.finishSquareIcon} />
-                <Text style={styles.finishSplitLabel}>FINISH</Text>
+              <TouchableOpacity 
+                style={[styles.finishSplitBtn, isCapturingFinish && { opacity: 0.7 }]} 
+                onPress={handleTriggerFinish} 
+                activeOpacity={0.85}
+                disabled={isCapturingFinish}
+              >
+                {!isCapturingFinish && <View style={styles.finishSquareIcon} />}
+                <Text style={styles.finishSplitLabel}>
+                  {isCapturingFinish ? 'CAPTURING...' : 'FINISH'}
+                </Text>
               </TouchableOpacity>
             </View>
           )}

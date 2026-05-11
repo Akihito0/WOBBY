@@ -18,8 +18,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { BarChart } from 'react-native-gifted-charts';
 import { supabase } from '../supabase';
 import { uploadRunMedia, uploadMapSnapshot } from '../services/runUpload';
+import MapboxGL from '@rnmapbox/maps';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ─── Set your Mapbox public token here ───────────────────────────────────────
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+if (MAPBOX_TOKEN) {
+  MapboxGL.setAccessToken(MAPBOX_TOKEN);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const formatTime = (seconds: number): string => {
@@ -62,6 +69,29 @@ const uriToBase64 = async (uri: string): Promise<string | null> => {
     console.error('Error in uriToBase64:', error);
     return null;
   }
+};
+
+const getBounds = (coords: Coordinate[]): [[number, number], [number, number]] => {
+  const lats = coords.map(c => c.latitude);
+  const lngs = coords.map(c => c.longitude);
+  let minLat = Math.min(...lats);
+  let maxLat = Math.max(...lats);
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+
+  const MIN_DELTA = 0.002;
+  
+  if (maxLat - minLat < MIN_DELTA) {
+    const centerLat = (maxLat + minLat) / 2;
+    minLat = centerLat - (MIN_DELTA / 2);
+    maxLat = centerLat + (MIN_DELTA / 2);
+  }
+  if (maxLng - minLng < MIN_DELTA) {
+    const centerLng = (maxLng + minLng) / 2;
+    minLng = centerLng - (MIN_DELTA / 2);
+    maxLng = centerLng + (MIN_DELTA / 2);
+  }
+  return [[minLng, minLat], [maxLng, maxLat]];
 };
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
@@ -141,6 +171,29 @@ export default function PostRunModal({
     }
   }, [visible, isEditing, editingPostData, initialTitle, initialDescription]);
   const { distance, elapsed, routeCoords, elevationMetrics, sessionStats, sessionHRData, workoutType } = runData;
+
+  const [mapLoading, setMapLoading] = useState(true);
+
+  const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> | null = useMemo(() => {
+    if (routeCoords && routeCoords.length >= 2) {
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: routeCoords.map(c => [c.longitude, c.latitude]),
+        },
+        properties: {},
+      };
+    }
+    return null;
+  }, [routeCoords]);
+
+  const mapBounds = useMemo(() => {
+    if (routeCoords && routeCoords.length >= 2) {
+      return getBounds(routeCoords);
+    }
+    return null;
+  }, [routeCoords]);
 
   const handleAddPhotos = async () => {
     try {
@@ -470,7 +523,7 @@ if (isEditing && editingPostId) {
             <View style={{ width: 24 }} />
           </View>
 
-          {sessionStats.avg > 0 && (
+          {sessionStats.avg > 0 ? (
             <>
               <TouchableOpacity
                 style={[
@@ -535,6 +588,12 @@ if (isEditing && editingPostId) {
 
               <View style={{ height: showHRChart ? 20 : 0 }} />
             </>
+          ) : (
+            <View style={styles.hrSummaryBox}>
+              <View style={[styles.hrSummaryContent, { justifyContent: 'center' }]}>
+                <Text style={{ color: '#555', fontSize: 12, fontFamily: 'Montserrat_600SemiBold', textAlign: 'center' }}>No device attached</Text>
+              </View>
+            </View>
           )}
 
           <View style={styles.runStatsSummaryBox}>
@@ -581,19 +640,59 @@ if (isEditing && editingPostId) {
 
           <View style={styles.mediaGrid}>
             <View style={styles.mapSnapshotContainer}>
-              {mapSnapshot ? (
+              {routeGeoJSON && mapBounds ? (
+                <View style={{ flex: 1, borderRadius: 8, overflow: 'hidden' }}>
+                  <MapboxGL.MapView
+                    style={{ flex: 1 }}
+                    styleURL={MapboxGL.StyleURL.Dark}
+                    compassEnabled={false}
+                    logoEnabled={false}
+                    attributionEnabled={false}
+                    scrollEnabled={true}
+                    pitchEnabled={false}
+                    onDidFinishLoadingMap={() => setMapLoading(false)}
+                  >
+                    <MapboxGL.Camera
+                      bounds={{
+                        ne: mapBounds[1],
+                        sw: mapBounds[0],
+                        paddingLeft: 40,
+                        paddingRight: 40,
+                        paddingTop: 40,
+                        paddingBottom: 40,
+                      }}
+                      animationDuration={0}
+                    />
+                    <MapboxGL.ShapeSource id="routeSource" shape={routeGeoJSON}>
+                      <MapboxGL.LineLayer
+                        id="routeLine"
+                        style={{
+                          lineColor: '#34D399',
+                          lineWidth: 4,
+                          lineOpacity: 0.8,
+                        }}
+                      />
+                    </MapboxGL.ShapeSource>
+                  </MapboxGL.MapView>
+                  {mapLoading && (
+                    <View style={styles.mapLoadingOverlay}>
+                      <ActivityIndicator size="large" color="#CCFF00" />
+                    </View>
+                  )}
+                </View>
+              ) : mapSnapshot ? (
                 <Image
                   source={{
-                  uri: mapSnapshot.startsWith('http')
-                  ? mapSnapshot
-                  : `data:image/png;base64,${mapSnapshot}`
-               }}
-               style={styles.mapSnapshotImage}
+                    uri: mapSnapshot.startsWith('http')
+                      ? mapSnapshot
+                      : `data:image/png;base64,${mapSnapshot}`
+                  }}
+                  style={styles.mapSnapshotImage}
                 />
               ) : (
                 <View style={styles.mapSnapshotPlaceholder}>
                   <Text style={{ fontSize: 32 }}>🗺️</Text>
-                  <Text style={styles.mapSnapshotPlaceholderLabel}>Capturing...</Text>
+                  <Text style={styles.mapSnapshotPlaceholderLabel}>No Route Found</Text>
                 </View>
               )}
             </View>
@@ -729,6 +828,12 @@ const styles = StyleSheet.create({
     borderColor: '#444',
   },
   mapSnapshotPlaceholderLabel: { color: '#666', fontSize: 10, marginTop: 4, fontFamily: 'Montserrat-SemiBold' },
+  mapLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   addPhotosBtn: {
     flex: 1,
     height: 120,

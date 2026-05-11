@@ -340,6 +340,55 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* GLOBAL HR SUMMARY */}
+        {workoutStats.avg > 0 ? (
+          <>
+            <View style={[styles.hrSummaryBox, { marginBottom: 16 }]}>
+              <View style={styles.hrSummaryContent}>
+                <View style={styles.hrSummaryItem}>
+                  <Text style={styles.hrSummaryLabel}>AVERAGE HR</Text>
+                  <Text style={styles.hrSummaryValue}>
+                    {workoutStats.avg} <Text style={{ fontSize: 12 }}>BPM</Text>
+                  </Text>
+                </View>
+                <View style={styles.hrSummaryDivider} />
+                <View style={styles.hrSummaryItem}>
+                  <Text style={styles.hrSummaryLabel}>PEAK HR</Text>
+                  <Text style={[styles.hrSummaryValue, { color: '#FF4444' }]}>
+                    {workoutStats.max} <Text style={{ fontSize: 12 }}>BPM</Text>
+                  </Text>
+                </View>
+              </View>
+            </View>
+            {stackedData.length > 0 && (
+              <View style={[styles.hrChartContainer, { marginBottom: 20 }]}>
+                <BarChart
+                  data={stackedData}
+                  width={chartWidth}
+                  height={100}
+                  barWidth={barWidth}
+                  spacing={safeSpacing}
+                  hideRules
+                  hideYAxisText
+                  hideAxesAndRules
+                  stepValue={20}
+                  maxValue={200}
+                  noOfSections={4}
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  pointerConfig={chartPointerConfig}
+                />
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={[styles.hrSummaryBox, { marginBottom: 20 }]}>
+            <View style={[styles.hrSummaryContent, { justifyContent: 'center' }]}>
+              <Text style={{ color: '#555', fontSize: 12, fontFamily: 'Montserrat_600SemiBold', textAlign: 'center' }}>No device attached</Text>
+            </View>
+          </View>
+        )}
+
         {/* INPUT FIELDS */}
         <View style={styles.inputContainer}>
           <TextInput
@@ -782,4 +831,16 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Bold',
     fontSize: 16,
   },
+  hrSummaryBox: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  hrSummaryContent: { flexDirection: 'row', alignItems: 'center' },
+  hrSummaryItem: { flex: 1, alignItems: 'center' },
+  hrSummaryLabel: { color: '#888', fontSize: 10, fontFamily: 'Montserrat-Bold', marginBottom: 4 },
+  hrSummaryValue: { color: '#FFF', fontSize: 24, fontFamily: 'Montserrat-Black' },
+  hrSummaryDivider: { width: 1, backgroundColor: '#333', marginHorizontal: 15, height: 40 },
 });
