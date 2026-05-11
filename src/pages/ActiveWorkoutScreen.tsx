@@ -418,7 +418,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       navigation.dispatch(
         CommonActions.navigate({
           name: 'RoutineSelected',
-          key: routineRoute?.key,
           params: {
             ...routineRoute?.params,
             finished: true,
