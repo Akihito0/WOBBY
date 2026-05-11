@@ -56,7 +56,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
   const [localStream, setLocalStream] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
   const [isResting, setIsResting] = useState(false);
   const [time, setTime] = useState(0);
@@ -73,7 +73,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const consecutiveGoodFormFrames = useRef<number>(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
+
   const ws = useRef<WebSocket | null>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
 
@@ -99,8 +99,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     };
 
     if (isWorkoutStarted && !isResting) {
-      fetchLiveHR(); 
-      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+      fetchLiveHR();
+      hrIntervalId = setInterval(fetchLiveHR, 2000);
     }
 
     return () => {
@@ -137,11 +137,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       const isFront = facing === 'front';
       const stream = await mediaDevices.getUserMedia({
         audio: false,
-        video: { 
-          facingMode: isFront ? 'user' : 'environment', 
-          frameRate: 20, 
-          width: 480,    
-          height: 360    
+        video: {
+          facingMode: isFront ? 'user' : 'environment',
+          frameRate: 20,
+          width: 480,
+          height: 360
         }
       });
       setLocalStream(stream);
@@ -149,22 +149,23 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       // Connect directly using Environment Variables (ngrok or Wi-Fi)
       const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
       console.log(`Connecting instantly to signaling server at: ${serverUrl}`);
-      
+
       const socket = new WebSocket(serverUrl);
       ws.current = socket;
 
       socket.onopen = async () => {
         setIsConnected(true);
         console.log("WebSocket Connected!");
-        
-        pc.current = new RTCPeerConnection({ iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
+
+        pc.current = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
           ]
-        }) as any; 
-        
+        }) as any;
+
         if (!pc.current) return;
-        
+
         (pc.current as any).onicecandidate = (event: any) => {
           if (event.candidate && ws.current?.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({
@@ -178,27 +179,27 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
         const offer = await pc.current.createOffer({});
         await pc.current.setLocalDescription(offer);
-        
+
         const sendSDP = () => {
-            if(ws.current?.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
-            }
+          if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'offer', sdp: pc.current?.localDescription?.sdp }));
+          }
         };
 
         if (pc.current.iceGatheringState === 'complete') {
-            sendSDP();
+          sendSDP();
         } else {
-            // @ts-ignore
-            pc.current.onicegatheringstatechange = () => {
-                if (pc.current?.iceGatheringState === 'complete') sendSDP();
-            };
+          // @ts-ignore
+          pc.current.onicegatheringstatechange = () => {
+            if (pc.current?.iceGatheringState === 'complete') sendSDP();
+          };
         }
       };
 
       socket.onerror = (e) => {
         console.log('WebSocket Error:', e);
       };
-      
+
       socket.onclose = () => {
         setIsConnected(false);
       };
@@ -209,14 +210,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           await pc.current?.setRemoteDescription(new RTCSessionDescription(data));
         } else if (data.type === 'pose') {
           if (!data.landmarks || data.landmarks.length < 33) return;
-          
+
           const lm = data.landmarks;
-          
+
           // Using MediaPipe landmark format mapping
           const parsePoint = (i: number) => {
-              // Note: Mediapipe WebRTC stream coordinates are normalized [0, 1]
-              let x = isFront ? (1 - lm[i].x) : lm[i].x;
-              return { x: x * SCREEN_WIDTH, y: lm[i].y * SCREEN_HEIGHT, conf: lm[i].visibility };
+            // Note: Mediapipe WebRTC stream coordinates are normalized [0, 1]
+            let x = isFront ? (1 - lm[i].x) : lm[i].x;
+            return { x: x * SCREEN_WIDTH, y: lm[i].y * SCREEN_HEIGHT, conf: lm[i].visibility };
           };
 
           const parsedPose: Pose = {
@@ -231,31 +232,31 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
             leftKnee: parsePoint(25),
             rightKnee: parsePoint(26),
           };
-          
+
           // Exponential moving average for smoothness
           setPose((prevPose) => {
             if (!isServerReady) setIsServerReady(true); // 🔥 First pose received = server is ready!
             if (!prevPose) return parsedPose;
             const ALPHA = 0.5;
             const smooth = (curr: Point, prev: Point): Point => {
-                if (curr.conf < 0.15) return { ...prev, conf: prev.conf * 0.85 };
-                return {
-                    x: prev.x + ALPHA * (curr.x - prev.x),
-                    y: prev.y + ALPHA * (curr.y - prev.y),
-                    conf: curr.conf,
-                };
+              if (curr.conf < 0.15) return { ...prev, conf: prev.conf * 0.85 };
+              return {
+                x: prev.x + ALPHA * (curr.x - prev.x),
+                y: prev.y + ALPHA * (curr.y - prev.y),
+                conf: curr.conf,
+              };
             };
             return {
-                leftShoulder: smooth(parsedPose.leftShoulder, prevPose.leftShoulder),
-                rightShoulder: smooth(parsedPose.rightShoulder, prevPose.rightShoulder),
-                leftElbow: smooth(parsedPose.leftElbow, prevPose.leftElbow),
-                rightElbow: smooth(parsedPose.rightElbow, prevPose.rightElbow),
-                leftWrist: smooth(parsedPose.leftWrist, prevPose.leftWrist),
-                rightWrist: smooth(parsedPose.rightWrist, prevPose.rightWrist),
-                leftHip: smooth(parsedPose.leftHip, prevPose.leftHip),
-                rightHip: smooth(parsedPose.rightHip, prevPose.rightHip),
-                leftKnee: smooth(parsedPose.leftKnee, prevPose.leftKnee),
-                rightKnee: smooth(parsedPose.rightKnee, prevPose.rightKnee),
+              leftShoulder: smooth(parsedPose.leftShoulder, prevPose.leftShoulder),
+              rightShoulder: smooth(parsedPose.rightShoulder, prevPose.rightShoulder),
+              leftElbow: smooth(parsedPose.leftElbow, prevPose.leftElbow),
+              rightElbow: smooth(parsedPose.rightElbow, prevPose.rightElbow),
+              leftWrist: smooth(parsedPose.leftWrist, prevPose.leftWrist),
+              rightWrist: smooth(parsedPose.rightWrist, prevPose.rightWrist),
+              leftHip: smooth(parsedPose.leftHip, prevPose.leftHip),
+              rightHip: smooth(parsedPose.rightHip, prevPose.rightHip),
+              leftKnee: smooth(parsedPose.leftKnee, prevPose.leftKnee),
+              rightKnee: smooth(parsedPose.rightKnee, prevPose.rightKnee),
             };
           });
         }
@@ -275,8 +276,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     const unsub = navigation.addListener('beforeRemove', (e: any) => {
       if (isWorkoutStarted && reps < targetReps && !showIncompleteModal && !showFinishedModal) {
         if (e.data.action.type === 'GO_BACK' || e.data.action.type === 'POP') {
-            e.preventDefault();
-            setShowIncompleteModal(true);
+          e.preventDefault();
+          setShowIncompleteModal(true);
         }
       }
     });
@@ -330,19 +331,19 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     }
 
     const currentPhase = exercisePhaseRef.current;
-    
+
     // CONFIGURATION BASED ON EXERCISE
-    let upThreshold = 145;    
-    let downThreshold = 100;   
+    let upThreshold = 145;
+    let downThreshold = 100;
     let isPushExercise = false;
 
     const name = exerciseName.toUpperCase();
     if (name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS')) {
       isPushExercise = true;
-      upThreshold = 145; 
-      downThreshold = 100; 
+      upThreshold = 145;
+      downThreshold = 100;
     } else {
-      upThreshold = 60; 
+      upThreshold = 60;
       downThreshold = 150;
     }
 
@@ -351,14 +352,14 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     };
 
     if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
-       updateFeedback('Move back - show legs');
+      updateFeedback('Move back - show legs');
     }
 
-    const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null) 
-      ? Math.abs(leftElbowAngle - rightElbowAngle) 
+    const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null)
+      ? Math.abs(leftElbowAngle - rightElbowAngle)
       : 0;
-    
-    const goodForm = elbowSymmetry < 45; 
+
+    const goodForm = elbowSymmetry < 45;
 
     if (goodForm) {
       consecutiveGoodFormFrames.current += 1;
@@ -378,7 +379,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         setReps(newReps);
         exercisePhaseRef.current = 'up';
         updateFeedback('Rep counted! ✓');
-        
+
         if (targetReps > 0 && newReps >= targetReps) {
           setShowFinishedModal(true);
         }
@@ -451,7 +452,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const leftElbowAngle = pose ? calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist) : null;
   const rightElbowAngle = pose ? calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist) : null;
-  
+
   const drawLine = (p1: Point, p2: Point) => {
     if (p1.conf < 0.2 || p2.conf < 0.2) return null;
     return <Line key={`${p1.x}-${p1.y}-${p2.x}-${p2.y}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="white" strokeWidth="2" />;
@@ -460,15 +461,15 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   return (
     <View style={styles.container}>
       {localStream ? (
-        <RTCView 
-          streamURL={localStream.toURL()} 
-          style={StyleSheet.absoluteFillObject} 
-          objectFit="cover" 
-          mirror={cameraFacing === 'front'} 
+        <RTCView
+          streamURL={localStream.toURL()}
+          style={StyleSheet.absoluteFillObject}
+          objectFit="cover"
+          mirror={cameraFacing === 'front'}
         />
       ) : (
         <View style={styles.cameraPlaceholder}>
-          <Text style={{color: 'white'}}>Connecting to Camera...</Text>
+          <Text style={{ color: 'white' }}>Connecting to Camera...</Text>
         </View>
       )}
 
@@ -489,16 +490,16 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           {drawLine(pose.rightShoulder, pose.rightHip)}
           {drawLine(pose.leftHip, pose.leftKnee)}
           {drawLine(pose.rightHip, pose.rightKnee)}
-          
+
           {Object.entries(pose).map(([key, pt], index) => {
-            if(pt && pt.conf > 0.15) {
-               return (
-                <Circle 
-                  key={key} 
-                  cx={pt.x} 
-                  cy={pt.y} 
-                  r="5" 
-                  fill="#CCFF00" 
+            if (pt && pt.conf > 0.15) {
+              return (
+                <Circle
+                  key={key}
+                  cx={pt.x}
+                  cy={pt.y}
+                  r="5"
+                  fill="#CCFF00"
                 />
               )
             }
@@ -508,8 +509,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       )}
 
       {/* Incomplete Set Modal */}
-      <Modal 
-        isVisible={showIncompleteModal} 
+      <Modal
+        isVisible={showIncompleteModal}
         onBackdropPress={() => setShowIncompleteModal(false)}
         animationIn="zoomIn"
         animationOut="zoomOut"
@@ -524,31 +525,31 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
             style={styles.modalBackground}
           >
             <View style={styles.modalBorderOverlay} />
-            
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderText}>Set Incomplete</Text>
             </View>
 
             <View style={styles.modalContent}>
-              <Image 
-                source={require('../assets/wobby.png')} 
+              <Image
+                source={require('../assets/wobby.png')}
                 style={styles.modalIllustration}
               />
-              
+
               <Text style={styles.modalDescription}>
                 You’ve only done <Text style={{ color: '#65FC0D' }}>{reps}</Text> of <Text style={{ color: '#65FC0D' }}>{targetReps}</Text>. Are you sure you’re finished?
               </Text>
 
-              <TouchableOpacity 
-                style={styles.keepGoingButton} 
+              <TouchableOpacity
+                style={styles.keepGoingButton}
                 onPress={() => setShowIncompleteModal(false)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.keepGoingButtonText}>KEEP GOING!</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.finishAnywayButton} 
+              <TouchableOpacity
+                style={styles.finishAnywayButton}
                 onPress={() => {
                   setShowIncompleteModal(false);
                   const navigateBack = (isIncomplete: boolean) => {
@@ -557,7 +558,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                     navigation.dispatch(
                       CommonActions.navigate({
                         name: 'RoutineSelected',
-                        key: routineRoute?.key,
                         params: {
                           ...routineRoute?.params,
                           finished: true,
@@ -584,8 +584,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       </Modal>
 
       {/* Set Finished Modal */}
-      <Modal 
-        isVisible={showFinishedModal} 
+      <Modal
+        isVisible={showFinishedModal}
         onBackdropPress={() => setShowFinishedModal(false)}
         animationIn="zoomIn"
         animationOut="zoomOut"
@@ -600,17 +600,17 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
             style={styles.modalBackground}
           >
             <View style={styles.modalBorderOverlaySuccess} />
-            
+
             <View style={styles.modalHeaderSuccess}>
               <Text style={styles.modalHeaderText}>Set Complete!</Text>
             </View>
 
             <View style={styles.modalContent}>
-              <Image 
-                source={require('../assets/wobby.png')} 
+              <Image
+                source={require('../assets/wobby.png')}
                 style={styles.modalIllustration}
               />
-              
+
               <Text style={styles.modalDescriptionLarge}>
                 CONGRATS!
               </Text>
@@ -618,16 +618,16 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                 You reached your goal of <Text style={{ color: '#65FC0D' }}>{targetReps}</Text> reps. Ready to wrap it up?
               </Text>
 
-              <TouchableOpacity 
-                style={styles.keepGoingButton} 
+              <TouchableOpacity
+                style={styles.keepGoingButton}
                 onPress={() => setShowFinishedModal(false)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.keepGoingButtonText}>Keep Pushing</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.finishSetButton} 
+              <TouchableOpacity
+                style={styles.finishSetButton}
                 onPress={() => {
                   setShowFinishedModal(false);
                   const navigateBack = (isIncomplete: boolean) => {
@@ -636,7 +636,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                     navigation.dispatch(
                       CommonActions.navigate({
                         name: 'RoutineSelected',
-                        key: routineRoute?.key,
                         params: {
                           ...routineRoute?.params,
                           finished: true,
@@ -717,8 +716,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       {isWorkoutStarted && (
         <View style={styles.activeWorkoutContainer}>
           <View style={styles.darkStatsCard}>
-            <View style={{flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 15}}>
-              
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 15 }}>
+
               {/* Live Heart Rate UI */}
               <View style={{ position: 'absolute', left: 0, top: 0, flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
@@ -728,12 +727,12 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
               </View>
 
               <Text style={styles.darkStatsExerciseName}>{exerciseName}</Text>
-              
+
               <Text style={{ position: 'absolute', right: 0, top: 0, color: isConnected ? '#CCFF00' : 'red', fontSize: 10, fontFamily: 'Barlow-Medium' }}>
                 {isConnected ? '● Connected' : '○ Offline'}
               </Text>
             </View>
-            
+
             <View style={styles.darkStatsRow}>
               <View style={styles.statCol}>
                 <Text style={styles.darkStatValueSmall}>{formatTime(time)}</Text>
@@ -748,7 +747,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                 <Text style={styles.darkStatLabel}>Set</Text>
               </View>
             </View>
-            
+
             {pose && (
               <View style={{ flexDirection: 'column', alignItems: 'center', marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' }}>
                 <Text style={[styles.darkFormFeedbackText, { fontSize: 22, color: '#CCFF00', marginBottom: 6, textAlign: 'center' }]}>
@@ -790,7 +789,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0d0d0d' },
   cameraPlaceholder: { flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' },
-  
+
   // ACTIVE WORKOUT STYLES
   activeWorkoutContainer: { position: 'absolute', bottom: 40, left: 20, right: 20 },
   darkStatsCard: { backgroundColor: 'rgba(30, 30, 30, 0.95)', borderRadius: 16, padding: 24, width: '100%', marginBottom: 20 },
@@ -803,7 +802,7 @@ const styles = StyleSheet.create({
   darkStatLabel: { fontFamily: 'Barlow-Medium', fontSize: 12, color: '#888888', marginTop: 2 },
   darkFormFeedbackText: { fontFamily: 'Barlow-SemiBold', fontSize: 12, color: '#FFFFFF' },
   darkAngleText: { fontFamily: 'Barlow-Medium', fontSize: 11, color: '#888888' },
-  
+
   darkButtonsRow: { flexDirection: 'row', justifyContent: 'center', width: '100%' },
   darkPillButton: { backgroundColor: '#000000', borderRadius: 30, paddingVertical: 14, paddingHorizontal: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 8 },
   pauseIconRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
@@ -811,7 +810,7 @@ const styles = StyleSheet.create({
   darkPillButtonText: { fontFamily: 'Barlow-Bold', fontSize: 12, color: '#FFFFFF', marginLeft: 10 },
   playTriangleGreen: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 12, borderRightWidth: 0, borderBottomWidth: 7, borderTopWidth: 7, borderLeftColor: '#CCFF00', borderRightColor: 'transparent', borderTopColor: 'transparent', borderBottomColor: 'transparent' },
   stopSquareRed: { width: 14, height: 14, backgroundColor: '#FF3333', borderRadius: 2 },
-  
+
   // PRE-WORKOUT SETUP MENU
   bottomOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(26, 26, 26, 0.90)', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 30, paddingTop: 10 },
   controlsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 15 },
