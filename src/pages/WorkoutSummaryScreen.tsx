@@ -59,7 +59,7 @@ const uriToBase64 = async (uri: string): Promise<string | null> => {
 export default function WorkoutSummaryScreen({ route, navigation }: any) {
   const [workoutTitle, setWorkoutTitle] = useState('Chest Day!');
   const [workoutNotes, setWorkoutNotes] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   // Extract navigation params
@@ -171,13 +171,17 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsMultipleSelection: true,
       quality: 0.7,
     });
 
     if (!result.canceled) {
-      setSelectedImage(result.assets[0].uri);
+      setSelectedMedia(prev => [...prev, ...result.assets]);
     }
+  };
+
+  const removeMediaItem = (index: number) => {
+    setSelectedMedia(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleDiscard = () => {
@@ -202,14 +206,23 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
         return;
       }
 
-      let uploadedImageUrl = null;
+      let uploadedImageUrls: string[] = [];
 
-      // 1. Upload image if the user selected one
-      if (selectedImage) {
-        const base64Data = await uriToBase64(selectedImage);
-        if (base64Data) {
-          const fileName = `routine-${Date.now()}.jpg`;
-          uploadedImageUrl = await uploadRunMedia(session.user.id, base64Data, fileName, 'image/jpeg');
+      // 1. Upload images if the user selected them
+      if (selectedMedia.length > 0) {
+        for (const media of selectedMedia) {
+          try {
+            const base64Data = await uriToBase64(media.uri);
+            if (base64Data) {
+              const mimeType = media.type === 'video' ? 'video/mp4' : 'image/jpeg';
+              const ext = media.type === 'video' ? 'mp4' : 'jpg';
+              const fileName = `routine-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+              const url = await uploadRunMedia(session.user.id, base64Data, fileName, mimeType);
+              if (url) uploadedImageUrls.push(url);
+            }
+          } catch (e) {
+            console.error('Error uploading media item:', e);
+          }
         }
       }
 
@@ -272,8 +285,8 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           workout_type: 'solo_workout',
           caption: workoutTitle.trim(),
           notes: workoutNotes.trim(),
-          media_url: uploadedImageUrl,
-          media_urls: uploadedImageUrl ? [uploadedImageUrl] : [],
+          media_url: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
+          media_urls: uploadedImageUrls,
           total_duration: elapsedSeconds,
           exercises_data: exercises,
           xp_earned: xpCalculation.total,
@@ -285,6 +298,7 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
       ]);
 
       if (error) {
+        console.error('❌ Supabase insert error:', JSON.stringify(error));
         Alert.alert('Error', `Failed to save workout: ${error.message}`);
         setIsSaving(false);
         return;
@@ -412,17 +426,26 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
           />
         </View>
 
-        {/* MEDIA UPLOAD BOX */}
-        <TouchableOpacity style={styles.uploadBox} activeOpacity={0.7} onPress={handlePickImage}>
-          {selectedImage ? (
-            <Image source={{ uri: selectedImage }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
-          ) : (
-            <>
-              <Ionicons name="camera-outline" size={32} color="#00BFFF" />
-              <Text style={styles.uploadText}>Add Photo</Text>
-            </>
-          )}
+        {/* MEDIA UPLOAD SECTION */}
+        <TouchableOpacity style={styles.addPhotosBtn} activeOpacity={0.7} onPress={handlePickImage}>
+          <Text style={{ fontSize: 24, marginBottom: 8 }}>📷</Text>
+          <Text style={{ color: '#1F78FF', fontSize: 12, fontFamily: 'Montserrat-SemiBold' }}>
+            Add Photos / Videos
+          </Text>
         </TouchableOpacity>
+
+        {selectedMedia.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaPreviewScroll}>
+            {selectedMedia.map((media, index) => (
+              <View key={index} style={styles.mediaPreviewContainer}>
+                <Image source={{ uri: media.uri }} style={styles.mediaPreviewImage} />
+                <TouchableOpacity style={styles.removeMediaBtn} onPress={() => removeMediaItem(index)}>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
         {/* EXERCISES LIST */}
         {exercises.map((item: any, index: number) => {
@@ -678,22 +701,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     height: 120,
   },
-  uploadBox: {
+  addPhotosBtn: {
     height: 120,
-    borderWidth: 2,
-    borderColor: '#00BFFF',
+    borderWidth: 1,
+    borderColor: '#1F78FF',
     borderStyle: 'dashed',
-    borderRadius: 10,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
-    backgroundColor: 'rgba(0, 191, 255, 0.05)',
+    marginBottom: 20,
+    backgroundColor: '#1A1A1A',
   },
-  uploadText: {
-    color: '#00BFFF',
-    fontFamily: 'Montserrat-Bold',
-    fontSize: 12,
-    marginTop: 8,
+  mediaPreviewScroll: {
+    marginBottom: 30,
+  },
+  mediaPreviewContainer: {
+    position: 'relative',
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  mediaPreviewImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+  },
+  removeMediaBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   },
   exerciseCardGradient: {
     borderRadius: 12,
