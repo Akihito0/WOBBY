@@ -23,6 +23,13 @@ import { supabase } from '../supabase';
 import { ACHIEVEMENT_DATA } from '../pages/Achievements';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadRunMedia } from '../services/runUpload';
+import MapboxGL from '@rnmapbox/maps';
+
+// ─── Set your Mapbox public token here ───────────────────────────────────────
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+if (MAPBOX_TOKEN) {
+  MapboxGL.setAccessToken(MAPBOX_TOKEN);
+}
 
 const { width } = Dimensions.get('window');
 
@@ -64,6 +71,29 @@ const normalizePace = (pace: string | undefined): string => {
   if (legacy) return `${legacy[1]}:${legacy[2]}`;
   // Fallback: return as-is
   return pace;
+};
+
+const getBounds = (coords: any[]): [[number, number], [number, number]] => {
+  const lats = coords.map(c => c.latitude);
+  const lngs = coords.map(c => c.longitude);
+  let minLat = Math.min(...lats);
+  let maxLat = Math.max(...lats);
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+
+  const MIN_DELTA = 0.002;
+  
+  if (maxLat - minLat < MIN_DELTA) {
+    const centerLat = (maxLat + minLat) / 2;
+    minLat = centerLat - (MIN_DELTA / 2);
+    maxLat = centerLat + (MIN_DELTA / 2);
+  }
+  if (maxLng - minLng < MIN_DELTA) {
+    const centerLng = (maxLng + minLng) / 2;
+    minLng = centerLng - (MIN_DELTA / 2);
+    maxLng = centerLng + (MIN_DELTA / 2);
+  }
+  return [[minLng, minLat], [maxLng, maxLat]];
 };
 
 const uriToBase64 = async (uri: string): Promise<string | null> => {
@@ -110,6 +140,7 @@ interface RunData {
   min_elevation?: number;
   max_elevation?: number;
   route_map_url?: string;
+  route_coordinates?: any[];
   xp_earned?: number;
   xp_breakdown?: { base: number; long_distance_bonus: number; elevation_bonus: number; pace_bonus: number };
   earned_achievements?: string[];
@@ -169,6 +200,29 @@ export default function ActivityFeed({
   const [runEditDescription, setRunEditDescription] = useState('');
   const [runEditMedia, setRunEditMedia] = useState<any[]>([]);
   // ──────────────────────────────────────────────────────────────────────────
+
+  const [mapLoading, setMapLoading] = useState(true);
+
+  const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> | null = useMemo(() => {
+    if (runData?.route_coordinates && runData.route_coordinates.length >= 2) {
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: runData.route_coordinates.map(c => [c.longitude, c.latitude]),
+        },
+        properties: {},
+      };
+    }
+    return null;
+  }, [runData?.route_coordinates]);
+
+  const mapBounds = useMemo(() => {
+    if (runData?.route_coordinates && runData.route_coordinates.length >= 2) {
+      return getBounds(runData.route_coordinates);
+    }
+    return null;
+  }, [runData?.route_coordinates]);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -618,6 +672,35 @@ export default function ActivityFeed({
                         </>
                       )}
                     </View>
+                    <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 16 }} />
+                    <View style={{ flexDirection: 'row' }}>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>AVG HEART RATE</Text>
+                        {(() => {
+                          let hrSum = 0;
+                          let hrCount = 0;
+                          if (routineData && Array.isArray(routineData.exercises_data)) {
+                            routineData.exercises_data.forEach(ex => {
+                              if (Array.isArray(ex.sets)) {
+                                ex.sets.forEach((set: any) => {
+                                  if (set.avgHR && set.avgHR > 0) {
+                                    hrSum += set.avgHR;
+                                    hrCount++;
+                                  }
+                                });
+                              }
+                            });
+                          }
+                          const routineAvgHR = hrCount > 0 ? Math.round(hrSum / hrCount) : 0;
+                          
+                          return routineAvgHR > 0 ? (
+                            <Text style={{ color: '#FF4444', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{routineAvgHR} <Text style={{ fontSize: 12 }}>BPM</Text></Text>
+                          ) : (
+                            <Text style={{ color: '#555', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginTop: 6, textAlign: 'center' }}>No device attached</Text>
+                          );
+                        })()}
+                      </View>
+                    </View>
                   </View>
 
                   <Text style={styles.modalSectionLabel}>Exercises Breakdown</Text>
@@ -707,7 +790,49 @@ export default function ActivityFeed({
                 </>
               ) : runData ? (
                 <>
-                  {runData.route_map_url && <Image source={{ uri: runData.route_map_url }} style={styles.modalMapImage} />}
+                  {routeGeoJSON && mapBounds ? (
+                    <View style={{ width: '100%', height: 200, marginBottom: 20, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
+                      <MapboxGL.MapView
+                        style={{ flex: 1 }}
+                        styleURL={MapboxGL.StyleURL.Dark}
+                        compassEnabled={false}
+                        logoEnabled={false}
+                        attributionEnabled={false}
+                        pitchEnabled={false}
+                        scrollEnabled={true}
+                        onDidFinishLoadingMap={() => setMapLoading(false)}
+                      >
+                        <MapboxGL.Camera
+                          bounds={{
+                            ne: mapBounds[1],
+                            sw: mapBounds[0],
+                            paddingLeft: 40,
+                            paddingRight: 40,
+                            paddingTop: 40,
+                            paddingBottom: 40,
+                          }}
+                          animationDuration={0}
+                        />
+                        <MapboxGL.ShapeSource id="routeSource" shape={routeGeoJSON}>
+                          <MapboxGL.LineLayer
+                            id="routeLine"
+                            style={{
+                              lineColor: '#34D399',
+                              lineWidth: 4,
+                              lineOpacity: 0.8,
+                            }}
+                          />
+                        </MapboxGL.ShapeSource>
+                      </MapboxGL.MapView>
+                      {mapLoading && (
+                        <View style={styles.mapLoadingOverlay}>
+                          <ActivityIndicator size="large" color="#CCFF00" />
+                        </View>
+                      )}
+                    </View>
+                  ) : runData.route_map_url ? (
+                    <Image source={{ uri: runData.route_map_url }} style={styles.modalMapImage} />
+                  ) : null}
 
                   <Text style={styles.modalSectionLabel}>Run Summary</Text>
                   <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
@@ -740,16 +865,27 @@ export default function ActivityFeed({
                         <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>MAX ELEVATION</Text>
                         <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.max_elevation || 0} <Text style={{ fontSize: 12 }}>m</Text></Text>
                       </View>
-                      {runData.xp_earned != null && runData.xp_earned > 0 && (
-                        <>
-                          <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>AVG HEART RATE</Text>
+                        {runData.average_bpm ? (
+                          <Text style={{ color: '#FF4444', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{runData.average_bpm} <Text style={{ fontSize: 12 }}>BPM</Text></Text>
+                        ) : (
+                          <Text style={{ color: '#555', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginTop: 6, textAlign: 'center' }}>No device attached</Text>
+                        )}
+                      </View>
+                    </View>
+                    {runData.xp_earned != null && runData.xp_earned > 0 && (
+                      <>
+                        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 16 }} />
+                        <View style={{ flexDirection: 'row' }}>
                           <View style={{ flex: 1, alignItems: 'center' }}>
                             <Text style={{ color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 }}>XP EARNED</Text>
                             <Text style={{ color: '#CCFF00', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>+{runData.xp_earned}</Text>
                           </View>
-                        </>
-                      )}
-                    </View>
+                        </View>
+                      </>
+                    )}
                   </View>
 
                   {/* XP Breakdown Transparency */}
@@ -1027,11 +1163,51 @@ export default function ActivityFeed({
                 </View>
 
                 {/* Route Map */}
-                {runData?.route_map_url && (
+                {routeGeoJSON && mapBounds ? (
+                  <View style={{ marginHorizontal: 20, marginBottom: 20, height: 160, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
+                    <MapboxGL.MapView
+                      style={{ flex: 1 }}
+                      styleURL={MapboxGL.StyleURL.Dark}
+                      compassEnabled={false}
+                      logoEnabled={false}
+                      attributionEnabled={false}
+                      pitchEnabled={false}
+                      scrollEnabled={true}
+                      onDidFinishLoadingMap={() => setMapLoading(false)}
+                    >
+                      <MapboxGL.Camera
+                        bounds={{
+                          ne: mapBounds[1],
+                          sw: mapBounds[0],
+                          paddingLeft: 40,
+                          paddingRight: 40,
+                          paddingTop: 40,
+                          paddingBottom: 40,
+                        }}
+                        animationDuration={0}
+                      />
+                      <MapboxGL.ShapeSource id="routeSourceEdit" shape={routeGeoJSON}>
+                        <MapboxGL.LineLayer
+                          id="routeLineEdit"
+                          style={{
+                            lineColor: '#34D399',
+                            lineWidth: 4,
+                            lineOpacity: 0.8,
+                          }}
+                        />
+                      </MapboxGL.ShapeSource>
+                    </MapboxGL.MapView>
+                    {mapLoading && (
+                      <View style={styles.mapLoadingOverlay}>
+                        <ActivityIndicator size="large" color="#CCFF00" />
+                      </View>
+                    )}
+                  </View>
+                ) : runData?.route_map_url ? (
                   <View style={{ marginHorizontal: 20, marginBottom: 20, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#333' }}>
                     <Image source={{ uri: runData.route_map_url }} style={{ width: '100%', height: 160, borderRadius: 10 }} />
                   </View>
-                )}
+                ) : null}
 
                 {/* Title field */}
                 <Text style={styles.editFieldLabel}>Title *</Text>
@@ -1190,6 +1366,7 @@ const styles = StyleSheet.create({
   modalDescriptionBox: { backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 16, marginHorizontal: 20, borderWidth: 1, borderColor: '#333' },
   modalDescriptionText: { color: '#DDD', fontSize: 13, lineHeight: 20, fontFamily: 'Montserrat_400Regular' },
   modalMapImage: { width: '100%', height: 200, marginBottom: 20 },
+  mapLoadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
 
   // Exercise Breakdown (Routines)
   exerciseBreakdownCard: { backgroundColor: '#1A1A1A', marginHorizontal: 20, borderRadius: 10, padding: 15, marginBottom: 12, borderWidth: 1, borderColor: '#333' },
