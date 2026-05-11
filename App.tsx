@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
 import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
-import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import NavBar from './src/components/layout/NavBar';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -180,7 +180,7 @@ function YouStackScreen() {
 }
 
 // Extracted AppTabs to prevent unmounting
-function AppTabs() {
+function AppTabs({ prefetchedDashData }: { prefetchedDashData?: any }) {
   return (
     <Tab.Navigator
       tabBar={(props) => {
@@ -203,7 +203,11 @@ function AppTabs() {
       }}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Home" component={UserDashboard} />
+      <Tab.Screen
+        name="Home"
+        component={UserDashboard}
+        initialParams={prefetchedDashData ? { prefetchedData: prefetchedDashData } : undefined}
+      />
       <Tab.Screen name="Routines" component={RoutinesStackScreen} />
       <Tab.Screen name="Workout" component={WorkoutStackScreen} />
       <Tab.Screen name="Performance" component={PerformanceStackScreen} />
@@ -218,6 +222,7 @@ export default function App() {
   const [resetPasswordEmail, setResetPasswordEmail] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [latestNotification, setLatestNotification] = useState<any | null>(null);
+  const [prefetchedDashData, setPrefetchedDashData] = useState<any>(null);
 
   const [fontsLoaded] = useFonts({
     'Montserrat-Regular': Montserrat_400Regular,
@@ -294,8 +299,47 @@ export default function App() {
               setCurrentScreen('username');
             }
           } else {
-            // Profile complete, go to dashboard
-            console.log('🚀 Complete profile found, navigating to dashboard...');
+            // Profile complete — prefetch dashboard data before navigating
+            console.log('🚀 Complete profile found, prefetching dashboard data...');
+            try {
+              const [runsResult, routinesResult] = await Promise.all([
+                supabase
+                  .from('runs')
+                  .select('*')
+                  .eq('user_id', session.user.id)
+                  .neq('workout_type', 'versus_run')
+                  .order('completed_at', { ascending: false }),
+                supabase
+                  .from('completed_routines')
+                  .select('*')
+                  .eq('user_id', session.user.id)
+                  .order('created_at', { ascending: false }),
+              ]);
+
+              const runEntries = (runsResult.data || []).map((r: any) => ({
+                kind: 'run' as const,
+                data: r,
+                timestamp: new Date(r.completed_at).getTime(),
+              }));
+              const routineEntries = (routinesResult.data || []).map((r: any) => ({
+                kind: 'routine' as const,
+                data: r,
+                timestamp: new Date(r.created_at).getTime(),
+              }));
+
+              const merged = [...runEntries, ...routineEntries].sort(
+                (a, b) => b.timestamp - a.timestamp
+              );
+
+              setPrefetchedDashData({
+                username: profile.username,
+                avatarUrl: profile.avatar_url,
+                posts: merged,
+              });
+              console.log(`✅ Prefetched ${merged.length} posts, navigating to dashboard...`);
+            } catch (prefetchErr) {
+              console.warn('⚠️ Prefetch failed, dashboard will load its own data:', prefetchErr);
+            }
             setCurrentScreen('dashboard');
           }
         } else {
@@ -549,9 +593,19 @@ export default function App() {
               </Text>
             </TouchableOpacity>
           )}
-          <NavigationContainer>
+          <NavigationContainer
+            theme={{
+              ...DefaultTheme,
+              colors: {
+                ...DefaultTheme.colors,
+                background: '#121310',
+              },
+            }}
+          >
             <MainStack.Navigator screenOptions={{ headerShown: false }}>
-              <MainStack.Screen name="AppTabs" component={AppTabs} />
+              <MainStack.Screen name="AppTabs" options={{ headerShown: false }}>
+                {(props: any) => <AppTabs {...props} prefetchedDashData={prefetchedDashData} />}
+              </MainStack.Screen>
               <MainStack.Screen
                 name="Notifications"
                 component={NotificationsScreen}

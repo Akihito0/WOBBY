@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Alert,
+  BackHandler,
 } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
@@ -87,11 +88,11 @@ const calcDistance = (coords: Coordinate[]): number => {
 };
 
 const calcPace = (distanceKm: number, seconds: number): string => {
-  if (distanceKm === 0 || seconds === 0) return '--\'--"';
+  if (distanceKm === 0 || seconds === 0) return '--:--';
   const paceSeconds = seconds / distanceKm;
   const pm = Math.floor(paceSeconds / 60);
   const ps = Math.round(paceSeconds % 60);
-  return `${pm}'${String(ps).padStart(2, '0')}"`;
+  return `${pm}:${String(ps).padStart(2, '0')}`;
 };
 
 const calcElevationMetrics = (coords: Coordinate[]): { gain: number; loss: number; min: number; max: number } => {
@@ -206,6 +207,27 @@ const RunScreen = ({ navigation, route }: any) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+
+  // ── Back button confirmation when run is active ──
+  const handleBackPress = () => {
+    if (runState === 'running' || runState === 'paused') {
+      Alert.alert(
+        'Discard Run?',
+        'You have an active run in progress. Are you sure you want to leave? Your run data will be lost.',
+        [
+          { text: 'Continue Run', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
+        ]
+      );
+      return true; // prevent default back
+    }
+    return false; // allow default back
+  };
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => backHandler.remove();
+  }, [runState]);
 
   // ── Check for edit mode from navigation params ──
  useEffect(() => {
@@ -535,7 +557,13 @@ const RunScreen = ({ navigation, route }: any) => {
       </MapboxGL.MapView>
 
       <View style={styles.floatingHeader}>
-        <TouchableOpacity style={styles.backBtnWrap} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtnWrap} onPress={() => {
+          if (runState === 'running' || runState === 'paused') {
+            handleBackPress();
+          } else {
+            navigation.goBack();
+          }
+        }}>
           <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }}>{'<'}</Text>
         </TouchableOpacity>
       </View>

@@ -30,11 +30,11 @@ const formatTime = (seconds: number): string => {
 };
 
 const calcPace = (distanceKm: number, seconds: number): string => {
-  if (distanceKm === 0 || seconds === 0) return '--\'--"';
+  if (distanceKm === 0 || seconds === 0) return '--:--';
   const paceSeconds = seconds / distanceKm;
   const pm = Math.floor(paceSeconds / 60);
   const ps = Math.round(paceSeconds % 60);
-  return `${pm}'${String(ps).padStart(2, '0')}"`;
+  return `${pm}:${String(ps).padStart(2, '0')}`;
 };
 
 const uriToBase64 = async (uri: string): Promise<string | null> => {
@@ -175,8 +175,8 @@ export default function PostRunModal({
     }
 
     // For new runs, validate route data. For editing, just update the data
-    if (!isEditing && (distance === 0 || routeCoords.length === 0)) {
-      Alert.alert('Invalid Run', 'No route recorded. Please complete a run first.');
+    if (!isEditing && distance < 0.3) {
+      Alert.alert('Invalid Run', 'Runs must be at least 300 meters (0.3 km) to be saved.');
       return;
     }
 
@@ -194,7 +194,6 @@ export default function PostRunModal({
       const now = new Date();
 
       // If editing, only update title and description
-      // If editing, update title, description, and media
 if (isEditing && editingPostId) {
   try {
     // Split into existing (already on Supabase) vs new local picks
@@ -289,6 +288,88 @@ if (isEditing && editingPostId) {
         }
       } catch (error) {}
 
+      // ─── XP & ACHIEVEMENTS LOGIC ───
+      let earnedXp = 0;
+      let xpBreakdown = {
+        base: 0,
+        long_distance_bonus: 0,
+        elevation_bonus: 0,
+        pace_bonus: 0,
+      };
+      let earnedAchievements: string[] = [];
+
+      try {
+        // Calculate XP
+        const baseDist = Math.min(distance, 5);
+        const longDist = Math.max(distance - 5, 0);
+        
+        xpBreakdown.base = Math.floor(baseDist * 100);
+        xpBreakdown.long_distance_bonus = Math.floor(longDist * 150);
+        xpBreakdown.elevation_bonus = Math.floor(elevationMetrics.gain / 100) * 10;
+        
+        const paceSecsPerKm = distance > 0 ? elapsed / distance : 0;
+        if (paceSecsPerKm > 0 && paceSecsPerKm < 360) { // under 6:00/km
+          xpBreakdown.pace_bonus = 50;
+        }
+
+        earnedXp = xpBreakdown.base + xpBreakdown.long_distance_bonus + xpBreakdown.elevation_bonus + xpBreakdown.pace_bonus;
+        
+        if (workoutType === 'versus_run' && runData.isWinner && distance >= 1) {
+          earnedXp += 100;
+          // You might add a 'versus_bonus' field if you want it to show up
+        }
+
+        // Calculate Achievements
+        const { data: existingAchievements } = await supabase.from('user_achievements').select('achievement_name').eq('user_id', userId);
+        const unlockedSet = new Set(existingAchievements?.map(a => a.achievement_name) || []);
+        
+        const { data: allRuns } = await supabase.from('runs').select('distance, elevation_gain').eq('user_id', userId);
+        const pastDist = allRuns?.reduce((sum, r) => sum + (r.distance || 0), 0) || 0;
+        const pastElev = allRuns?.reduce((sum, r) => sum + (r.elevation_gain || 0), 0) || 0;
+        
+        const totalDist = pastDist + distance;
+        const totalElev = pastElev + elevationMetrics.gain;
+
+        if (!unlockedSet.has('7') && totalDist >= 5) earnedAchievements.push('7');
+        if (!unlockedSet.has('10') && totalDist >= 10) earnedAchievements.push('10');
+        if (!unlockedSet.has('13') && totalDist >= 21) earnedAchievements.push('13');
+        if (!unlockedSet.has('16') && totalDist >= 42) earnedAchievements.push('16');
+        
+        if (!unlockedSet.has('8') && totalElev >= 50) earnedAchievements.push('8');
+        if (!unlockedSet.has('11') && totalElev >= 250) earnedAchievements.push('11');
+        if (!unlockedSet.has('14') && totalElev >= 500) earnedAchievements.push('14');
+        
+        if (!unlockedSet.has('9') && elapsed >= 600) earnedAchievements.push('9');
+        if (!unlockedSet.has('12') && elapsed >= 1200) earnedAchievements.push('12');
+        if (!unlockedSet.has('15') && elapsed >= 1800) earnedAchievements.push('15');
+
+        // Update profile XP
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('xp')
+          .eq('id', userId)
+          .single();
+        
+        const currentXp = profile?.xp || 0;
+        await supabase
+          .from('profiles')
+          .update({ xp: currentXp + earnedXp })
+          .eq('id', userId);
+
+        // Insert new achievements
+        if (earnedAchievements.length > 0) {
+          const achievementInserts = earnedAchievements.map(id => ({
+            user_id: userId,
+            achievement_name: id,
+            unlocked_at: new Date().toISOString(),
+          }));
+          await supabase.from('user_achievements').insert(achievementInserts);
+        }
+      } catch (err) {
+        console.warn('Failed to process XP / Achievements:', err);
+      }
+      // ───────────────────────────────
+
       const runPayload: any = {
         user_id: userId,
         title: workoutTitle,
@@ -311,6 +392,9 @@ if (isEditing && editingPostId) {
         started_at: new Date(now.getTime() - elapsed * 1000).toISOString(),
         completed_at: now.toISOString(),
         created_at: now.toISOString(),
+        xp_earned: earnedXp,
+        xp_breakdown: xpBreakdown,
+        earned_achievements: earnedAchievements.length > 0 ? earnedAchievements : null,
       };
 
       if (sessionStats.avg > 0) {
@@ -325,52 +409,6 @@ if (isEditing && editingPostId) {
         setIsSaving(false);
         return;
       }
-
-      // ─── XP LOGIC ───
-      try {
-        // 1. Get today's start and end in UTC matching local day
-        const nowLocal = new Date();
-        const startOfDay = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate()).toISOString();
-        const endOfDay = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), 23, 59, 59, 999).toISOString();
-
-        // 2. Fetch runs for today to get previous total distance
-        const { data: todaysRuns } = await supabase
-          .from('runs')
-          .select('distance')
-          .eq('user_id', userId)
-          .gte('created_at', startOfDay)
-          .lte('created_at', endOfDay);
-
-        const prevDistance = (todaysRuns || []).reduce((sum, run) => sum + Number(run.distance || 0), 0);
-        const totalDistance = prevDistance + distance;
-
-        // 3. Calculate XP for prev and total using the tiered formula
-        const calcBaseXp = (dist: number) => Math.floor(dist >= 1 ? 100 + (dist - 1) * 50 : dist * 100);
-        
-        const xpForPrev = calcBaseXp(prevDistance);
-        const xpForTotal = calcBaseXp(totalDistance);
-        
-        let earnedXp = xpForTotal - xpForPrev;
-
-        if (workoutType === 'versus_run' && runData.isWinner && distance >= 1) {
-          earnedXp += 100;
-        }
-
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('xp')
-          .eq('id', userId)
-          .single();
-        
-        const currentXp = profile?.xp || 0;
-        await supabase
-          .from('profiles')
-          .update({ xp: currentXp + earnedXp })
-          .eq('id', userId);
-      } catch (xpError) {
-        console.warn('Failed to update XP:', xpError);
-      }
-      // ────────────────
 
       Alert.alert('Success! 🏃', 'Your workout has been saved to your profile.');
       
