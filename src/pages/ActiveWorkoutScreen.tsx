@@ -150,7 +150,13 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       const serverUrl = process.env.EXPO_PUBLIC_WEBSOCKET_URL || 'ws://192.168.1.40:8765';
       console.log(`Connecting instantly to signaling server at: ${serverUrl}`);
 
-      const socket = new WebSocket(serverUrl);
+      // Adding headers to bypass ngrok free tier interstitial warnings which block WebSockets
+      const socket = new (WebSocket as any)(serverUrl, null, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'User-Agent': 'WobbyApp/1.0'
+        }
+      });
       ws.current = socket;
 
       socket.onopen = async () => {
