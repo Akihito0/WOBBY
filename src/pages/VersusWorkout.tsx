@@ -144,8 +144,10 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
           }
           if (newRow.status === 'cancelled') {
             setShowWorkoutMatchModal(false);
-            Alert.alert('Match Cancelled', 'The match was cancelled.');
-            await cleanupWorkoutMatchmaking();
+            // Restart matchmaking if it was cancelled by the other player
+            if (workoutConfig) {
+              startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
+            }
           }
         };
 
@@ -231,8 +233,10 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
         if (newRow.status === 'cancelled') {
           setShowWorkoutMatchModal(false);
-          Alert.alert('Match Cancelled', 'The match was cancelled.');
-          await cleanupWorkoutMatchmaking();
+          // Restart matchmaking if it was cancelled by the other player
+          if (workoutConfig) {
+            startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
+          }
         }
       };
 
@@ -413,8 +417,12 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       if (error) throw error;
 
       setShowWorkoutMatchModal(false);
-      Alert.alert('Match Cancelled', 'You declined the match.');
+      // If we declined, we stop finding for a moment. If user wants to find again they click the button.
+      // But if we want to "find match again" automatically:
       await cleanupWorkoutMatchmaking();
+      if (workoutConfig) {
+        startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
+      }
     } catch (err) {
       console.error('Decline workout match error:', err);
       Alert.alert('Error', 'Failed to decline match.');

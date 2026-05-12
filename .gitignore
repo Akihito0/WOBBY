@@ -44,3 +44,6 @@ instructions.md
 /ios
 /android
 modules/wobby-health/android/build/
+
+#ignore handoff.md
+handoff.md

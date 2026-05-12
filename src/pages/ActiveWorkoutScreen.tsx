@@ -198,69 +198,45 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   useEffect(() => {
     if (!isFocused || !isWorkoutStarted || isResting || !pose) return;
 
-    const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
-    const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
-
-    if (leftElbowAngle === null && rightElbowAngle === null) {
-      setFormFeedback(prev => prev !== 'Arms not visible' ? 'Arms not visible' : prev);
-      return;
-    }
-
-    let avgElbowAngle = 0;
-    if (leftElbowAngle !== null && rightElbowAngle !== null) {
-      avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
-    } else {
-      avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
-    }
-
-    const currentPhase = exercisePhaseRef.current;
-
-    // CONFIGURATION BASED ON EXERCISE
-    let upThreshold = 145;
-    let downThreshold = 100;
-    let isPushExercise = false;
-
     const name = exerciseName.toUpperCase();
-    if (name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS')) {
-      isPushExercise = true;
-      upThreshold = 145;
-      downThreshold = 100;
-    } else {
-      upThreshold = 60;
-      downThreshold = 150;
-    }
+
+    // Detect exercise type from name keywords
+    const isLegExercise = name.includes('SQUAT') || name.includes('LUNGE') || name.includes('LEG') || name.includes('CALF') || name.includes('DEADLIFT') || name.includes('GLUTE');
+    const isPushExercise = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS');
+    // Default (pull/curl): everything else
 
     const updateFeedback = (msg: string) => {
       setFormFeedback(prev => prev !== msg ? msg : prev);
     };
 
-    if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
-      updateFeedback('Move back - show legs');
-    }
+    if (isLegExercise) {
+      // ─── LEG EXERCISE LOGIC: Hip-Knee-Ankle ───
+      const leftKneeAngle = calculateAngle(pose.leftHip, pose.leftKnee, pose.leftAnkle);
+      const rightKneeAngle = calculateAngle(pose.rightHip, pose.rightKnee, pose.rightAnkle);
 
-    const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null)
-      ? Math.abs(leftElbowAngle - rightElbowAngle)
-      : 0;
+      if (leftKneeAngle === null && rightKneeAngle === null) {
+        updateFeedback('Legs not visible');
+        return;
+      }
 
-    const goodForm = elbowSymmetry < 45;
+      let avgKneeAngle = 0;
+      if (leftKneeAngle !== null && rightKneeAngle !== null) {
+        avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
+      } else {
+        avgKneeAngle = leftKneeAngle ?? rightKneeAngle ?? 0;
+      }
 
-    if (goodForm) {
-      consecutiveGoodFormFrames.current += 1;
-    } else {
-      consecutiveGoodFormFrames.current = 0;
-      updateFeedback('Uneven arms');
-    }
+      const currentPhase = exercisePhaseRef.current;
 
-    if (consecutiveGoodFormFrames.current < 2) return;
-
-    if (isPushExercise) {
-      if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
-        exercisePhaseRef.current = 'down';
-        updateFeedback('Go lower! ✓');
-      } else if (currentPhase === 'down' && avgElbowAngle > upThreshold) {
+      // Down threshold: knee angle < 100° (squat depth)
+      // Up threshold: knee angle > 160° (standing)
+      if (currentPhase === 'down' && avgKneeAngle < 100) {
+        exercisePhaseRef.current = 'up';
+        updateFeedback('Good depth! ✓');
+      } else if (currentPhase === 'up' && avgKneeAngle > 160) {
         const newReps = reps + 1;
         setReps(newReps);
-        exercisePhaseRef.current = 'up';
+        exercisePhaseRef.current = 'down';
         updateFeedback('Rep counted! ✓');
 
         if (targetReps > 0 && newReps >= targetReps) {
@@ -268,17 +244,82 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         }
       }
     } else {
-      if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
-        exercisePhaseRef.current = 'up';
-        updateFeedback('Up position! ✓');
-      } else if (currentPhase === 'up' && avgElbowAngle > downThreshold) {
-        const newReps = reps + 1;
-        setReps(newReps);
-        exercisePhaseRef.current = 'down';
-        updateFeedback('Rep counted! ✓');
+      // ─── ARM EXERCISE LOGIC: Shoulder-Elbow-Wrist ───
+      const leftElbowAngle = calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist);
+      const rightElbowAngle = calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist);
 
-        if (targetReps > 0 && newReps >= targetReps) {
-          setShowFinishedModal(true);
+      if (leftElbowAngle === null && rightElbowAngle === null) {
+        updateFeedback('Arms not visible');
+        return;
+      }
+
+      let avgElbowAngle = 0;
+      if (leftElbowAngle !== null && rightElbowAngle !== null) {
+        avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
+      } else {
+        avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
+      }
+
+      const currentPhase = exercisePhaseRef.current;
+
+      let upThreshold = 145;
+      let downThreshold = 100;
+
+      if (isPushExercise) {
+        upThreshold = 145;
+        downThreshold = 100;
+      } else {
+        // Pull/curl exercises
+        upThreshold = 60;
+        downThreshold = 150;
+      }
+
+      if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
+        updateFeedback('Move back - show legs');
+      }
+
+      const elbowSymmetry = (leftElbowAngle !== null && rightElbowAngle !== null)
+        ? Math.abs(leftElbowAngle - rightElbowAngle)
+        : 0;
+
+      const goodForm = elbowSymmetry < 45;
+
+      if (goodForm) {
+        consecutiveGoodFormFrames.current += 1;
+      } else {
+        consecutiveGoodFormFrames.current = 0;
+        updateFeedback('Uneven arms');
+      }
+
+      if (consecutiveGoodFormFrames.current < 2) return;
+
+      if (isPushExercise) {
+        if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
+          exercisePhaseRef.current = 'down';
+          updateFeedback('Go lower! ✓');
+        } else if (currentPhase === 'down' && avgElbowAngle > upThreshold) {
+          const newReps = reps + 1;
+          setReps(newReps);
+          exercisePhaseRef.current = 'up';
+          updateFeedback('Rep counted! ✓');
+
+          if (targetReps > 0 && newReps >= targetReps) {
+            setShowFinishedModal(true);
+          }
+        }
+      } else {
+        if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
+          exercisePhaseRef.current = 'up';
+          updateFeedback('Up position! ✓');
+        } else if (currentPhase === 'up' && avgElbowAngle > downThreshold) {
+          const newReps = reps + 1;
+          setReps(newReps);
+          exercisePhaseRef.current = 'down';
+          updateFeedback('Rep counted! ✓');
+
+          if (targetReps > 0 && newReps >= targetReps) {
+            setShowFinishedModal(true);
+          }
         }
       }
     }
@@ -336,9 +377,17 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const leftElbowAngle = pose ? calculateAngle(pose.leftShoulder, pose.leftElbow, pose.leftWrist) : null;
   const rightElbowAngle = pose ? calculateAngle(pose.rightShoulder, pose.rightElbow, pose.rightWrist) : null;
+  const leftKneeAngle = pose ? calculateAngle(pose.leftHip, pose.leftKnee, pose.leftAnkle) : null;
+  const rightKneeAngle = pose ? calculateAngle(pose.rightHip, pose.rightKnee, pose.rightAnkle) : null;
+
+  // Determine if this is a leg exercise for angle display
+  const isLegExerciseForDisplay = (() => {
+    const n = exerciseName.toUpperCase();
+    return n.includes('SQUAT') || n.includes('LUNGE') || n.includes('LEG') || n.includes('CALF') || n.includes('DEADLIFT') || n.includes('GLUTE');
+  })();
 
   const drawLine = (p1?: Point, p2?: Point) => {
-    if (!p1 || !p2 || p1.conf < 0.2 || p2.conf < 0.2) return null;
+    if (!p1 || !p2 || p1.conf < 0.15 || p2.conf < 0.15) return null;
     return <Line key={`${p1.x}-${p1.y}-${p2.x}-${p2.y}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="white" strokeWidth="2" />;
   };
 
@@ -373,7 +422,9 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
           {drawLine(pose.leftShoulder, pose.leftHip)}
           {drawLine(pose.rightShoulder, pose.rightHip)}
           {drawLine(pose.leftHip, pose.leftKnee)}
+          {drawLine(pose.leftKnee, pose.leftAnkle)}
           {drawLine(pose.rightHip, pose.rightKnee)}
+          {drawLine(pose.rightKnee, pose.rightAnkle)}
 
           {Object.entries(pose).map(([key, pt], index) => {
             if (pt && pt.conf > 0.15) {
@@ -638,7 +689,10 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
                   {formFeedback}
                 </Text>
                 <Text style={styles.darkAngleText}>
-                  L: {leftElbowAngle !== null ? leftElbowAngle + '°' : '--'} | R: {rightElbowAngle !== null ? rightElbowAngle + '°' : '--'}
+                  {isLegExerciseForDisplay
+                    ? `L Knee: ${leftKneeAngle !== null ? leftKneeAngle + '°' : '--'} | R Knee: ${rightKneeAngle !== null ? rightKneeAngle + '°' : '--'}`
+                    : `L: ${leftElbowAngle !== null ? leftElbowAngle + '°' : '--'} | R: ${rightElbowAngle !== null ? rightElbowAngle + '°' : '--'}`
+                  }
                 </Text>
               </View>
             )}

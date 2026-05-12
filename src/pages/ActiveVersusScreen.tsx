@@ -272,13 +272,12 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
     const name = exerciseName.toUpperCase();
     const isPushExercise = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS');
-    const isSquatExercise = name.includes('SQUAT') || name.includes('LEG');
-
+    const isLegExercise = name.includes('SQUAT') || name.includes('LUNGE') || name.includes('LEG') || name.includes('CALF') || name.includes('DEADLIFT') || name.includes('GLUTE') || name.includes('EXTENSION');
     let isRepValid = false;
     let feedback = "";
 
-    if (isSquatExercise) {
-      // 🦵 SQUAT LOGIC: Hip-Knee-Ankle
+    if (isLegExercise) {
+      // 🦵 LEG LOGIC: Hip-Knee-Ankle (squats, lunges, leg extensions, etc.)
       const leftKneeAngle = calculateAngle(pose.leftHip, pose.leftKnee, pose.leftAnkle);
       const rightKneeAngle = calculateAngle(pose.rightHip, pose.rightKnee, pose.rightAnkle);
 
@@ -346,10 +345,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     setReps(newReps);
 
     const name = exerciseName.toUpperCase();
-    if (name.includes('SQUAT')) {
+    const isLeg = name.includes('SQUAT') || name.includes('LUNGE') || name.includes('LEG') || name.includes('CALF') || name.includes('DEADLIFT') || name.includes('GLUTE') || name.includes('EXTENSION');
+    const isPush = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS');
+
+    if (isLeg) {
       exercisePhaseRef.current = 'down';
     } else {
-      exercisePhaseRef.current = isPushExercise(exerciseName) ? 'up' : 'down';
+      exercisePhaseRef.current = isPush ? 'up' : 'down';
     }
     setFormFeedback('Rep counted! ✓');
 
@@ -363,11 +365,6 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     if (newReps >= targetReps) {
       handleSetFinished();
     }
-  };
-
-  const isPushExercise = (name: string) => {
-    const n = name.toUpperCase();
-    return n.includes('PUSH') || n.includes('BENCH') || n.includes('DIP');
   };
 
   const handleSetFinished = async () => {
@@ -568,7 +565,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   };
 
   const drawLine = (p1: Point, p2: Point) => {
-    if (p1.conf < 0.2 || p2.conf < 0.2) return null;
+    if (p1.conf < 0.15 || p2.conf < 0.15) return null;
     return <Line key={`${p1.x}-${p1.y}-${p2.x}-${p2.y}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="white" strokeWidth="2" />;
   };
 

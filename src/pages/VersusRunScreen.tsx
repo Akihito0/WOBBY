@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -17,7 +18,6 @@ import MapboxGL from '@rnmapbox/maps';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { uploadMapSnapshot } from '../services/runUpload';
-import PostRunScreen from './PostRunScreen';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -122,11 +122,11 @@ const calcDistance = (coords: Coordinate[]): number => {
 };
 
 const calcPace = (distanceKm: number, seconds: number): string => {
-  if (distanceKm === 0 || seconds === 0) return '--\'--"';
+  if (distanceKm === 0 || seconds === 0) return '--:--';
   const paceSeconds = (seconds / 60) / distanceKm;
   const pm = Math.floor(paceSeconds);
   const ps = Math.round((paceSeconds - pm) * 60);
-  return `${pm}'${String(ps).padStart(2, '0')}"`;
+  return `${pm}:${String(ps).padStart(2, '0')}`;
 };
 
 const calcElevationGain = (coords: Coordinate[]): number => {
@@ -145,7 +145,7 @@ const calcElevationGain = (coords: Coordinate[]): number => {
 
 const VersusRunScreen = ({ navigation, route }: any) => {
   const [mapExpanded, setMapExpanded] = useState(false);
-  const [runState, setRunState] = useState<'idle' | 'running' | 'paused' | 'finished'>('running');
+  const [runState, setRunState] = useState<'waiting_ready' | 'countdown' | 'idle' | 'running' | 'paused' | 'finished'>('waiting_ready');
   const [time, setTime] = useState(0);
   const [userCoordinates, setUserCoordinates] = useState<Coordinate[]>([]);
   const [opponentCoordinates, setOpponentCoordinates] = useState<Coordinate[]>([]);
@@ -157,12 +157,15 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const [opponentFinished, setOpponentFinished] = useState(false);
   const [raceResult, setRaceResult] = useState<{winner: string; reason: string} | null>(null);
   
-  const [showPostRun, setShowPostRun] = useState(false);
-  const [mapSnapshot, setMapSnapshot] = useState<string | null>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+
+  // Ready State & Countdown
+  const [localReady, setLocalReady] = useState(false);
+  const [opponentReady, setOpponentReady] = useState(false);
+  const [countdownValue, setCountdownValue] = useState(3);
 
   const locationSubscriptionRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const opponentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const mapViewRef = useRef<MapboxGL.MapView>(null);
@@ -175,7 +178,6 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   }, [time]);
 
   useEffect(() => {
-    startLocationTracking();
     subscribeToOpponentUpdates();
     return () => {
       stopLocationTracking();
@@ -183,22 +185,49 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     };
   }, []);
 
+  // Sync Start Logic
   useEffect(() => {
-    if (runState === 'running') {
-      opponentTimerRef.current = setInterval(() => {
-        setOpponentTime(prev => prev + 1);
-      }, 1000);
+    if (localReady && opponentReady && runState === 'waiting_ready') {
+      setRunState('countdown');
     }
+  }, [localReady, opponentReady, runState]);
+
+  useEffect(() => {
+    let cdInterval: ReturnType<typeof setInterval> | null = null;
+    if (runState === 'countdown') {
+      cdInterval = setInterval(() => {
+        setCountdownValue(prev => {
+          if (prev <= 1) {
+            if (cdInterval) clearInterval(cdInterval);
+            setRunState('running');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (runState === 'running' && countdownValue === 0) {
+      // Start tracking exactly when countdown finishes
+      startLocationTracking();
+      setCountdownValue(-1); // Prevent re-triggering
+    }
+
     return () => {
-      if (opponentTimerRef.current) clearInterval(opponentTimerRef.current);
+      if (cdInterval) clearInterval(cdInterval);
     };
-  }, [runState]);
+  }, [runState, countdownValue]);
+
+  // NEW: Automatically show results when both are finished
+  useEffect(() => {
+    if (runState === 'finished' && opponentFinished && !showResultModal) {
+      setShowResultModal(true);
+    }
+  }, [runState, opponentFinished, showResultModal]);
 
   useEffect(() => {
     const currentDistance = calcDistance(userCoordinates);
     if (currentDistance >= targetDistance && !userReachedTarget) {
       setUserReachedTarget(true);
-      Alert.alert('🎯 Target Reached!', `You reached ${targetDistance}km!`);
+      performFinishRun(true);
     }
   }, [userCoordinates, targetDistance, userReachedTarget]);
 
@@ -278,6 +307,16 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           }
         }
       )
+      .on(
+        'broadcast',
+        { event: 'player_ready' },
+        (payload) => {
+          const data = payload.payload;
+          if (data.userId === opponentId) {
+            setOpponentReady(true);
+          }
+        }
+      )
       .subscribe((status) => {
         console.log(`📡 Broadcast channel status: ${status}`);
       });
@@ -318,6 +357,24 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     }
   };
 
+  const publishReadyStatus = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id || !realtimeChannelRef.current) return;
+
+      realtimeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'player_ready',
+        payload: {
+          userId: session.user.id,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (error) {
+      console.error('Error broadcasting ready status:', error);
+    }
+  };
+
   useEffect(() => {
     if (runState === 'running') {
       timerRef.current = setInterval(() => {
@@ -336,12 +393,12 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
       locationSubscriptionRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5000,
-          distanceInterval: 10,
+          accuracy: Location.Accuracy.Highest,
+          timeInterval: 2000,
+          distanceInterval: 2,
         },
         (location) => {
-          const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 40;
+          const hasGoodAccuracy = location.coords.accuracy === null || location.coords.accuracy <= 20;
           
           if (!hasGoodAccuracy) return;
 
@@ -374,7 +431,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
   const opponentMetrics: RunMetrics = {
     distance: calcDistance(opponentCoordinates),
-    pace: calcPace(calcDistance(opponentCoordinates), opponentTime),
+    pace: calcPace(calcDistance(opponentCoordinates), time),
     elevation: { gain: calcElevationGain(opponentCoordinates), loss: 0 },
     time: opponentTime,
   };
@@ -430,6 +487,9 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const performFinishRun = async (userReachedTargetDist: boolean) => {
     setIsSaving(true);
     setRunState('finished');
+    
+    // Stop location tracking and timer immediately to save battery
+    stopLocationTracking();
     
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -581,10 +641,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       });
       
       setIsSaving(false);
-      setMapSnapshot(localBase64Map);
-      setShowPostRun(true);
-      
-      // Removed automatic goBack; we wait for PostRunScreen to handle finish
+      // We wait for both to finish, then show result modal
     } catch (error) {
       setIsSaving(false);
     }
@@ -616,10 +673,16 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Single Shared Timer */}
+        <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={styles.sharedTimerCard}>
+          <Text style={styles.sharedTimerLabel}>⏱ RACE TIME</Text>
+          <Text style={styles.sharedTimerValue}>{formatTime(time)}</Text>
+        </LinearGradient>
+
+        {/* Distance comparison row */}
         <View style={styles.timeDistanceRow}>
           <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={[styles.metricCard, styles.userCard]}>
             <Text style={styles.userLabel}>YOU</Text>
-            <Text style={styles.largeValue}>{formatTime(userMetrics.time)}</Text>
             <Text style={styles.distanceValue}>{userMetrics.distance.toFixed(2)} km</Text>
           </LinearGradient>
 
@@ -627,7 +690,6 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
           <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={[styles.metricCard, styles.opponentCard]}>
             <Text style={styles.opponentLabel}>OPPONENT</Text>
-            <Text style={styles.largeValue}>{formatTime(opponentMetrics.time)}</Text>
             <Text style={styles.distanceValue}>{opponentMetrics.distance.toFixed(2)} km</Text>
           </LinearGradient>
         </View>
@@ -638,13 +700,13 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Your Pace</Text>
               <Text style={styles.metricValueLarge}>{userMetrics.pace}</Text>
-              <Text style={styles.metricUnit}>min/km</Text>
+              <Text style={styles.metricUnit}>minutes/km</Text>
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Opponent Pace</Text>
               <Text style={styles.metricValueLarge}>{opponentMetrics.pace}</Text>
-              <Text style={styles.metricUnit}>min/km</Text>
+              <Text style={styles.metricUnit}>minutes/km</Text>
             </View>
           </View>
         </LinearGradient>
@@ -739,54 +801,128 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       </ScrollView>
 
       <View style={styles.bottomControls}>
+        {runState === 'waiting_ready' && !localReady && (
+          <TouchableOpacity
+            style={styles.readyButtonWrapper}
+            activeOpacity={0.8}
+            onPress={() => {
+              setLocalReady(true);
+              publishReadyStatus();
+            }}
+          >
+            <LinearGradient
+              colors={['#CCFF00', '#A3CF06']}
+              style={styles.readyButtonInner}
+            >
+              <Text style={styles.readyButtonText}>I'M READY</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+        {runState === 'waiting_ready' && localReady && (
+          <View style={styles.activeStatusCard}>
+            <LinearGradient
+              colors={['#1a1a1a', '#0f0f0f']}
+              style={styles.statusInner}
+            >
+              <ActivityIndicator color="#CCFF00" style={{ marginBottom: 8 }} />
+              <Text style={styles.statusMain}>WAITING FOR OPPONENT</Text>
+              <Text style={styles.statusSub}>You're ready! Waiting for opponent to get ready...</Text>
+            </LinearGradient>
+          </View>
+        )}
+        {runState === 'countdown' && (
+          <View style={styles.activeStatusCard}>
+            <LinearGradient
+              colors={['#1a1a1a', '#0f0f0f']}
+              style={styles.statusInner}
+            >
+              <Text style={styles.countdownNumber}>{countdownValue}</Text>
+              <Text style={styles.statusSub}>Get ready to run!</Text>
+            </LinearGradient>
+          </View>
+        )}
         {runState === 'running' && (
-          <>
-            <TouchableOpacity
-              onPress={() => setRunState('paused')}
-              style={styles.pauseButton}
-              disabled={isSaving}
+          <View style={styles.activeStatusCard}>
+            <LinearGradient
+              colors={['#1a1a1a', '#0f0f0f']}
+              style={styles.statusInner}
             >
-              <Text style={styles.buttonText}>PAUSE</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleFinishRun}
-              style={[styles.finishButton, isSaving && styles.savingButton]}
-              disabled={isSaving}
+              <Text style={styles.statusMain}>RACE ACTIVE</Text>
+              <Text style={styles.statusSub}>Reach {targetDistance}km to finish</Text>
+            </LinearGradient>
+          </View>
+        )}
+        {runState === 'finished' && !showResultModal && (
+          <View style={styles.activeStatusCard}>
+            <LinearGradient
+              colors={['#1a1a1a', '#0f0f0f']}
+              style={styles.statusInner}
             >
-              {isSaving ? <ActivityIndicator color="#121310" /> : <Text style={styles.finishButtonText}>FINISH RUN</Text>}
-            </TouchableOpacity>
-          </>
+              <ActivityIndicator color="#CCFF00" style={{ marginBottom: 8 }} />
+              <Text style={styles.statusMain}>WAITING FOR OPPONENT</Text>
+              <Text style={styles.statusSub}>Finalizing match results...</Text>
+            </LinearGradient>
+          </View>
         )}
       </View>
 
-      <PostRunScreen 
-        visible={showPostRun}
-        onDiscard={() => {
-          setShowPostRun(false);
-          navigation.goBack();
-        }}
-        onBackToPaused={() => {
-          setShowPostRun(false);
-          setRunState('paused');
-        }}
-        onSaveSuccess={() => {
-          setShowPostRun(false);
-          navigation.goBack();
-        }}
-        mapSnapshot={mapSnapshot}
-        runData={{
-          distance: userMetrics.distance,
-          elapsed: userMetrics.time,
-          routeCoords: userCoordinates,
-          elevationMetrics: { gain: userMetrics.elevation.gain, loss: userMetrics.elevation.loss, min: 0, max: 0 },
-          sessionStats: { avg: 0, max: 0 },
-          sessionHRData: [],
-          workoutType: 'versus_run',
-          isWinner: raceResult?.winner === 'You'
-        }}
-        initialTitle={`${targetDistance}km Versus Run`}
-        initialDescription={`Raced against ${route.params?.opponentUsername || 'Runner_Pro'}`}
-      />
+      {/* Win/Lose/Tie Result Modal */}
+      <Modal visible={showResultModal} transparent animationType="fade">
+        <View style={styles.resultModalOverlay}>
+          <LinearGradient
+            colors={raceResult?.winner === 'You' ? ['#0f2e0a', '#1a4a15'] : raceResult?.winner === 'Tie' ? ['#2a2a1a', '#3a3a2a'] : ['#2e0a0a', '#4a1515']}
+            style={styles.resultModalContainer}
+          >
+            <Text style={styles.resultEmoji}>
+              {raceResult?.winner === 'You' ? '🏆' : raceResult?.winner === 'Tie' ? '🤝' : '😢'}
+            </Text>
+            <Text style={[
+              styles.resultTitle,
+              { color: raceResult?.winner === 'You' ? '#34D399' : raceResult?.winner === 'Tie' ? '#CCFF00' : '#FF4444' }
+            ]}>
+              {raceResult?.winner === 'You' ? 'YOU WIN!' : raceResult?.winner === 'Tie' ? 'TIE!' : 'YOU LOSE'}
+            </Text>
+            <Text style={styles.resultReason}>{raceResult?.reason}</Text>
+
+            <View style={styles.resultStatsRow}>
+              <View style={styles.resultStatItem}>
+                <Text style={styles.resultStatLabel}>Your Distance</Text>
+                <Text style={styles.resultStatValue}>{userMetrics.distance.toFixed(2)} km</Text>
+              </View>
+              <View style={styles.resultStatDivider} />
+              <View style={styles.resultStatItem}>
+                <Text style={styles.resultStatLabel}>Opponent Distance</Text>
+                <Text style={styles.resultStatValue}>{opponentMetrics.distance.toFixed(2)} km</Text>
+              </View>
+            </View>
+
+            <View style={styles.resultStatsRow}>
+              <View style={styles.resultStatItem}>
+                <Text style={styles.resultStatLabel}>Time</Text>
+                <Text style={styles.resultStatValue}>{formatTime(time)}</Text>
+              </View>
+              <View style={styles.resultStatDivider} />
+              <View style={styles.resultStatItem}>
+                <Text style={styles.resultStatLabel}>Target</Text>
+                <Text style={styles.resultStatValue}>{targetDistance} km</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.resultDoneButton}
+              onPress={() => {
+                setShowResultModal(false);
+                navigation.goBack();
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.resultDoneButtonText}>DONE</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+
     </View>
   );
 };
@@ -803,14 +939,16 @@ const styles = StyleSheet.create({
   gapText: { color: '#888888', fontSize: 13, fontFamily: 'Barlow-Regular', marginTop: 4 },
   content: { flex: 1, paddingHorizontal: 20 },
   contentContainer: { paddingBottom: 100 },
+  sharedTimerCard: { borderRadius: 15, padding: 20, alignItems: 'center', marginBottom: 15, borderWidth: 1, borderColor: 'rgba(204, 255, 0, 0.3)' },
+  sharedTimerLabel: { color: '#888888', fontSize: 12, fontFamily: 'Montserrat-Bold', marginBottom: 8 },
+  sharedTimerValue: { color: '#FFFFFF', fontSize: 42, fontFamily: 'Barlow-Bold', letterSpacing: 2 },
   timeDistanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   metricCard: { borderRadius: 15, padding: 20, alignItems: 'center', marginBottom: 15 },
   userCard: { flex: 1, borderLeftWidth: 3, borderLeftColor: '#34D399' },
   opponentCard: { flex: 1, borderRightWidth: 3, borderRightColor: '#2196F3' },
-  divider: { width: 1, height: 80, backgroundColor: '#333333', marginHorizontal: 10 },
+  divider: { width: 1, height: 50, backgroundColor: '#333333', marginHorizontal: 10 },
   userLabel: { color: '#34D399', fontSize: 12, fontFamily: 'Montserrat-Bold', marginBottom: 8 },
   opponentLabel: { color: '#2196F3', fontSize: 12, fontFamily: 'Montserrat-Bold', marginBottom: 8 },
-  largeValue: { color: '#FFFFFF', fontSize: 24, fontFamily: 'Barlow-Bold', marginBottom: 8 },
   distanceValue: { color: '#A3CF06', fontSize: 18, fontFamily: 'Barlow-Bold' },
   detailsCard: { borderRadius: 15, padding: 20, marginBottom: 15 },
   detailsTitle: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat-Bold', marginBottom: 15 },
@@ -833,15 +971,51 @@ const styles = StyleSheet.create({
   mapExpandBtn: { backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#333333' },
   mapExpandIcon: { color: '#FFFFFF', fontSize: 16 },
   map: { width: '100%', height: 300, borderRadius: 15, overflow: 'hidden' },
+  bottomControls: { paddingHorizontal: 20, paddingBottom: 40 },
+  activeStatusCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(204, 255, 0, 0.3)' },
+  statusInner: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
+  statusMain: { color: '#CCFF00', fontSize: 18, fontFamily: 'Montserrat-ExtraBold', letterSpacing: 1 },
+  statusSub: { color: '#888', fontSize: 12, fontFamily: 'Montserrat-Bold', marginTop: 4 },
   userLocationDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#34D399', borderWidth: 2, borderColor: 'white' },
-  bottomControls: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingVertical: 15, backgroundColor: 'rgba(18, 19, 16, 0.95)', borderTopWidth: 1, borderTopColor: '#333333', flexDirection: 'row', gap: 10 },
-  pauseButton: { flex: 1, backgroundColor: '#333333', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  finishButton: { flex: 1, backgroundColor: '#A3CF06', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  savingButton: { opacity: 0.6 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Montserrat-Bold' },
-  finishButtonText: { color: '#121310', fontSize: 14, fontFamily: 'Montserrat-Bold' },
   mapSectionExpanded: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, backgroundColor: '#121310', paddingHorizontal: 20, paddingTop: 10 },
   mapExpanded: { height: SCREEN_HEIGHT - 200 },
+
+  // Result Modal Styles
+  resultModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
+  resultModalContainer: { width: '90%', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(204, 255, 0, 0.3)' },
+  resultEmoji: { fontSize: 60, marginBottom: 10 },
+  resultTitle: { fontSize: 32, fontFamily: 'Montserrat-Black', marginBottom: 8 },
+  resultReason: { color: '#AAAAAA', fontSize: 14, fontFamily: 'Barlow-Regular', textAlign: 'center', marginBottom: 25 },
+  resultStatsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 15 },
+  resultStatItem: { flex: 1, alignItems: 'center' },
+  resultStatLabel: { color: '#888888', fontSize: 12, fontFamily: 'Montserrat-Regular', marginBottom: 4 },
+  resultStatValue: { color: '#FFFFFF', fontSize: 18, fontFamily: 'Barlow-Bold' },
+  resultStatDivider: { width: 1, height: 40, backgroundColor: '#333333', marginHorizontal: 10 },
+  resultDoneButton: { backgroundColor: '#CCFF00', paddingHorizontal: 50, paddingVertical: 15, borderRadius: 30, marginTop: 20 },
+  resultDoneButtonText: { color: '#000000', fontSize: 18, fontFamily: 'Montserrat-Black'  },
+  
+  // Ready & Countdown Inline Styles
+  readyButtonWrapper: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  readyButtonInner: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readyButtonText: {
+    color: '#000000',
+    fontSize: 18,
+    fontFamily: 'Montserrat-Black',
+    letterSpacing: 1,
+  },
+  countdownNumber: {
+    color: '#CCFF00',
+    fontSize: 48,
+    fontFamily: 'Montserrat-Black',
+    marginBottom: 4,
+  },
 });
 
 export default VersusRunScreen;
