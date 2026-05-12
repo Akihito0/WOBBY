@@ -158,7 +158,7 @@ export default function MatchFoundModal({
             {isWorkoutMode && workoutConfig ? (
               <View style={styles.distanceContainer}>
                 <Text style={styles.distanceLabel}>WORKOUT TARGET</Text>
-                <Text style={styles.distanceValue}>{workoutConfig.sets} SETS • {workoutConfig.reps} {workoutConfig.exercise.toUpperCase()}</Text>
+                <Text style={styles.distanceValue}>{workoutConfig.sets} SETS • {workoutConfig.reps} {workoutConfig.exercise?.toUpperCase() || 'WORKOUT'}</Text>
               </View>
             ) : (
               <View style={styles.distanceContainer}>

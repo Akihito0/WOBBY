@@ -9,6 +9,8 @@ import Svg, { Line, Circle } from 'react-native-svg';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import ChallengeModal from '../components/ChallengeModal';
+import { useHealth } from '../context/HealthContext';
+import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -44,6 +46,42 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [time, setTime] = useState(0);
   const [reps, setReps] = useState(0);
   const [opponentReps, setOpponentReps] = useState(0);
+
+  const { heartRate: contextHR } = useHealth();
+  const [activeHR, setActiveHR] = useState<number | null>(null);
+  const [sessionHRData, setSessionHRData] = useState<number[]>([]);
+
+  // ─── HEART RATE LOGIC ───
+  useEffect(() => {
+    let hrIntervalId: ReturnType<typeof setInterval>;
+
+    const fetchLiveHR = async () => {
+      try {
+        const history: HeartRateSample[] = await getHeartRateHistory(1);
+        if (history && history.length > 0) {
+          const val = Math.round(history[history.length - 1].value);
+          setActiveHR(val);
+
+          if (isWorkoutStarted && !isFinished) {
+            setSessionHRData(prev => [...prev, val]);
+          }
+        }
+      } catch (error) {
+        console.log('Error polling HR:', error);
+      }
+    };
+
+    if (isWorkoutStarted && !isFinished) {
+      fetchLiveHR(); 
+      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+    }
+
+    return () => {
+      if (hrIntervalId) clearInterval(hrIntervalId);
+    };
+  }, [isWorkoutStarted, isFinished]);
+
+  const displayHR = activeHR !== null ? activeHR : contextHR;
 
   const [isFinished, setIsFinished] = useState(false);
   const [opponentFinished, setOpponentFinished] = useState(false);
@@ -610,6 +648,12 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
           </View>
 
           <View style={styles.vsDivider}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+              <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
+              <Text style={{ color: '#FF4444', fontSize: 12, fontFamily: 'Barlow-Bold' }}>
+                {displayHR !== null ? `${displayHR} BPM` : '-- BPM'}
+              </Text>
+            </View>
             <Text style={styles.timerText}>{formatTime(time)}</Text>
             <Text style={styles.vsText}>VS</Text>
           </View>
