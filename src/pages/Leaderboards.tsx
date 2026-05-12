@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../supabase';
+import LoadLB from '../components/LoadLB';
 
 const { width } = Dimensions.get('window');
 
@@ -71,7 +72,7 @@ const LeaderboardsScreen = () => {
   const fetchLeaderboard = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       // Get current user
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
@@ -121,7 +122,7 @@ const LeaderboardsScreen = () => {
 
   // Get top 3 users for podium
   const podiumUsers = leaderboardUsers.slice(0, 3);
-  
+
   // Get remaining users for list (rank 4+)
   const listUsers = leaderboardUsers.filter(u => u.rank >= 4);
 
@@ -138,7 +139,7 @@ const LeaderboardsScreen = () => {
           <Image source={require('../assets/back0.png')} style={styles.backIcon} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>LEADERBOARDS</Text>
-        <View style={{ width: 36 }} /> 
+        <View style={{ width: 36 }} />
       </LinearGradient>
 
       {/* ── BODY (Multi-stop Gradient) ── */}
@@ -183,9 +184,9 @@ const LeaderboardsScreen = () => {
 
           {/* ── PODIUM IMAGE ── */}
           <View style={styles.podiumImageContainer}>
-            <Image 
-              source={require('../assets/podiummm.png')} 
-              style={styles.podiumImage} 
+            <Image
+              source={require('../assets/podiummm.png')}
+              style={styles.podiumImage}
             />
           </View>
 
@@ -214,10 +215,12 @@ const LeaderboardsScreen = () => {
             )}
           </View>
           <Text style={styles.footerText}>
-              {currentUser.username || 'Loading...'}                          TOP {currentUser.percentile}%
+            {currentUser.username || 'Loading...'}                          TOP {currentUser.percentile}%
           </Text>
         </View>
       </LinearGradient>
+
+      <LoadLB visible={loading} />
     </SafeAreaView>
   );
 };
@@ -244,62 +247,62 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backIcon: {
-   width: 30, 
-    height: 30, 
-    position: 'absolute', 
+    width: 30,
+    height: 30,
+    position: 'absolute',
     left: 12,
     marginTop: -65,
   },
-  headerTitle: { 
-    color: '#d1d1d1', 
-    fontSize: 32, 
-    fontFamily: 'Montserrat-Black', 
+  headerTitle: {
+    color: '#d1d1d1',
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
     right: -45,
     bottom: -10,
-},
+  },
   body: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 0,
   },
- podiumWrapper: {
-  alignItems: 'center',
+  podiumWrapper: {
+    alignItems: 'center',
     marginTop: -100,
     marginBottom: -80,
     height: 380,         // 💡 CRITICAL: This gives the floating users a "box" to stay in
     width: width,
     zIndex: 1,
-},
-podiumImage: {
-  width: 300,
-  height: 300,
-  resizeMode: 'contain',
-},
-podiumImageContainer: {
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginTop: -60,
-  marginBottom: 1,
-},
+  },
+  podiumImage: {
+    width: 300,
+    height: 300,
+    resizeMode: 'contain',
+  },
+  podiumImageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -60,
+    marginBottom: 1,
+  },
   podiumUser: {
     position: 'absolute',
     alignItems: 'center',
     width: 100,
     zIndex: 2,
-},
+  },
   podiumUsername: {
     color: '#fff',
     fontFamily: 'Montserrat-Bold',
     fontSize: 12,
     marginBottom: 4,
-},
+  },
   rank1Text: {
     color: '#CCFF00',
     // Mocking the .2 stroke via shadow as React Native doesn't support text-stroke natively
     textShadowColor: '#CCFF00',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 0.2, 
+    textShadowRadius: 0.2,
   },
   podiumAvatarBox: {
     width: 56,
@@ -320,7 +323,7 @@ podiumImageContainer: {
     fontSize: 11,
     marginTop: 4,
   },
-listCard: {
+  listCard: {
     // 40% opacity white = rgba(255, 255, 255, 0.4)
     backgroundColor: 'rgba(255, 255, 255, 0.4)', // 70% opacity grey,
     borderTopLeftRadius: 30,
@@ -331,10 +334,10 @@ listCard: {
     minHeight: 500,
     width: 360,
     alignSelf: 'center',
-    marginTop: -60, 
+    marginTop: -60,
     marginBottom: 0,      // Ensure no margin at the bottom
     flex: 1,              // Allows it to fill the remaining space
-},
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

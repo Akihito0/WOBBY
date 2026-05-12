@@ -622,13 +622,13 @@ export default function ActivityFeed({
           <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
 
-              <View style={styles.modalHeader}>
-                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailsModalVisible(false)}>
-                  <MaterialCommunityIcons name="close" size={28} color="#FFF" />
+              <LinearGradient colors={['#0e2c39', '#000000']} start={{ x: 1, y: 0.5 }} end={{ x: 0.3, y: 0.5 }} style={styles.modalHeader}>
+                <TouchableOpacity style={styles.backBtnWrapper} onPress={() => setDetailsModalVisible(false)}>
+                 <Image source={require('../assets/back0.png')} style={styles.backBtn} />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>{isRoutine ? `${routineData?.routine_type} ROUTINE` : 'RUN DETAILS'}</Text>
                 <View style={{ width: 28 }} />
-              </View>
+              </LinearGradient>
 
               <Text style={styles.modalRunTitle}>{title}</Text>
 
@@ -959,17 +959,17 @@ export default function ActivityFeed({
               <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
                 {/* Header */}
-                <View style={styles.modalHeader}>
+                <LinearGradient colors={['#0e2c39', '#000000']} start={{ x: 1, y: 0.5 }} end={{ x: 0.3, y: 0.5 }} style={styles.modalHeader}>
                   <TouchableOpacity
-                    style={styles.modalCloseBtn}
+                    style={styles.backBtnWrapper}
                     onPress={() => !isSaving && setEditModalVisible(false)}
                     disabled={isSaving}
                   >
-                    <MaterialCommunityIcons name="close" size={28} color={isSaving ? '#555' : '#FFF'} />
+                    <Image source={require('../assets/back0.png')} style={styles.backBtn} />
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>EDIT WORKOUT</Text>
                   <View style={{ width: 44 }} />
-                </View>
+                </LinearGradient>
 
                 {/* Routine type badge */}
                 <View style={styles.editBadgeRow}>
@@ -1111,25 +1111,17 @@ export default function ActivityFeed({
               <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
                 {/* Header */}
-                <View style={styles.modalHeader}>
+                <LinearGradient colors={['#0e2c39', '#000000']} start={{ x: 1, y: 0.5 }} end={{ x: 0.3, y: 0.5 }} style={styles.modalHeader}>
                   <TouchableOpacity
-                    style={styles.modalCloseBtn}
+                    style={styles.backBtnWrapper}
                     onPress={() => !isSaving && setRunEditModalVisible(false)}
                     disabled={isSaving}
                   >
-                    <MaterialCommunityIcons name="close" size={28} color={isSaving ? '#555' : '#FFF'} />
+                    <Image source={require('../assets/back0.png')} style={styles.backBtn} />
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>EDIT RUN</Text>
                   <View style={{ width: 44 }} />
-                </View>
-
-                {/* Run type badge */}
-                <View style={styles.editBadgeRow}>
-                  <View style={styles.editBadge}>
-                    <MaterialCommunityIcons name="run" size={13} color="#CCFF00" />
-                    <Text style={styles.editBadgeText}>{runData?.workout_type || 'Run'}</Text>
-                  </View>
-                </View>
+                </LinearGradient>
 
                 {/* Run Stats Summary (read-only) */}
                 <View style={[styles.exerciseBreakdownCard, { borderColor: 'rgba(204,255,0,0.15)' }]}>
@@ -1353,16 +1345,23 @@ const styles = StyleSheet.create({
   // MODAL (shared)
   modalGradient: { flex: 1 },
   modalContent: { paddingBottom: 40 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 50 : 30, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-  modalCloseBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { color: '#FFF', fontSize: 18, fontFamily: 'Montserrat_800ExtraBold', letterSpacing: 1 },
+  modalHeader: { width: '100%', height: 117, flexDirection: 'row', alignItems: 'flex-end', paddingBottom: 18, paddingHorizontal: 20, justifyContent: 'space-between', marginBottom: 20 },
+   backBtnWrapper: {
+    justifyContent: 'center', 
+    top: -25,
+  },
+  backBtn: { 
+    width: 30, 
+    height: 30, 
+    resizeMode: 'contain' },
+  modalTitle: { color: '#d1d1d1', fontSize: 30, fontFamily: 'Montserrat_900Black', flex: 1, textAlign: 'center', textAlignVertical: 'center' },
   modalRunTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat_900Black', paddingHorizontal: 20, marginTop: 20, marginBottom: 25 },
   modalStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },
   modalStatBox: { flex: 1, minWidth: '48%', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
   modalStatLabel: { color: '#888', fontSize: 10, fontFamily: 'Montserrat_600SemiBold', marginBottom: 4 },
   modalStatValue: { color: '#C8FF00', fontSize: 18, fontFamily: 'Montserrat_900Black' },
   modalStatUnit: { color: '#666', fontSize: 9, fontFamily: 'Montserrat_500Medium', marginTop: 2 },
-  modalSectionLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 20, marginTop: 25, marginBottom: 12 },
+  modalSectionLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', paddingHorizontal: 20, marginTop: 25, marginBottom: 12 },
   modalDescriptionBox: { backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, padding: 16, marginHorizontal: 20, borderWidth: 1, borderColor: '#333' },
   modalDescriptionText: { color: '#DDD', fontSize: 13, lineHeight: 20, fontFamily: 'Montserrat_400Regular' },
   modalMapImage: { width: '100%', height: 200, marginBottom: 20 },
@@ -1381,7 +1380,7 @@ const styles = StyleSheet.create({
   editBadgeRow: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 20, marginBottom: 24 },
   editBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(204,255,0,0.08)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(204,255,0,0.2)' },
   editBadgeText: { color: '#CCFF00', fontSize: 11, fontFamily: 'Montserrat_700Bold' },
-  editFieldLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 20, marginBottom: 8 },
+  editFieldLabel: { color: '#888', fontSize: 11, fontFamily: 'Montserrat_700Bold', textTransform: 'uppercase', paddingHorizontal: 20, marginBottom: 8 },
   editInput: { backgroundColor: '#1A1A1A', borderRadius: 10, borderWidth: 1, borderColor: '#333', color: '#FFF', fontSize: 14, fontFamily: 'Montserrat_500Medium', paddingHorizontal: 16, paddingVertical: 14, marginHorizontal: 20 },
   editInputMultiline: { minHeight: 120, paddingTop: 14 },
   editCharCount: { color: '#444', fontSize: 10, fontFamily: 'Montserrat_500Medium', textAlign: 'right', paddingHorizontal: 20, marginTop: 5 },
