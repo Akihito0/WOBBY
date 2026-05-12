@@ -23,13 +23,13 @@ import ChallengeModal from '../components/ChallengeModal';
 
 const { width } = Dimensions.get('window');
 
-type WorkoutType = 'VERSUS_BATTLE' | 'VERSUS_RUN' | 'SOLO_WORKOUT' | 'ALL';
-type SortBy = 'DATE_NEWEST' | 'DATE_OLDEST' | 'XP_HIGH' | 'XP_LOW';
+type WorkoutType = 'ALL' | 'BATTLE' | 'SOLO' | 'ACHIEVEMENTS';
+type SortBy = 'DATE_NEWEST' | 'DATE_OLDEST' | 'XP_HIGH' | 'XP_LOW' | 'VERSUS_WORKOUT' | 'VERSUS_RUN' | 'WORKOUT' | 'RUN';
 
 interface WorkoutRecord {
   id: string;
-  type: 'VERSUS_BATTLE' | 'VERSUS_RUN' | 'SOLO_WORKOUT';
-  mode: 'VERSUS' | 'SOLO';
+  type: 'VERSUS_BATTLE' | 'VERSUS_RUN' | 'SOLO_WORKOUT' | 'SOLO_RUN' | 'ACHIEVEMENT';
+  mode: 'VERSUS' | 'SOLO' | 'ACHIEVEMENT';
   exerciseName: string;
   distance?: number;
   reps?: number;
@@ -40,6 +40,8 @@ interface WorkoutRecord {
   xp: number;
   date: string;
   timestamp: number;
+  image?: any;
+  description?: string;
 }
 
 const PerformanceScreen = () => {
@@ -100,7 +102,7 @@ const PerformanceScreen = () => {
         .lt('created_at', tomorrow.toISOString())
         .neq('status', 'waiting');
 
-      const { data: runs } = await supabase
+      const { data: versusRuns } = await supabase
         .from('versus_run_results')
         .select('user_1_id, user_2_id, user_1_distance, user_2_distance, user_1_time, user_2_time, completed_at')
         .or(`user_1_id.eq.${user.id},user_2_id.eq.${user.id}`)
@@ -116,6 +118,20 @@ const PerformanceScreen = () => {
         .gte('created_at', today.toISOString())
         .lt('created_at', tomorrow.toISOString());
 
+      const { data: soloRuns } = await supabase
+        .from('runs')
+        .select('user_id, created_at, xp_earned, earned_achievements')
+        .eq('user_id', user.id)
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString());
+
+      const { data: dailyAchievements } = await supabase
+        .from('user_achievements')
+        .select('user_id, unlocked_at')
+        .eq('user_id', user.id)
+        .gte('unlocked_at', today.toISOString())
+        .lt('unlocked_at', tomorrow.toISOString());
+
       let totalDailyXp = 0;
 
       if (battles) {
@@ -125,18 +141,18 @@ const PerformanceScreen = () => {
         });
       }
 
-      if (runs) {
-        runs.forEach(r => {
+      if (versusRuns) {
+        versusRuns.forEach(r => {
           const isUser1 = r.user_1_id === user.id;
           const distance = isUser1 ? r.user_1_distance : r.user_2_distance;
-          
+
           const distNum = Number(distance || 0);
-          const isVictory = (isUser1 && r.user_1_distance > r.user_2_distance) || 
-                           (!isUser1 && r.user_2_distance > r.user_1_distance);
-          
+          const isVictory = (isUser1 && r.user_1_distance > r.user_2_distance) ||
+            (!isUser1 && r.user_2_distance > r.user_1_distance);
+
           const base_xp = Math.floor(distNum >= 1 ? 100 + (distNum - 1) * 50 : distNum * 100);
           const earnedXp = isVictory ? base_xp + 100 : base_xp;
-          
+
           totalDailyXp += earnedXp;
         });
       }
@@ -145,6 +161,18 @@ const PerformanceScreen = () => {
         soloWorkouts.forEach(w => {
           totalDailyXp += w.xp_earned || 0;
         });
+      }
+
+      if (soloRuns) {
+        soloRuns.forEach(r => {
+          const runXp = r.xp_earned || 0;
+          const achXp = r.earned_achievements ? r.earned_achievements.length * 1000 : 0;
+          totalDailyXp += Math.max(0, runXp - achXp);
+        });
+      }
+
+      if (dailyAchievements) {
+        totalDailyXp += dailyAchievements.length * 1000;
       }
 
       setDailyXp(totalDailyXp);
@@ -184,14 +212,19 @@ const PerformanceScreen = () => {
         .select('*')
         .eq('user_id', userId);
 
-      if (soloError) {
-        console.log('Error fetching solo workouts:', soloError);
-      }
+      const { data: soloRuns, error: runError } = await supabase
+        .from('runs')
+        .select('*')
+        .eq('user_id', userId);
 
-      if (soloWorkouts) {
-        console.log('All completed routines:', soloWorkouts);
-        console.log('First routine structure:', soloWorkouts[0]);
-      }
+      const { data: userAchievements, error: achError } = await supabase
+        .from('user_achievements')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (soloError) console.log('Error fetching solo workouts:', soloError);
+      if (runError) console.log('Error fetching solo runs:', runError);
+      if (achError) console.log('Error fetching achievements:', achError);
 
       const workouts: WorkoutRecord[] = [];
 
@@ -200,7 +233,7 @@ const PerformanceScreen = () => {
         battles.forEach(b => {
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
-          
+
           workouts.push({
             id: `battle_${b.id}`,
             type: 'VERSUS_BATTLE',
@@ -211,7 +244,7 @@ const PerformanceScreen = () => {
             opponent: opponentProfile?.username || 'Unknown',
             oppAvatar: opponentProfile?.avatar_url || null,
             xp: isPlayer1 ? b.player1_xp : b.player2_xp,
-            date: new Date(b.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}),
+            date: new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             timestamp: new Date(b.created_at).getTime()
           });
         });
@@ -231,9 +264,9 @@ const PerformanceScreen = () => {
           const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
           const distNum = Number(distance || 0);
-          const isVictory = (isUser1 && r.user_1_distance > r.user_2_distance) || 
-                           (!isUser1 && r.user_2_distance > r.user_1_distance);
-          
+          const isVictory = (isUser1 && r.user_1_distance > r.user_2_distance) ||
+            (!isUser1 && r.user_2_distance > r.user_1_distance);
+
           const base_xp = Math.floor(distNum >= 1 ? 100 + (distNum - 1) * 50 : distNum * 100);
           const earnedXp = isVictory ? base_xp + 100 : base_xp;
 
@@ -247,7 +280,7 @@ const PerformanceScreen = () => {
             opponent: opponentProfile?.username || 'Unknown',
             oppAvatar: opponentProfile?.avatar_url || null,
             xp: earnedXp,
-            date: new Date(r.completed_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}),
+            date: new Date(r.completed_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             timestamp: new Date(r.completed_at).getTime()
           });
         });
@@ -257,7 +290,7 @@ const PerformanceScreen = () => {
       if (soloWorkouts) {
         soloWorkouts.forEach(w => {
           const exercisesData = Array.isArray(w.exercises_data) ? w.exercises_data : [];
-          
+
           workouts.push({
             id: `solo_${w.id}`,
             type: 'SOLO_WORKOUT',
@@ -266,9 +299,46 @@ const PerformanceScreen = () => {
             reps: w.total_reps_completed || 0,
             sets: w.total_sets_completed || 0,
             xp: w.xp_earned || 0,
-            date: new Date(w.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}),
+            date: new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             timestamp: new Date(w.created_at).getTime()
           });
+        });
+      }
+
+      // Process solo runs
+      if (soloRuns) {
+        soloRuns.forEach(r => {
+          workouts.push({
+            id: `solorun_${r.id}`,
+            type: 'SOLO_RUN',
+            mode: 'SOLO',
+            exerciseName: r.title || 'SOLO RUN',
+            distance: r.distance || 0,
+            duration: formatTime(r.duration || 0),
+            xp: r.xp_earned || 0,
+            date: new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+            timestamp: new Date(r.created_at).getTime()
+          });
+        });
+      }
+
+      // Process achievements
+      if (userAchievements) {
+        userAchievements.forEach(ua => {
+          const achDef = ACHIEVEMENT_DATA.find(a => a.id === ua.achievement_name);
+          if (achDef) {
+            workouts.push({
+              id: `ach_${ua.id || ua.achievement_name}`,
+              type: 'ACHIEVEMENT',
+              mode: 'ACHIEVEMENT',
+              exerciseName: achDef.name,
+              description: achDef.subtext,
+              image: achDef.image,
+              xp: 1000,
+              date: new Date(ua.unlocked_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+              timestamp: new Date(ua.unlocked_at).getTime()
+            });
+          }
         });
       }
 
@@ -278,18 +348,48 @@ const PerformanceScreen = () => {
     }
   }, []);
 
+  const formatTime = (seconds: number): string => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Apply filtering and sorting
   useEffect(() => {
     let filtered = [...workoutHistory];
 
     // Filter by type
-    if (selectedWorkoutType !== 'ALL') {
-      filtered = filtered.filter(w => w.type === selectedWorkoutType);
+    if (selectedWorkoutType === 'BATTLE') {
+      filtered = filtered.filter(w => w.type === 'VERSUS_BATTLE' || w.type === 'VERSUS_RUN');
+    } else if (selectedWorkoutType === 'SOLO') {
+      filtered = filtered.filter(w => w.type === 'SOLO_WORKOUT' || w.type === 'SOLO_RUN');
+    } else if (selectedWorkoutType === 'ACHIEVEMENTS') {
+      filtered = filtered.filter(w => w.type === 'ACHIEVEMENT');
+    } else if (selectedWorkoutType === 'ALL') {
+      // Show everything EXCEPT achievements by default? Or show achievements too?
+      // Since there's an ACHIEVEMENTS tab, ALL typically shows workouts. Let's show everything except achievements, or everything.
+      // I'll show all workouts (not achievements) under ALL.
+      filtered = filtered.filter(w => w.type !== 'ACHIEVEMENT');
+    }
+
+    // Apply secondary filter / Sort By
+    if (selectedWorkoutType === 'BATTLE') {
+      if (selectedSort === 'VERSUS_WORKOUT') filtered = filtered.filter(w => w.type === 'VERSUS_BATTLE');
+      if (selectedSort === 'VERSUS_RUN') filtered = filtered.filter(w => w.type === 'VERSUS_RUN');
+    } else if (selectedWorkoutType === 'SOLO') {
+      if (selectedSort === 'WORKOUT') filtered = filtered.filter(w => w.type === 'SOLO_WORKOUT');
+      if (selectedSort === 'RUN') filtered = filtered.filter(w => w.type === 'SOLO_RUN');
     }
 
     // Sort
     switch (selectedSort) {
       case 'DATE_NEWEST':
+      case 'VERSUS_WORKOUT':
+      case 'VERSUS_RUN':
+      case 'WORKOUT':
+      case 'RUN':
+        // Default sort for these is newest
         filtered.sort((a, b) => b.timestamp - a.timestamp);
         break;
       case 'DATE_OLDEST':
@@ -305,6 +405,21 @@ const PerformanceScreen = () => {
 
     setFilteredWorkouts(filtered);
   }, [workoutHistory, selectedWorkoutType, selectedSort]);
+
+  // Adjust Sort Options based on Workout Type
+  useEffect(() => {
+    if (selectedWorkoutType === 'BATTLE') {
+      if (selectedSort !== 'VERSUS_WORKOUT' && selectedSort !== 'VERSUS_RUN') setSelectedSort('VERSUS_WORKOUT');
+    } else if (selectedWorkoutType === 'SOLO') {
+      if (selectedSort !== 'WORKOUT' && selectedSort !== 'RUN') setSelectedSort('WORKOUT');
+    } else if (selectedWorkoutType === 'ACHIEVEMENTS') {
+      if (selectedSort !== 'DATE_NEWEST' && selectedSort !== 'DATE_OLDEST') setSelectedSort('DATE_NEWEST');
+    } else { // ALL
+      if (!['DATE_NEWEST', 'DATE_OLDEST', 'XP_HIGH', 'XP_LOW'].includes(selectedSort)) {
+        setSelectedSort('DATE_NEWEST');
+      }
+    }
+  }, [selectedWorkoutType]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
@@ -356,7 +471,7 @@ const PerformanceScreen = () => {
         battles.forEach(b => {
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
-          
+
           let derivedStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' = 'DEFEAT';
           if (b.status === 'both_won') derivedStatus = 'BOTH WON';
           else if (b.status === 'both_lost') derivedStatus = 'BOTH LOST';
@@ -368,7 +483,7 @@ const PerformanceScreen = () => {
             name: b.exercise_name || 'VERSUS BATTLE',
             r: isPlayer1 ? b.player1_reps : b.player2_reps,
             s: isPlayer1 ? b.player1_sets : b.player2_sets,
-            date: new Date(b.created_at).toLocaleDateString('en-US', {month: 'long', day: '2-digit', year: 'numeric'}),
+            date: new Date(b.created_at).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
             dur: '00:00:00',
             opp: opponentProfile?.username || 'Unknown',
             oppAvatar: opponentProfile?.avatar_url || null,
@@ -400,12 +515,12 @@ const PerformanceScreen = () => {
             status: isVictory ? 'VICTORY' : 'DEFEAT',
             name: `${r.target_distance}KM VERSUS RUN`,
             r: distance ? Number(distance).toFixed(2) + ' km' : '0 km',
-            s: '', 
-            date: new Date(r.completed_at).toLocaleDateString('en-US', {month: 'long', day: '2-digit', year: 'numeric'}),
+            s: '',
+            date: new Date(r.completed_at).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
             dur: durStr,
             opp: opponentProfile?.username || 'Unknown',
             oppAvatar: opponentProfile?.avatar_url || null,
-            xp: earnedXp, 
+            xp: earnedXp,
             timestamp: new Date(r.completed_at).getTime()
           });
         });
@@ -479,29 +594,25 @@ const PerformanceScreen = () => {
     return () => loop.stop();
   }, []);
 
-  const getWorkoutTypeLabel = (type: 'VERSUS_BATTLE' | 'VERSUS_RUN' | 'SOLO_WORKOUT') => {
+  const getWorkoutTypeLabel = (type: string) => {
     switch (type) {
-      case 'VERSUS_BATTLE':
-        return 'Battle';
-      case 'VERSUS_RUN':
-        return 'Run';
-      case 'SOLO_WORKOUT':
-        return 'Solo';
-      default:
-        return 'Workout';
+      case 'VERSUS_BATTLE': return 'Battle';
+      case 'VERSUS_RUN': return 'Versus Run';
+      case 'SOLO_WORKOUT': return 'Solo Workout';
+      case 'SOLO_RUN': return 'Solo Run';
+      case 'ACHIEVEMENT': return 'Achievement';
+      default: return 'Workout';
     }
   };
 
-  const getWorkoutTypeIcon = (type: 'VERSUS_BATTLE' | 'VERSUS_RUN' | 'SOLO_WORKOUT') => {
+  const getWorkoutTypeIcon = (type: string) => {
     switch (type) {
-      case 'VERSUS_BATTLE':
-        return '⚔';
-      case 'VERSUS_RUN':
-        return '🏃';
-      case 'SOLO_WORKOUT':
-        return '💪';
-      default:
-        return '🏋';
+      case 'VERSUS_BATTLE': return '⚔';
+      case 'VERSUS_RUN': return '🏃';
+      case 'SOLO_WORKOUT': return '💪';
+      case 'SOLO_RUN': return '👟';
+      case 'ACHIEVEMENT': return '🏆';
+      default: return '🏋';
     }
   };
 
@@ -517,18 +628,18 @@ const PerformanceScreen = () => {
           resizeMode="cover"
         >
           <View style={styles.gemContainer}>
-            <Image 
-              source={require('../assets/xp_gem.png')} 
-              style={styles.headerGem} 
+            <Image
+              source={require('../assets/xp_gem.png')}
+              style={styles.headerGem}
             />
 
             {[...Array(20)].map((_, i) => (
-              <View 
+              <View
                 key={i}
                 style={[
                   styles.particle,
                   {
-                    top: Math.random() * 140 - 20, 
+                    top: Math.random() * 140 - 20,
                     left: Math.random() * 140 - 20,
                     width: Math.random() * 3 + 1,
                     height: Math.random() * 3 + 1,
@@ -606,9 +717,9 @@ const PerformanceScreen = () => {
                       <Text style={styles.dailyXpUnit}>XP</Text>
                     </View>
                   </View>
-                  <Image 
-                    source={require('../assets/xp_gem.png')} 
-                    style={styles.dailyGemIcon} 
+                  <Image
+                    source={require('../assets/xp_gem.png')}
+                    style={styles.dailyGemIcon}
                   />
                 </View>
               ) : (
@@ -624,7 +735,7 @@ const PerformanceScreen = () => {
           >
             <LinearGradient
               colors={['#161300', '#534600']}
-              start={{ x: 1, y: 0.5 }} 
+              start={{ x: 1, y: 0.5 }}
               end={{ x: 0, y: 0.5 }}
               style={styles.leaderboardsGradient}
             >
@@ -653,8 +764,8 @@ const PerformanceScreen = () => {
               </View>
             ) : achievements.length > 0 ? (
               achievements.map((achievement) => (
-                <View 
-                  key={achievement.id} 
+                <View
+                  key={achievement.id}
                   style={styles.achievementItem}
                 >
                   <Image source={achievement.image} style={styles.medalIcon} />
@@ -671,15 +782,15 @@ const PerformanceScreen = () => {
           <View style={styles.challengeLogsContainer}>
             {challengeLogs.length > 0 ? challengeLogs.map((item) => {
               const isVictory = item.status === 'VICTORY' || item.status === 'BOTH WON';
-              
+
               return (
-                <TouchableOpacity 
-                  key={item.id} 
-                  activeOpacity={0.85} 
+                <TouchableOpacity
+                  key={item.id}
+                  activeOpacity={0.85}
                   style={styles.logWrapper}
                   onPress={() => {
                     setSelectedLog({
-                      status: item.status, 
+                      status: item.status,
                       exerciseName: item.name,
                       reps: item.r,
                       sets: item.s,
@@ -693,7 +804,7 @@ const PerformanceScreen = () => {
                 >
                   <View style={styles.logCard}>
                     <View style={[
-                      styles.resultBanner, 
+                      styles.resultBanner,
                       { backgroundColor: isVictory ? '#416F00' : '#740000' }
                     ]}>
                       <Text style={[styles.resultText, item.status.includes('BOTH') && { fontSize: 10, paddingHorizontal: 2 }]}>
@@ -709,9 +820,9 @@ const PerformanceScreen = () => {
 
                     <View style={styles.opponentSection}>
                       <Text style={styles.opponentLabel}>OPPONENT</Text>
-                      <Image 
-                        source={item.oppAvatar ? { uri: item.oppAvatar } : require('../assets/5.png')} 
-                        style={styles.opponentAvatar} 
+                      <Image
+                        source={item.oppAvatar ? { uri: item.oppAvatar } : require('../assets/5.png')}
+                        style={styles.opponentAvatar}
                       />
                       <Text style={styles.opponentName} numberOfLines={1}>{item.opp}</Text>
                     </View>
@@ -726,7 +837,7 @@ const PerformanceScreen = () => {
         </View>
       </ScrollView>
 
-      <ChallengeModal 
+      <ChallengeModal
         visible={challengeModalVisible}
         onClose={() => setChallengeModalVisible(false)}
         data={selectedLog}
@@ -757,12 +868,12 @@ const PerformanceScreen = () => {
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>Workout Type</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                {(['ALL', 'VERSUS_BATTLE', 'VERSUS_RUN', 'SOLO_WORKOUT'] as WorkoutType[]).map((type) => {
+                {(['ALL', 'BATTLE', 'SOLO', 'ACHIEVEMENTS'] as WorkoutType[]).map((type) => {
                   const getLabel = () => {
                     if (type === 'ALL') return 'All Workouts';
-                    if (type === 'VERSUS_BATTLE') return 'Battles';
-                    if (type === 'VERSUS_RUN') return 'Runs';
-                    return 'Solo';
+                    if (type === 'BATTLE') return 'Versus';
+                    if (type === 'SOLO') return 'Solo';
+                    return 'Achievements';
                   };
                   return (
                     <TouchableOpacity
@@ -789,31 +900,49 @@ const PerformanceScreen = () => {
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>Sort By</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                {(['DATE_NEWEST', 'DATE_OLDEST', 'XP_HIGH', 'XP_LOW'] as SortBy[]).map((sort) => {
-                  const getLabel = () => {
-                    if (sort === 'DATE_NEWEST') return 'Newest';
-                    if (sort === 'DATE_OLDEST') return 'Oldest';
-                    if (sort === 'XP_HIGH') return 'High XP';
-                    return 'Low XP';
-                  };
-                  return (
-                    <TouchableOpacity
-                      key={sort}
-                      style={[
-                        styles.filterButton,
-                        selectedSort === sort && styles.filterButtonActive
-                      ]}
-                      onPress={() => setSelectedSort(sort)}
-                    >
-                      <Text style={[
-                        styles.filterButtonText,
-                        selectedSort === sort && styles.filterButtonTextActive
-                      ]}>
-                        {getLabel()}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {(() => {
+                  let options: SortBy[] = [];
+                  if (selectedWorkoutType === 'ALL') {
+                    options = ['DATE_NEWEST', 'DATE_OLDEST', 'XP_HIGH', 'XP_LOW'];
+                  } else if (selectedWorkoutType === 'BATTLE') {
+                    options = ['VERSUS_WORKOUT', 'VERSUS_RUN'];
+                  } else if (selectedWorkoutType === 'SOLO') {
+                    options = ['WORKOUT', 'RUN'];
+                  } else if (selectedWorkoutType === 'ACHIEVEMENTS') {
+                    options = ['DATE_NEWEST', 'DATE_OLDEST'];
+                  }
+
+                  return options.map((sort) => {
+                    const getLabel = () => {
+                      if (sort === 'DATE_NEWEST') return 'Newest';
+                      if (sort === 'DATE_OLDEST') return 'Oldest';
+                      if (sort === 'XP_HIGH') return 'High XP';
+                      if (sort === 'XP_LOW') return 'Low XP';
+                      if (sort === 'VERSUS_WORKOUT') return 'Workout';
+                      if (sort === 'VERSUS_RUN') return 'Run';
+                      if (sort === 'WORKOUT') return 'Workout';
+                      if (sort === 'RUN') return 'Run';
+                      return 'Newest';
+                    };
+                    return (
+                      <TouchableOpacity
+                        key={sort}
+                        style={[
+                          styles.filterButton,
+                          selectedSort === sort && styles.filterButtonActive
+                        ]}
+                        onPress={() => setSelectedSort(sort)}
+                      >
+                        <Text style={[
+                          styles.filterButtonText,
+                          selectedSort === sort && styles.filterButtonTextActive
+                        ]}>
+                          {getLabel()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
               </ScrollView>
             </View>
           </View>
@@ -851,7 +980,7 @@ const PerformanceScreen = () => {
                             {!!workout.sets && <Text style={styles.archiveStat}>{workout.sets} sets</Text>}
                           </>
                         )}
-                        {workout.type === 'VERSUS_RUN' && (
+                        {(workout.type === 'VERSUS_RUN' || workout.type === 'SOLO_RUN') && (
                           <>
                             {!!workout.distance && <Text style={styles.archiveStat}>{workout.distance.toFixed(2)} km</Text>}
                             {!!workout.duration && <Text style={styles.archiveStat}>•</Text>}
@@ -865,15 +994,20 @@ const PerformanceScreen = () => {
                             {!!workout.sets && <Text style={styles.archiveStat}>{workout.sets} sets</Text>}
                           </>
                         )}
+                        {workout.type === 'ACHIEVEMENT' && (
+                          <Text style={styles.archiveStat}>Awarded 1000 XP</Text>
+                        )}
                       </View>
                     </View>
 
-                    {/* XP and Opponent */}
+                    {/* XP and Opponent / Achievement Info */}
                     <View style={styles.archiveCardRight}>
-                      <View style={styles.archiveXpBadge}>
-                        <Text style={styles.archiveXpValue}>{workout.xp}</Text>
-                        <Text style={styles.archiveXpLabel}>XP</Text>
-                      </View>
+                      {workout.type !== 'ACHIEVEMENT' && (
+                        <View style={styles.archiveXpBadge}>
+                          <Text style={styles.archiveXpValue}>{workout.xp}</Text>
+                          <Text style={styles.archiveXpLabel}>XP</Text>
+                        </View>
+                      )}
                       {workout.opponent && (
                         <View style={styles.archiveOpponentInfo}>
                           <Image
@@ -883,15 +1017,30 @@ const PerformanceScreen = () => {
                           <Text style={styles.archiveOpponentName} numberOfLines={1}>{workout.opponent}</Text>
                         </View>
                       )}
+                      {workout.type === 'ACHIEVEMENT' && workout.image && (
+                        <View style={styles.archiveOpponentInfo}>
+                          <Image
+                            source={workout.image}
+                            style={[styles.archiveOpponentAvatar, { backgroundColor: 'transparent' }]}
+                            resizeMode="contain"
+                          />
+                        </View>
+                      )}
                     </View>
                   </View>
+
+                  {workout.type === 'ACHIEVEMENT' && workout.description && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ color: '#9FAE64', fontFamily: 'Montserrat-Medium', fontSize: 11 }}>{workout.description}</Text>
+                    </View>
+                  )}
                 </View>
               ))
             ) : (
               <View style={styles.archiveEmpty}>
                 <Text style={styles.archiveEmptyText}>
-                  {workoutHistory.length === 0 
-                    ? 'No workouts yet. Start your first session!' 
+                  {workoutHistory.length === 0
+                    ? 'No workouts yet. Start your first session!'
                     : 'No workouts match your filters.'}
                 </Text>
               </View>
@@ -1176,7 +1325,7 @@ const styles = StyleSheet.create({
   },
   leaderboardsTxt: {
     fontFamily: 'Montserrat-ExtraBold',
-    color: '#FFF5BC', 
+    color: '#FFF5BC',
     fontSize: 18,
     marginRight: 10,
   },
@@ -1275,7 +1424,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     transform: [{ skewX: '-25deg' }],
-    left: -25, 
+    left: -25,
     paddingLeft: 25,
   },
   resultText: {
