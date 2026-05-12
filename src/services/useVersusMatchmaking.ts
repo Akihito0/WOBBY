@@ -58,7 +58,7 @@ export const useVersusMatchmaking = () => {
 
       // Call the RPC function with target distance
       console.log(`📞 [Matchmaking] Calling find_or_join_match(${targetDistance}) RPC...`);
-      const { data, error } = await supabase.rpc('find_or_join_match', { p_target_distance: targetDistance });
+      const { data, error } = await supabase.rpc('find_or_join_match', { target_dist: targetDistance });
 
       if (error) {
         throw new Error(error.message || 'Matchmaking failed');
@@ -113,7 +113,7 @@ export const useVersusMatchmaking = () => {
     console.log(`📡 [Realtime] Setting up listener for user ${userId}`);
 
     // Create a new channel for this user's matchmaking record
-    const channel = supabase.channel(`versus_matchmaking:${userId}`, {
+    const channel = supabase.channel(`versus_run_matchmaking:${userId}`, {
       config: {
         broadcast: { self: true },
       },
@@ -125,7 +125,7 @@ export const useVersusMatchmaking = () => {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'versus_matchmaking',
+          table: 'versus_run_matchmaking',
           filter: `user_id=eq.${userId}`,
         },
         async (payload) => {
@@ -197,7 +197,7 @@ export const useVersusMatchmaking = () => {
         // Query without using maybeSingle() - use select() and filter the results
         // This handles RLS and multiple rows cases
         const { data, error } = await supabase
-          .from('versus_matchmaking')
+          .from('versus_run_matchmaking')
           .select('status, opponent_id, match_id, target_distance')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
@@ -303,7 +303,7 @@ export const useVersusMatchmaking = () => {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'versus_matchmaking',
+          table: 'versus_run_matchmaking',
           filter: `user_id=eq.${opponentId}`,
         },
         async (payload) => {
@@ -341,7 +341,7 @@ export const useVersusMatchmaking = () => {
     acceptancePollingRef.current = setInterval(async () => {
       try {
         const { data, error } = await supabase
-          .from('versus_matchmaking')
+          .from('versus_run_matchmaking')
           .select('user_accepted')
           .eq('user_id', opponentId)
           .order('created_at', { ascending: false })
@@ -397,7 +397,7 @@ export const useVersusMatchmaking = () => {
       
       // Update current user's acceptance status
       const { error: updateError } = await supabase
-        .from('versus_matchmaking')
+        .from('versus_run_matchmaking')
         .update({ user_accepted: true })
         .eq('user_id', currentUserIdRef.current);
 
@@ -459,13 +459,20 @@ export const useVersusMatchmaking = () => {
       }
 
       // Delete waiting record from database
-      if (currentUserIdRef.current) {
-        console.log(`🗑️ [Cancel] Deleting waiting record for user ${currentUserIdRef.current}`);
+      let userIdToDelete = currentUserIdRef.current;
+      if (!userIdToDelete) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          userIdToDelete = session.user.id;
+        }
+      }
+
+      if (userIdToDelete) {
+        console.log(`🗑️ [Cancel] Deleting record for user ${userIdToDelete}`);
         const { error } = await supabase
-          .from('versus_matchmaking')
+          .from('versus_run_matchmaking')
           .delete()
-          .eq('user_id', currentUserIdRef.current)
-          .eq('status', 'waiting');
+          .eq('user_id', userIdToDelete);
 
         if (error) {
           console.error('❌ [Cancel] Error cleaning up matchmaking:', error);

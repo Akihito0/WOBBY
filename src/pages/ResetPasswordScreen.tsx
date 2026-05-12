@@ -205,7 +205,7 @@ export default function ResetPasswordScreen({
                     {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
                       <TextInput
                         key={index}
-                        ref={(ref) => (codeInputs.current[index] = ref)}
+                        ref={(ref) => { codeInputs.current[index] = ref; }}
                         style={styles.codeInput}
                         maxLength={1}
                         keyboardType="numeric"
