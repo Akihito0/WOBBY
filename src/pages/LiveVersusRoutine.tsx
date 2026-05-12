@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
+import { useHealth } from '../context/HealthContext';
 
 export default function LiveVersusRoutine({ route, navigation }: any) {
   const { matchId, isPlayer1 } = route.params;
@@ -10,6 +11,8 @@ export default function LiveVersusRoutine({ route, navigation }: any) {
   const [opponentProfile, setOpponentProfile] = useState<any>(null);
   const [myProfile, setMyProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const { heartRate } = useHealth();
 
   // Synchronization states
   const [amReady, setAmReady] = useState(false);

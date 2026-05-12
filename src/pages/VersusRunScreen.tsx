@@ -18,6 +18,8 @@ import MapboxGL from '@rnmapbox/maps';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { uploadMapSnapshot } from '../services/runUpload';
+import { useHealth } from '../context/HealthContext';
+import { getHeartRateHistory, HeartRateSample } from '../../modules/wobby-health';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -158,6 +160,41 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const [raceResult, setRaceResult] = useState<{winner: string; reason: string} | null>(null);
   
   const [showResultModal, setShowResultModal] = useState(false);
+
+  const { heartRate: contextHR } = useHealth();
+  const [activeHR, setActiveHR] = useState<number | null>(null);
+  const [sessionHRData, setSessionHRData] = useState<number[]>([]);
+
+  useEffect(() => {
+    let hrIntervalId: ReturnType<typeof setInterval>;
+
+    const fetchLiveHR = async () => {
+      try {
+        const history: HeartRateSample[] = await getHeartRateHistory(1);
+        if (history && history.length > 0) {
+          const val = Math.round(history[history.length - 1].value);
+          setActiveHR(val);
+
+          if (runState === 'running') {
+            setSessionHRData(prev => [...prev, val]);
+          }
+        }
+      } catch (error) {
+        console.log('Error polling HR:', error);
+      }
+    };
+
+    if (runState === 'running') {
+      fetchLiveHR(); 
+      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+    }
+
+    return () => {
+      if (hrIntervalId) clearInterval(hrIntervalId);
+    };
+  }, [runState]);
+
+  const displayHR = activeHR !== null ? activeHR : contextHR;
 
   // Ready State & Countdown
   const [localReady, setLocalReady] = useState(false);
@@ -675,6 +712,12 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {/* Single Shared Timer */}
         <LinearGradient colors={['#1a1a1a', '#2d2d2d']} style={styles.sharedTimerCard}>
+          <View style={{ position: 'absolute', left: 20, top: 20, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
+            <Text style={{ color: '#FF4444', fontSize: 14, fontFamily: 'Barlow-Bold' }}>
+              {displayHR !== null ? `${displayHR} BPM` : '-- BPM'}
+            </Text>
+          </View>
           <Text style={styles.sharedTimerLabel}>⏱ RACE TIME</Text>
           <Text style={styles.sharedTimerValue}>{formatTime(time)}</Text>
         </LinearGradient>
