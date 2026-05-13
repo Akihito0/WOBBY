@@ -5,7 +5,7 @@ module.exports = {
     version: "1.0.0",
     scheme: "wobby",
     orientation: "portrait",
-    icon: "./src/assets/icon.png",
+    icon: "./src/assets/wob.png",
     userInterfaceStyle: "light",
     splash: {
       image: "./src/assets/splash.png",
@@ -30,8 +30,9 @@ module.exports = {
       package: "com.tweetie.wobby",
       // Removed minSdkVersion and targetSdkVersion from here!
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
-        foregroundImage: "./src/assets/android-icon-foreground.png"
+        backgroundColor: "#000000",
+        foregroundImage: "./src/assets/wob.png",
+        backgroundImage: "./src/assets/wob.png"
       },
       predictiveBackGestureEnabled: false,
       permissions: [
@@ -44,7 +45,7 @@ module.exports = {
       ]
     },
     web: {
-      favicon: "./src/assets/favicon.png"
+      favicon: "./src/assets/wob.png"
     },
     plugins: [
       "expo-font",

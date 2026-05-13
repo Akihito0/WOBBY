@@ -267,7 +267,11 @@ const AchievementsScreen = ({ route, navigation }: any) => {
               {groupedData[category].map((item) => {
                 const isLocked = !unlockedAchievements.includes(item.id);
                 return viewMode === 'grid' ? (
-                  <TouchableOpacity key={item.id} onPress={() => handlePressGrid(item)}>
+                  <TouchableOpacity 
+                    key={item.id} 
+                    onPress={() => !isLocked && handlePressGrid(item)}
+                    activeOpacity={isLocked ? 1 : 0.7}
+                  >
                     <AchievementGridCard
                       name={item.name}
                       xp={item.xp}
@@ -276,14 +280,19 @@ const AchievementsScreen = ({ route, navigation }: any) => {
                     />
                   </TouchableOpacity>
                 ) : (
-                  <AchievementListCard
+                  <TouchableOpacity
                     key={item.id}
-                    name={item.name}
-                    subtext={item.subtext}
-                    xp={item.xp}
-                    imageSource={item.image}
-                    isLocked={isLocked}
-                  />
+                    onPress={() => !isLocked && handlePressGrid(item)}
+                    activeOpacity={isLocked ? 1 : 0.7}
+                  >
+                    <AchievementListCard
+                      name={item.name}
+                      subtext={item.subtext}
+                      xp={item.xp}
+                      imageSource={item.image}
+                      isLocked={isLocked}
+                    />
+                  </TouchableOpacity>
                 );
               })}
             </View>
