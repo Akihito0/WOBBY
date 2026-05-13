@@ -82,7 +82,7 @@ const getBounds = (coords: any[]): [[number, number], [number, number]] => {
   let maxLng = Math.max(...lngs);
 
   const MIN_DELTA = 0.002;
-  
+
   if (maxLat - minLat < MIN_DELTA) {
     const centerLat = (maxLat + minLat) / 2;
     minLat = centerLat - (MIN_DELTA / 2);
@@ -564,11 +564,6 @@ export default function ActivityFeed({
           </View>
         )}
 
-        <TouchableOpacity style={styles.seeMoreBtn} onPress={() => setDetailsModalVisible(true)}>
-          <Text style={styles.seeMoreText}>See Details & Stats</Text>
-          <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
-        </TouchableOpacity>
-
         {/* Achievements Earned */}
         {isRoutine && routineData?.earned_achievements && routineData.earned_achievements.length > 0 && (
           <View style={styles.achievementsRow}>
@@ -587,6 +582,7 @@ export default function ActivityFeed({
           </View>
         )}
 
+
         {workoutGallery.length > 0 && (
           <>
             <FlatList
@@ -602,12 +598,12 @@ export default function ActivityFeed({
               scrollEventThrottle={16}
               {...(Platform.OS === 'ios'
                 ? {
-                    contentInset: { left: SIDE_INSET, right: SIDE_INSET },
-                    contentOffset: { x: -SIDE_INSET, y: 0 },
-                  }
+                  contentInset: { left: SIDE_INSET, right: SIDE_INSET },
+                  contentOffset: { x: -SIDE_INSET, y: 0 },
+                }
                 : {
-                    contentContainerStyle: { paddingHorizontal: SIDE_INSET },
-                  })}
+                  contentContainerStyle: { paddingHorizontal: SIDE_INSET },
+                })}
               renderItem={({ item }: any) => {
                 const source = typeof item === 'string' || item.uri ? item : item;
                 return (
@@ -633,6 +629,12 @@ export default function ActivityFeed({
           </>
         )}
 
+        <TouchableOpacity style={styles.seeMoreBtn} onPress={() => setDetailsModalVisible(true)}>
+          <Text style={styles.seeMoreText}>See Details & Stats</Text>
+          <MaterialCommunityIcons name="chevron-right" size={18} color="#C8FF00" />
+        </TouchableOpacity>
+
+
         {/* ── DETAILS MODAL ─────────────────────────────────────────────────── */}
         <Modal visible={detailsModalVisible} animationType="slide" transparent={false} onRequestClose={() => setDetailsModalVisible(false)}>
           <LinearGradient colors={['#001E20', '#0a0a0a']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalGradient}>
@@ -640,7 +642,7 @@ export default function ActivityFeed({
 
               <LinearGradient colors={['#0e2c39', '#000000']} start={{ x: 1, y: 0.5 }} end={{ x: 0.3, y: 0.5 }} style={styles.modalHeader}>
                 <TouchableOpacity style={styles.backBtnWrapper} onPress={() => setDetailsModalVisible(false)}>
-                 <Image source={require('../assets/back0.png')} style={styles.backBtn} />
+                  <Image source={require('../assets/back0.png')} style={styles.backBtn} />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>{isRoutine ? `${routineData?.routine_type} ROUTINE` : 'RUN DETAILS'}</Text>
                 <View style={{ width: 28 }} />
@@ -708,7 +710,7 @@ export default function ActivityFeed({
                             });
                           }
                           const routineAvgHR = hrCount > 0 ? Math.round(hrSum / hrCount) : 0;
-                          
+
                           return routineAvgHR > 0 ? (
                             <Text style={{ color: '#FF4444', fontSize: 20, fontFamily: 'Montserrat_900Black' }}>{routineAvgHR} <Text style={{ fontSize: 12 }}>BPM</Text></Text>
                           ) : (
@@ -1372,7 +1374,7 @@ const styles = StyleSheet.create({
   paginationRow: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 20 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#333' },
   activeDot: { backgroundColor: '#EEE', width: 12 },
-  seeMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8, backgroundColor: 'rgba(200, 255, 0, 0.05)' },
+  seeMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#C8FF00', borderRadius: 8, backgroundColor: 'rgba(200, 255, 0, 0.05)', marginTop: 30 },
   seeMoreText: { color: '#C8FF00', fontSize: 13, fontFamily: 'Montserrat_700Bold', marginRight: 8 },
 
   achievementsRow: { marginHorizontal: 20, marginBottom: 20 },
@@ -1385,14 +1387,15 @@ const styles = StyleSheet.create({
   modalGradient: { flex: 1 },
   modalContent: { paddingBottom: 40 },
   modalHeader: { width: '100%', height: 117, flexDirection: 'row', alignItems: 'flex-end', paddingBottom: 18, paddingHorizontal: 20, justifyContent: 'space-between', marginBottom: 20 },
-   backBtnWrapper: {
-    justifyContent: 'center', 
+  backBtnWrapper: {
+    justifyContent: 'center',
     top: -25,
   },
-  backBtn: { 
-    width: 30, 
-    height: 30, 
-    resizeMode: 'contain' },
+  backBtn: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain'
+  },
   modalTitle: { color: '#d1d1d1', fontSize: 30, fontFamily: 'Montserrat_900Black', flex: 1, textAlign: 'center', textAlignVertical: 'center' },
   modalRunTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat_900Black', paddingHorizontal: 20, marginTop: 20, marginBottom: 25 },
   modalStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },

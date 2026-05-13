@@ -9,6 +9,7 @@ import {
   StatusBar,
   Platform,
   Image,
+  RefreshControl,
 } from "react-native";
 import StreakCalendar from "../components/layout/StreakCalendar";
 import TargetedSessions from "../components/TargetedSessions";
@@ -109,6 +110,17 @@ export default function UserDashboard({ route }: any) {
     }
   }, []);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([fetchProfile(), fetchLatestActivity()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fetchProfile, fetchLatestActivity]);
+
   useFocusEffect(
     useCallback(() => {
       // Skip the first fetch if we already have prefetched data
@@ -158,6 +170,16 @@ export default function UserDashboard({ route }: any) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        bounces={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor="#CCFF00"
+            colors={['#CCFF00', '#8DEA0B']}
+            progressBackgroundColor="#111111"
+          />
+        }
       >
         <StreakCalendar navigation={navigation} />
 
