@@ -47,6 +47,8 @@ export function HealthProvider({ children }: { children: ReactNode }) {
       const storedDevices = await AsyncStorage.getItem(STORAGE_KEY);
       const hasSavedDevice = storedDevices && JSON.parse(storedDevices).length > 0;
 
+      let authorized = false;
+
       // On iOS, we check permissions immediately.
       // On Android, we only set isAuthorized if the user has actually paired Health Connect.
       if (Platform.OS === 'ios') {
@@ -55,6 +57,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
           if (success) {
             console.log('✅ Apple HealthKit Authorized!');
             setIsAuthorized(true);
+            authorized = true;
           }
         } catch (error) {
           console.log('🚨 Failed to authorize HealthKit:', error);
@@ -64,6 +67,37 @@ export function HealthProvider({ children }: { children: ReactNode }) {
         if (hasSavedDevice) {
           console.log('✅ Android Health Connect Connection Found!');
           setIsAuthorized(true);
+          authorized = true;
+        }
+      }
+
+      // Automatically award 'Sync Specialist' (17) if authorized
+      if (authorized) {
+        try {
+          const { supabase } = await import('../supabase');
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            const { data: existing } = await supabase
+              .from('user_achievements')
+              .select('id')
+              .eq('user_id', session.user.id)
+              .eq('achievement_name', '17');
+
+            if (!existing || existing.length === 0) {
+              await supabase.from('user_achievements').insert([{
+                user_id: session.user.id,
+                achievement_name: '17',
+              }]);
+              await supabase.from('notifications').insert([{
+                user_id: session.user.id,
+                title: '🏆 Achievement Unlocked!',
+                message: 'You earned the "Sync Specialist" achievement for linking your watch!',
+                metadata: { type: 'achievement_unlocked', achievement_id: '17' }
+              }]);
+            }
+          }
+        } catch (err) {
+          console.log('Failed to check/award sync achievement globally:', err);
         }
       }
     };

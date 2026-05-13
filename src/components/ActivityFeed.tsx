@@ -203,6 +203,11 @@ export default function ActivityFeed({
 
   const [mapLoading, setMapLoading] = useState(true);
 
+  // ── Image Viewer State ──────────────────────────────────────────────────────
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [viewerImageSource, setViewerImageSource] = useState<any>(null);
+  // ───────────────────────────────────────────────────────────────────────────
+
   const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> | null = useMemo(() => {
     if (runData?.route_coordinates && runData.route_coordinates.length >= 2) {
       return {
@@ -603,9 +608,20 @@ export default function ActivityFeed({
                 : {
                     contentContainerStyle: { paddingHorizontal: SIDE_INSET },
                   })}
-              renderItem={({ item }: any) => (
-                <Image source={typeof item === 'string' || item.uri ? item : item} style={styles.galleryImage} />
-              )}
+              renderItem={({ item }: any) => {
+                const source = typeof item === 'string' || item.uri ? item : item;
+                return (
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      setViewerImageSource(source);
+                      setImageViewerVisible(true);
+                    }}
+                  >
+                    <Image source={source} style={styles.galleryImage} />
+                  </TouchableOpacity>
+                );
+              }}
             />
             {workoutGallery.length > 1 && (
               <View style={styles.paginationRow}>
@@ -1307,6 +1323,29 @@ export default function ActivityFeed({
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
+        </Modal>
+
+        {/* ── IMAGE VIEWER MODAL ────────────────────────────────────────────── */}
+        <Modal
+          visible={imageViewerVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setImageViewerVisible(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={{ position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 }}
+              onPress={() => setImageViewerVisible(false)}
+            >
+              <MaterialCommunityIcons name="close" size={28} color="#FFF" />
+            </TouchableOpacity>
+            {viewerImageSource && (
+              <Image
+                source={viewerImageSource}
+                style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
+              />
+            )}
+          </View>
         </Modal>
 
       </View>
