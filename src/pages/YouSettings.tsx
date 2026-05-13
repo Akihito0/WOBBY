@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../supabase';
+import SignOutModal from '../components/SignOutModal';
 import NotificationsScreen from './NotificationsScreen';
 
 type YouStackParamList = {
@@ -18,14 +19,22 @@ type YouStackParamList = {
 type Props = NativeStackScreenProps<YouStackParamList, 'YouSettings'>;
 
 export default function YouSettings({ navigation }: Props) {
-  const handleSignOut = async () => {
+  const [signOutModalVisible, setSignOutModalVisible] = useState(false);
+
+  const handleSignOut = () => {
+    setSignOutModalVisible(true);
+  };
+
+  const handleConfirmSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
         Alert.alert('Error', 'Failed to sign out: ' + error.message);
       }
+      setSignOutModalVisible(false);
     } catch (err) {
       Alert.alert('Error', 'An unexpected error occurred during sign out.');
+      setSignOutModalVisible(false);
     }
   };
 
@@ -118,6 +127,12 @@ export default function YouSettings({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <SignOutModal
+        visible={signOutModalVisible}
+        onCancel={() => setSignOutModalVisible(false)}
+        onConfirm={handleConfirmSignOut}
+      />
     </View>
   );
 }
