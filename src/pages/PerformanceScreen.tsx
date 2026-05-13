@@ -59,6 +59,9 @@ const PerformanceScreen = () => {
     xp: number;
   } | null>(null);
 
+  const [challengeFilter, setChallengeFilter] = useState<'ALL' | 'VICTORY' | 'DEFEAT' | 'DECLINED' | 'FORFEITED'>('ALL');
+  const [showChallengeDropdown, setShowChallengeDropdown] = useState(false);
+
   const [xpPoints, setXpPoints] = useState(0);
   const [dailyXp, setDailyXp] = useState(0);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutRecord[]>([]);
@@ -453,7 +456,7 @@ const PerformanceScreen = () => {
 
       interface ChallengeLog {
         id: string;
-        status: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST';
+        status: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED';
         name: string;
         r: string | number;
         s: string | number;
@@ -472,9 +475,11 @@ const PerformanceScreen = () => {
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
 
-          let derivedStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' = 'DEFEAT';
+          let derivedStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED' = 'DEFEAT';
           if (b.status === 'both_won') derivedStatus = 'BOTH WON';
           else if (b.status === 'both_lost') derivedStatus = 'BOTH LOST';
+          else if (b.status === 'cancelled') derivedStatus = 'DECLINED';
+          else if (b.status === 'forfeited') derivedStatus = 'FORFEITED';
           else if (b.winner_id === userId) derivedStatus = 'VICTORY';
 
           merged.push({
@@ -498,6 +503,13 @@ const PerformanceScreen = () => {
           const isUser1 = r.user_1_id === userId;
           const opponentProfile = isUser1 ? r.user2 : r.user1;
           const isVictory = r.winner_id === userId;
+          
+          let derivedRunStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED' = isVictory ? 'VICTORY' : 'DEFEAT';
+          if (r.status === 'both_won') derivedRunStatus = 'BOTH WON';
+          else if (r.status === 'both_lost') derivedRunStatus = 'BOTH LOST';
+          else if (r.status === 'cancelled') derivedRunStatus = 'DECLINED';
+          else if (r.status === 'forfeited') derivedRunStatus = 'FORFEITED';
+
           const distance = isUser1 ? r.user_1_distance : r.user_2_distance;
           const time = isUser1 ? r.user_1_time : r.user_2_time;
 
@@ -512,7 +524,7 @@ const PerformanceScreen = () => {
 
           merged.push({
             id: `run_${r.id}`,
-            status: isVictory ? 'VICTORY' : 'DEFEAT',
+            status: derivedRunStatus,
             name: `${r.target_distance}KM VERSUS RUN`,
             r: distance ? Number(distance).toFixed(2) + ' km' : '0 km',
             s: '',
@@ -561,18 +573,14 @@ const PerformanceScreen = () => {
 
   const [showLifetimeArchive, setShowLifetimeArchive] = useState(false);
 
-  useEffect(() => {
-    fetchChallenges();
-    fetchProfile();
-    fetchDailyXp();
-    fetchWorkoutHistory();
-  }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory]);
-
-  // Re-fetch achievements every time screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      fetchChallenges();
+      fetchProfile();
+      fetchDailyXp();
+      fetchWorkoutHistory();
       fetchAchievements();
-    }, [fetchAchievements])
+    }, [fetchChallenges, fetchProfile, fetchDailyXp, fetchWorkoutHistory, fetchAchievements])
   );
 
   const [showInfoDropdown, setShowInfoDropdown] = useState(false);
@@ -777,11 +785,53 @@ const PerformanceScreen = () => {
             )}
           </ScrollView>
 
-          <Text style={styles.challengeLogsTitle}>Challenge History</Text>
+          <View style={[styles.challengeHeaderRow, { zIndex: 10 }]}>
+            <Text style={styles.challengeLogsTitle}>Challenge History</Text>
+            <View style={{ zIndex: 10 }}>
+              <TouchableOpacity 
+                style={styles.challengeFilterBtn}
+                onPress={() => setShowChallengeDropdown(!showChallengeDropdown)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.challengeFilterTxt}>{challengeFilter === 'ALL' ? 'Sort By' : challengeFilter}</Text>
+                <Image source={showChallengeDropdown ? require('../assets/dropup.png') : require('../assets/droppp.png')} style={styles.challengeFilterIcon} />
+              </TouchableOpacity>
+              
+              {showChallengeDropdown && (
+                <View style={styles.challengeDropdown}>
+                  {['ALL', 'VICTORY', 'DEFEAT', 'DECLINED', 'FORFEITED'].map(f => (
+                    <TouchableOpacity 
+                      key={f} 
+                      style={styles.challengeDropdownItem}
+                      onPress={() => { setChallengeFilter(f as any); setShowChallengeDropdown(false); }}
+                    >
+                      <Text style={[styles.challengeDropdownTxt, challengeFilter === f && { color: '#CCFF00' }]}>{f}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
 
           <View style={styles.challengeLogsContainer}>
-            {challengeLogs.length > 0 ? challengeLogs.map((item) => {
+            {challengeLogs.filter(item => {
+              if (challengeFilter === 'ALL') return true;
+              if (challengeFilter === 'VICTORY') return item.status === 'VICTORY' || item.status === 'BOTH WON';
+              if (challengeFilter === 'DEFEAT') return item.status === 'DEFEAT' || item.status === 'BOTH LOST';
+              return item.status === challengeFilter;
+            }).length > 0 ? challengeLogs.filter(item => {
+              if (challengeFilter === 'ALL') return true;
+              if (challengeFilter === 'VICTORY') return item.status === 'VICTORY' || item.status === 'BOTH WON';
+              if (challengeFilter === 'DEFEAT') return item.status === 'DEFEAT' || item.status === 'BOTH LOST';
+              return item.status === challengeFilter;
+            }).map((item) => {
               const isVictory = item.status === 'VICTORY' || item.status === 'BOTH WON';
+              const isDeclined = item.status === 'DECLINED';
+              const isForfeited = item.status === 'FORFEITED';
+
+              let bgColor = '#740000';
+              if (isVictory) bgColor = '#416F00';
+              else if (isDeclined || isForfeited) bgColor = '#333333';
 
               return (
                 <TouchableOpacity
@@ -790,7 +840,7 @@ const PerformanceScreen = () => {
                   style={styles.logWrapper}
                   onPress={() => {
                     setSelectedLog({
-                      status: item.status,
+                      status: item.status as any,
                       exerciseName: item.name,
                       reps: item.r,
                       sets: item.s,
@@ -805,9 +855,9 @@ const PerformanceScreen = () => {
                   <View style={styles.logCard}>
                     <View style={[
                       styles.resultBanner,
-                      { backgroundColor: isVictory ? '#416F00' : '#740000' }
+                      { backgroundColor: bgColor }
                     ]}>
-                      <Text style={[styles.resultText, item.status.includes('BOTH') && { fontSize: 10, paddingHorizontal: 2 }]}>
+                      <Text style={[styles.resultText, (item.status.includes('BOTH') || item.status === 'FORFEITED' || item.status === 'DECLINED') && { fontSize: 10, paddingHorizontal: 2 }]}>
                         {item.status}
                       </Text>
                     </View>
@@ -830,7 +880,7 @@ const PerformanceScreen = () => {
                 </TouchableOpacity>
               );
             }) : (
-              <Text style={[styles.noRecordText, { marginTop: 20 }]}>No challenges completed yet.</Text>
+              <Text style={[styles.noRecordText, { marginTop: 20 }]}>No challenges match your filter.</Text>
             )}
           </View>
 
@@ -1394,12 +1444,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  challengeHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 15,
+  },
   challengeLogsTitle: {
     color: '#e4f4a6',
     fontFamily: 'Montserrat-Bold',
     fontSize: 20,
-    marginTop: 10,
-    marginBottom: 15,
+  },
+  challengeFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 6,
+  },
+  challengeFilterTxt: {
+    color: '#fff',
+    fontFamily: 'Montserrat-SemiBold',
+    fontSize: 12,
+  },
+  challengeFilterIcon: {
+    width: 10,
+    height: 10,
+    tintColor: '#fff',
+  },
+  challengeDropdown: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    marginTop: 5,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 8,
+    minWidth: 120,
+    zIndex: 100,
+  },
+  challengeDropdownItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  challengeDropdownTxt: {
+    color: '#fff',
+    fontFamily: 'Montserrat-Medium',
+    fontSize: 12,
   },
   challengeLogsContainer: {
     paddingBottom: 20,
