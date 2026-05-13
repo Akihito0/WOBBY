@@ -282,7 +282,7 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
                 // Stop our current finding process and delete our newly created room
                 await cleanupWorkoutMatchmaking(); 
                 // Wait a tiny bit and restart matchmaking so we cleanly join the older room as Player 2
-                setTimeout(() => startWorkoutMatchmaking(), 500);
+                setTimeout(() => startWorkoutMatchmaking(exercise, sets, reps), 500);
               }
             }
           }

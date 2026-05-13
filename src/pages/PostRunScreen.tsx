@@ -19,6 +19,7 @@ import { BarChart } from 'react-native-gifted-charts';
 import { supabase } from '../supabase';
 import { uploadRunMedia, uploadMapSnapshot } from '../services/runUpload';
 import MapboxGL from '@rnmapbox/maps';
+import { checkAndNotifyRank } from '../utils/leaderboardUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -424,9 +425,44 @@ if (isEditing && editingPostId) {
           }));
           await supabase.from('user_achievements').insert(achievementInserts);
         }
+
+        // ── Notifications ────────────────────────────────────────────────────
+        // 1. XP earned notification
+        if (earnedXp > 0) {
+          await supabase.from('notifications').insert([{
+            user_id: userId,
+            title: `+${earnedXp} XP Earned`,
+            message: `You earned ${earnedXp} XP for completing your run!${earnedAchievements.length > 0 ? ` (includes ${earnedAchievements.length * 1000} XP from achievements)` : ''}`,
+            metadata: { xp_earned: earnedXp, workout_type: workoutType },
+            is_read: false,
+          }]);
+        }
+
+        // 2. Achievement notification (one per unlock)
+        for (const achId of earnedAchievements) {
+          const achNames: Record<string, string> = {
+            '3': 'Pushup Prodigy', '4': 'Dips Dynamo', '5': 'Squat Scholar',
+            '6': 'Lunge Legend', '7': 'The Strider I', '8': 'The Climber I',
+            '9': 'The Pacer I', '10': 'The Strider II', '11': 'The Climber II',
+            '12': 'The Pacer II', '13': 'The Strider III', '14': 'The Climber III',
+            '15': 'The Pacer III', '16': 'The Strider IV',
+          };
+          await supabase.from('notifications').insert([{
+            user_id: userId,
+            title: '🏆 Achievement Unlocked!',
+            message: `You unlocked "${achNames[achId] ?? `Achievement #${achId}`}" — +1000 XP bonus!`,
+            metadata: { achievement_id: achId },
+            is_read: false,
+          }]);
+        }
+        // ──────────────────────────────────────import { checkAndNotifyRank } from '../utils/leaderboardUtils';
+// ───────────────────────────────
       } catch (err) {
         console.warn('Failed to process XP / Achievements:', err);
       }
+      
+      // Check for leaderboard rank notification
+      await checkAndNotifyRank(userId);
       // ───────────────────────────────
 
       const runPayload: any = {
