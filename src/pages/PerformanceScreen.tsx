@@ -14,6 +14,7 @@ import {
   SafeAreaView,
   FlatList,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -584,6 +585,22 @@ const PerformanceScreen = () => {
   }, []);
 
   const [showLifetimeArchive, setShowLifetimeArchive] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        fetchProfile(),
+        fetchDailyXp(),
+        fetchWorkoutHistory(),
+        fetchChallenges(),
+        fetchAchievements(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fetchProfile, fetchDailyXp, fetchWorkoutHistory, fetchChallenges, fetchAchievements]);
 
   useFocusEffect(
     useCallback(() => {
@@ -639,7 +656,19 @@ const PerformanceScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
-      <ScrollView style={styles.container} bounces={false}>
+      <ScrollView
+        style={styles.container}
+        bounces={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor="#CCFF00"
+            colors={['#CCFF00', '#8DEA0B']}
+            progressBackgroundColor="#111111"
+          />
+        }
+      >
 
         {/* ── HEADER ── */}
         <ImageBackground
