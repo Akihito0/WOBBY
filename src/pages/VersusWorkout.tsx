@@ -38,6 +38,37 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const workoutPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const myMatchIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  // ─── PURGE STALE RECORDS ───
+  // Deletes any ghost 'waiting' or 'cancelled' records for the current user
+  const cleanupStaleRecords = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
+      const userId = session.user.id;
+      currentUserIdRef.current = userId;
+
+      console.log('🧹 [Stale Cleanup] Purging ghost records for user:', userId);
+
+      // Call the database RPC to clean up stale records
+      const { error: rpcError } = await supabase.rpc('cleanup_stale_workout_matches', { p_user_id: userId });
+      if (rpcError) {
+        console.warn('⚠️ [Stale Cleanup] RPC failed, falling back to manual cleanup:', rpcError.message);
+        // Fallback: manually delete stale records for this user
+        await supabase.from('versus_battles').delete()
+          .eq('player1_id', userId)
+          .in('status', ['waiting', 'cancelled']);
+        await supabase.from('versus_battles').delete()
+          .eq('player2_id', userId)
+          .in('status', ['waiting', 'cancelled']);
+      } else {
+        console.log('✅ [Stale Cleanup] Ghost records purged successfully');
+      }
+    } catch (err) {
+      console.error('❌ [Stale Cleanup] Error:', err);
+    }
+  };
 
   // ─── SAFE CLEANUP FUNCTION ───
   // This completely stops the search, disconnects the listener, and deletes the empty room
@@ -50,9 +81,16 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       realtimeSubRef.current = null;
     }
     
-    if (deleteRow && myMatchIdRef.current) {
-      await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
-      myMatchIdRef.current = null;
+    if (deleteRow) {
+      // Delete by myMatchIdRef (Player 1 scenario)
+      if (myMatchIdRef.current) {
+        await supabase.from('versus_battles').delete().eq('id', myMatchIdRef.current);
+        myMatchIdRef.current = null;
+      }
+      // Also delete by workoutMatchId state (Player 2 scenario — joiner never sets myMatchIdRef)
+      if (workoutMatchId) {
+        await supabase.from('versus_battles').delete().eq('id', workoutMatchId);
+      }
     }
 
     // reset workout modal & states
@@ -66,6 +104,17 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
     setIsFinding(false);
   };
 
+  // ─── CLEANUP ON MOUNT & UNMOUNT ───
+  useEffect(() => {
+    // On mount: purge any leftover ghost records from previous sessions/crashes
+    cleanupStaleRecords();
+
+    return () => {
+      // On unmount: clean up any active matchmaking
+      cleanupWorkoutMatchmaking();
+    };
+  }, []);
+
   // ─── MATCHMAKING LOGIC ───
   const startWorkoutMatchmaking = async (exercise: string, sets: number, reps: number) => {
     try {
@@ -77,6 +126,10 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       }
 
       const userId = session.user.id;
+      currentUserIdRef.current = userId;
+
+      // 🧹 Purge any ghost records before starting a new search
+      await cleanupStaleRecords();
 
       setWorkoutConfig({ exercise, sets, reps });
 
@@ -146,11 +199,9 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
             navigation.navigate('LiveVersusRoutine', { matchId: match.id, isPlayer1 });
           }
           if (newRow.status === 'cancelled') {
-            setShowWorkoutMatchModal(false);
-            // Restart matchmaking if it was cancelled by the other player
-            if (workoutConfig) {
-              startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
-            }
+            console.log('⚠️ [P2] Opponent cancelled the match. Stopping.');
+            await cleanupWorkoutMatchmaking();
+            Alert.alert('Match Cancelled', 'Your opponent cancelled the match. Tap Find Match to search again.');
           }
         };
 
@@ -165,11 +216,18 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
         realtimeSubRef.current = channel;
 
-        // Polling fallback
+        // Polling fallback — also detects if row was deleted (ghost protection)
         workoutPollingRef.current = setInterval(async () => {
           try {
-            const { data } = await supabase.from('versus_battles').select('*').eq('id', match.id).single();
-            if (data) handleUpdateP2(data);
+            const { data, error } = await supabase.from('versus_battles').select('*').eq('id', match.id).single();
+            if (error || !data) {
+              // Row was deleted by the other player — treat as cancelled
+              console.log('👻 [P2 Polling] Match row disappeared — opponent cancelled.');
+              await cleanupWorkoutMatchmaking();
+              Alert.alert('Match Cancelled', 'Your opponent left the match. Tap Find Match to search again.');
+              return;
+            }
+            handleUpdateP2(data);
           } catch(e) {}
         }, 1000);
 
@@ -235,11 +293,9 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         }
 
         if (newRow.status === 'cancelled') {
-          setShowWorkoutMatchModal(false);
-          // Restart matchmaking if it was cancelled by the other player
-          if (workoutConfig) {
-            startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
-          }
+          console.log('⚠️ [P1] Player 2 cancelled the match. Stopping.');
+          await cleanupWorkoutMatchmaking();
+          Alert.alert('Match Cancelled', 'Your opponent declined the match. Tap Find Match to search again.');
         }
       };
 
@@ -257,33 +313,39 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
       // Polling fallback & Race Condition Fix
       workoutPollingRef.current = setInterval(async () => {
         try {
-          const { data } = await supabase.from('versus_battles').select('*').eq('id', newMatch.id).single();
-          if (data) {
-            handleUpdateP1(data);
+          const { data, error } = await supabase.from('versus_battles').select('*').eq('id', newMatch.id).single();
+          
+          // If our own row disappeared, another player deleted it or it was cleaned up
+          if (error || !data) {
+            console.log('👻 [P1 Polling] Our waiting row disappeared. Stopping.');
+            if (workoutPollingRef.current) clearInterval(workoutPollingRef.current);
+            return;
+          }
+
+          handleUpdateP1(data);
             
-            // 🔥 RACE CONDITION FIX 🔥
-            // If we are still waiting, check if there's an OLDER match we can merge into
-            if (data.status === 'waiting' && !hasMatchedRef.current) {
-              const { data: olderMatches } = await supabase
-                .from('versus_battles')
-                .select('id')
-                .eq('status', 'waiting')
-                .eq('exercise_name', exercise)
-                .eq('target_sets', sets)
-                .eq('target_reps', reps)
-                .is('player2_id', null)
-                .neq('id', newMatch.id)
-                .lt('created_at', data.created_at) // MUST BE OLDER
-                .order('created_at', { ascending: true })
-                .limit(1);
-                
-              if (olderMatches && olderMatches.length > 0) {
-                console.log("Race condition detected! Found an older match. Merging...");
-                // Stop our current finding process and delete our newly created room
-                await cleanupWorkoutMatchmaking(); 
-                // Wait a tiny bit and restart matchmaking so we cleanly join the older room as Player 2
-                setTimeout(() => startWorkoutMatchmaking(exercise, sets, reps), 500);
-              }
+          // 🔥 RACE CONDITION FIX 🔥
+          // If we are still waiting, check if there's an OLDER match we can merge into
+          if (data.status === 'waiting' && !hasMatchedRef.current) {
+            const { data: olderMatches } = await supabase
+              .from('versus_battles')
+              .select('id')
+              .eq('status', 'waiting')
+              .eq('exercise_name', exercise)
+              .eq('target_sets', sets)
+              .eq('target_reps', reps)
+              .is('player2_id', null)
+              .neq('id', newMatch.id)
+              .lt('created_at', data.created_at) // MUST BE OLDER
+              .order('created_at', { ascending: true })
+              .limit(1);
+              
+            if (olderMatches && olderMatches.length > 0) {
+              console.log("Race condition detected! Found an older match. Merging...");
+              // Stop our current finding process and delete our newly created room
+              await cleanupWorkoutMatchmaking(); 
+              // Wait a tiny bit and restart matchmaking so we cleanly join the older room as Player 2
+              setTimeout(() => startWorkoutMatchmaking(exercise, sets, reps), 500);
             }
           }
         } catch(e) {}
@@ -333,6 +395,21 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
           text: 'Yes, stop', 
           style: 'destructive',
           onPress: async () => {
+            // Step 1: Set status to 'cancelled' FIRST so the other player's listener is notified
+            if (myMatchIdRef.current) {
+              console.log('🛑 [Cancel] Setting status to cancelled for row:', myMatchIdRef.current);
+              await supabase.from('versus_battles')
+                .update({ status: 'cancelled' })
+                .eq('id', myMatchIdRef.current);
+            }
+            if (workoutMatchId) {
+              console.log('🛑 [Cancel] Setting status to cancelled for row:', workoutMatchId);
+              await supabase.from('versus_battles')
+                .update({ status: 'cancelled' })
+                .eq('id', workoutMatchId);
+            }
+
+            // Step 2: Clean up listeners, polling, timeouts, and delete the row
             await cleanupWorkoutMatchmaking(); 
           }
         }
@@ -409,25 +486,38 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
 
   const handleDeclineWorkoutMatch = async () => {
     try {
-      if (!workoutMatchId) return;
+      const matchIdToDecline = workoutMatchId;
+      if (!matchIdToDecline) return;
 
-      // Instead of deleting, we update status to cancelled so the other player is notified
-      const { error } = await supabase
+      console.log('👎 [Decline] Declining match:', matchIdToDecline);
+
+      // Step 1: Update status to 'cancelled' so the other player's listener is notified
+      const { error: updateError } = await supabase
         .from('versus_battles')
         .update({ status: 'cancelled' })
-        .eq('id', workoutMatchId);
-        
-      if (error) throw error;
+        .eq('id', matchIdToDecline);
 
+      if (updateError) console.error('⚠️ [Decline] Error updating status:', updateError);
+
+      // Step 2: Clean up local state (this also clears workoutMatchId)
       setShowWorkoutMatchModal(false);
-      // If we declined, we stop finding for a moment. If user wants to find again they click the button.
-      // But if we want to "find match again" automatically:
-      await cleanupWorkoutMatchmaking();
+      await cleanupWorkoutMatchmaking(false); // Don't delete yet — we handle it below
+
+      // Step 3: Give the other player's listener a moment to see 'cancelled', then delete the row
+      setTimeout(async () => {
+        console.log('🗑️ [Decline] Deleting cancelled match row:', matchIdToDecline);
+        await supabase.from('versus_battles').delete().eq('id', matchIdToDecline);
+      }, 1500);
+
+      // Step 4: Restart matchmaking with a fresh search
       if (workoutConfig) {
-        startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
+        setIsFinding(true);
+        setTimeout(() => {
+          startWorkoutMatchmaking(workoutConfig.exercise, workoutConfig.sets, workoutConfig.reps);
+        }, 2000); // Wait for the delete to complete before re-searching
       }
     } catch (err) {
-      console.error('Decline workout match error:', err);
+      console.error('❌ [Decline] Error declining match:', err);
       Alert.alert('Error', 'Failed to decline match.');
     }
   };

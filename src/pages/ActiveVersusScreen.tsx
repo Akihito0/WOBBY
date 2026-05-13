@@ -61,6 +61,12 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeData, setChallengeData] = useState<any>(null);
 
+  // Forfeit system states
+  const [opponentForfeited, setOpponentForfeited] = useState(false);
+  const [showForfeitModal, setShowForfeitModal] = useState(false);
+
+  const isNavigatingAway = useRef(false);
+
   // ─── HEART RATE LOGIC ───
   useEffect(() => {
     let hrIntervalId: ReturnType<typeof setInterval>;
@@ -131,6 +137,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
       setOpponentTime(payload.payload.time);
     });
 
+    // 🏳️ Listen for opponent forfeit
+    channel.on('broadcast', { event: 'FORFEIT' }, (payload) => {
+      console.log('🏳️ Opponent has forfeited!', payload);
+      setOpponentForfeited(true);
+      setShowForfeitModal(true);
+    });
+
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') console.log('✅ Connected to live battle channel!');
     });
@@ -162,6 +175,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   // Prevent users from leaving the screen while a match is in progress
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e: {preventDefault: () => void; data: {action: any}}) => {
+      if (isNavigatingAway.current) return;
+
       // If challengeData is null, the match result hasn't been finalized yet
       if (!challengeData) {
         e.preventDefault();
@@ -191,6 +206,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                     })
                     .eq('id', matchId);
 
+                  // 🔴 Broadcast FORFEIT to opponent so they get a real-time popup
+                  channelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'FORFEIT',
+                    payload: { forfeitedBy: myUserId },
+                  });
+
                   // Send forfeit notifications
                   if (myUserId && opponentId) {
                     const { data: profiles } = await supabase
@@ -217,9 +239,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                     ]);
                   }
                   
-                  navigation.dispatch(e.data.action);
+                  // Navigate back to versus workout screen
+                  isNavigatingAway.current = true;
+                  navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
                 } catch (error) {
-                  navigation.dispatch(e.data.action);
+                  console.error('Forfeit error:', error);
+                  isNavigatingAway.current = true;
+                  navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
                 }
               }
             }
@@ -683,16 +709,58 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         currentSet: cSet + 1
       });
     } else {
-      // Last set done — determine winner based on completion!
-      determineAndSaveWinner();
+      // If opponent forfeited during "Continue", skip normal flow → direct victory
+      if (opponentForfeited) {
+        (async () => {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const myUserId = user.id;
+
+            const victoryXp = 150;
+            const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
+            await supabase.from('versus_battles').update({ [xpField]: victoryXp }).eq('id', matchId);
+
+            const { data: profile } = await supabase.from('profiles').select('xp').eq('id', myUserId).single();
+            if (profile) {
+              await supabase.from('profiles').update({ xp: (profile.xp || 0) + victoryXp }).eq('id', myUserId);
+            }
+
+            const totalSecs = time;
+            const hrs = Math.floor(totalSecs / 3600);
+            const mins = Math.floor((totalSecs % 3600) / 60);
+            const secs = totalSecs % 60;
+            const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+            setChallengeData({
+              status: 'VICTORY',
+              exerciseName: exerciseName,
+              reps: targetReps,
+              sets: targetSets,
+              date: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
+              duration: durStr,
+              opponent: 'Forfeited',
+              xp: victoryXp,
+            });
+            setShowChallengeModal(true);
+          } catch (err) {
+            console.error('Victory after continue error:', err);
+            navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
+          }
+        })();
+      } else {
+        // Last set done — determine winner based on completion!
+        determineAndSaveWinner();
+      }
     }
   };
 
   useEffect(() => {
-    if (isFinished && opponentFinished) {
+    // Show result modal when both finished OR when user finished and opponent forfeited
+    if (isFinished && (opponentFinished || opponentForfeited)) {
       setShowResultModal(true);
     }
-  }, [isFinished, opponentFinished]);
+  }, [isFinished, opponentFinished, opponentForfeited]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
@@ -836,12 +904,102 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
+      {/* 🏳️ OPPONENT FORFEIT MODAL 🏳️ */}
+      <Modal visible={showForfeitModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <LinearGradient colors={['#1A1D12', '#2A2E1A']} style={styles.resultContainer}>
+            <Text style={{ fontSize: 60, marginBottom: 10 }}>🏳️</Text>
+            <Text style={[styles.resultTitle, { color: '#CCFF00' }]}>OPPONENT FORFEITED</Text>
+            <Text style={{ color: '#AAAAAA', fontSize: 14, fontFamily: 'Montserrat-Regular', textAlign: 'center', marginBottom: 30, marginTop: 10 }}>
+              Your opponent has forfeited the match!{"\n"}What would you like to do?
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.nextButton, { backgroundColor: '#CCFF00', marginBottom: 12, width: '100%' }]}
+              onPress={() => {
+                // Continue working out solo
+                setShowForfeitModal(false);
+                // Opponent score freezes, user continues normally
+              }}
+            >
+              <Text style={[styles.nextButtonText, { textAlign: 'center' }]}>CONTINUE WORKOUT</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.nextButton, { backgroundColor: '#34D399', width: '100%' }]}
+              onPress={async () => {
+                // Accept Victory — immediately finish
+                setShowForfeitModal(false);
+                setIsWorkoutStarted(false);
+                if (intervalRef.current) clearInterval(intervalRef.current);
+                stopWebRTC();
+
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  const myUserId = user.id;
+
+                  // Save current progress
+                  const fieldReps = isPlayer1 ? 'player1_reps' : 'player2_reps';
+                  const fieldSets = isPlayer1 ? 'player1_sets' : 'player2_sets';
+                  const fieldTime = isPlayer1 ? 'player1_time' : 'player2_time';
+
+                  await supabase
+                    .from('versus_battles')
+                    .update({
+                      [fieldReps]: reps,
+                      [fieldSets]: Number(currentSet),
+                      [fieldTime]: time,
+                      status: 'forfeited',
+                      winner_id: myUserId,
+                    })
+                    .eq('id', matchId);
+
+                  // Award victory XP
+                  const victoryXp = 150;
+                  const xpField = isPlayer1 ? 'player1_xp' : 'player2_xp';
+                  await supabase.from('versus_battles').update({ [xpField]: victoryXp }).eq('id', matchId);
+
+                  const { data: profile } = await supabase.from('profiles').select('xp').eq('id', myUserId).single();
+                  if (profile) {
+                    await supabase.from('profiles').update({ xp: (profile.xp || 0) + victoryXp }).eq('id', myUserId);
+                  }
+
+                  const totalSecs = time;
+                  const hrs = Math.floor(totalSecs / 3600);
+                  const mins = Math.floor((totalSecs % 3600) / 60);
+                  const secs = totalSecs % 60;
+                  const durStr = `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+                  setChallengeData({
+                    status: 'VICTORY',
+                    exerciseName: exerciseName,
+                    reps: targetReps,
+                    sets: targetSets,
+                    date: new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
+                    duration: durStr,
+                    opponent: 'Forfeited',
+                    xp: victoryXp,
+                  });
+                  setShowChallengeModal(true);
+                } catch (err) {
+                  console.error('Accept victory error:', err);
+                  navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
+                }
+              }}
+            >
+              <Text style={[styles.nextButtonText, { textAlign: 'center' }]}>🏆 ACCEPT VICTORY</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </Modal>
+
       {/* 🏆 FINAL MATCH RESULT - Uses teammate's ChallengeModal 🏆 */}
       <ChallengeModal
         visible={showChallengeModal}
         onClose={() => {
           setShowChallengeModal(false);
-          navigation.navigate('VersusWorkoutScreen');
+          navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
         }}
         data={challengeData}
       />

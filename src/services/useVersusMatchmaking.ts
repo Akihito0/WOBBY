@@ -468,11 +468,15 @@ export const useVersusMatchmaking = () => {
       }
 
       if (userIdToDelete) {
-        console.log(`🗑️ [Cancel] Deleting record for user ${userIdToDelete}`);
+        console.log(`🗑️ [Cancel] Deleting WAITING record for user ${userIdToDelete}`);
+        // IMPORTANT: Only delete records that are still 'waiting'.
+        // Do NOT delete 'matched' records — they are referenced by versus_run_results
+        // and deleting them would CASCADE-delete the run results, breaking Challenge History.
         const { error } = await supabase
           .from('versus_run_matchmaking')
           .delete()
-          .eq('user_id', userIdToDelete);
+          .eq('user_id', userIdToDelete)
+          .eq('status', 'waiting');
 
         if (error) {
           console.error('❌ [Cancel] Error cleaning up matchmaking:', error);
