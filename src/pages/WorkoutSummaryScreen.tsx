@@ -58,7 +58,7 @@ const uriToBase64 = async (uri: string): Promise<string | null> => {
 };
 
 export default function WorkoutSummaryScreen({ route, navigation }: any) {
-  const [workoutTitle, setWorkoutTitle] = useState('Chest Day!');
+  const [workoutTitle, setWorkoutTitle] = useState('');
   const [workoutNotes, setWorkoutNotes] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
