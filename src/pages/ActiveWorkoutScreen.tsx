@@ -200,13 +200,36 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
     const name = exerciseName.toUpperCase();
 
-    // Detect exercise type from name keywords
-    const isLegExercise = name.includes('SQUAT') || name.includes('LUNGE') || name.includes('LEG') || name.includes('CALF') || name.includes('DEADLIFT') || name.includes('GLUTE');
-    const isPushExercise = name.includes('PUSH') || name.includes('BENCH') || name.includes('DIP') || name.includes('PRESS');
-    // Default (pull/curl): everything else
+    // ─── CLASSIFY EXERCISE ───
+    const isLegExercise = name.includes('SQUAT') || name.includes('LUNGE') || name.includes('LEG') || name.includes('CALF') || name.includes('DEADLIFT') || name.includes('GLUTE') || name.includes('EXTENSION');
+
+    const isPushUp = name.includes('PUSH UP');
+    const isBenchPress = name.includes('BENCH');
+    const isDip = name.includes('DIP');
+    const isPullUp = name.includes('PULL UP') || name.includes('PULLDOWN');
+    const isRow = name.includes('ROW');
+    const isCurl = name.includes('CURL');
+
+    // Generic fallbacks
+    const isPushExercise = isPushUp || isBenchPress || isDip || name.includes('PUSH') || name.includes('PRESS') || name.includes('CHEST');
 
     const updateFeedback = (msg: string) => {
       setFormFeedback(prev => prev !== msg ? msg : prev);
+    };
+
+    const registerRep = () => {
+      const newReps = reps + 1;
+      setReps(newReps);
+      
+      if (isLegExercise) exercisePhaseRef.current = 'up';
+      else if (isPushUp || isBenchPress || isDip || isPushExercise) exercisePhaseRef.current = 'up';
+      else exercisePhaseRef.current = 'down';
+      
+      updateFeedback('Rep counted! ✓');
+
+      if (targetReps > 0 && newReps >= targetReps) {
+        setShowFinishedModal(true);
+      }
     };
 
     if (isLegExercise) {
@@ -228,20 +251,11 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
       const currentPhase = exercisePhaseRef.current;
 
-      // Down threshold: knee angle < 100° (squat depth)
-      // Up threshold: knee angle > 160° (standing)
       if (currentPhase === 'down' && avgKneeAngle < 100) {
         exercisePhaseRef.current = 'up';
         updateFeedback('Good depth! ✓');
       } else if (currentPhase === 'up' && avgKneeAngle > 160) {
-        const newReps = reps + 1;
-        setReps(newReps);
-        exercisePhaseRef.current = 'down';
-        updateFeedback('Rep counted! ✓');
-
-        if (targetReps > 0 && newReps >= targetReps) {
-          setShowFinishedModal(true);
-        }
+        registerRep();
       }
     } else {
       // ─── ARM EXERCISE LOGIC: Shoulder-Elbow-Wrist ───
@@ -258,20 +272,6 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
       } else {
         avgElbowAngle = leftElbowAngle ?? rightElbowAngle ?? 0;
-      }
-
-      const currentPhase = exercisePhaseRef.current;
-
-      let upThreshold = 145;
-      let downThreshold = 100;
-
-      if (isPushExercise) {
-        upThreshold = 145;
-        downThreshold = 100;
-      } else {
-        // Pull/curl exercises
-        upThreshold = 60;
-        downThreshold = 150;
       }
 
       if (isPushExercise && name.includes('PUSH') && !isLegVisible(pose)) {
@@ -293,32 +293,69 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
       if (consecutiveGoodFormFrames.current < 2) return;
 
-      if (isPushExercise) {
-        if (currentPhase === 'up' && avgElbowAngle < downThreshold) {
-          exercisePhaseRef.current = 'down';
-          updateFeedback('Go lower! ✓');
-        } else if (currentPhase === 'down' && avgElbowAngle > upThreshold) {
-          const newReps = reps + 1;
-          setReps(newReps);
-          exercisePhaseRef.current = 'up';
-          updateFeedback('Rep counted! ✓');
+      const lW = pose.leftWrist?.conf > 0.3 ? pose.leftWrist.y : null;
+      const rW = pose.rightWrist?.conf > 0.3 ? pose.rightWrist.y : null;
+      const avgWristY = lW !== null && rW !== null ? (lW + rW) / 2 : (lW ?? rW ?? 0);
 
-          if (targetReps > 0 && newReps >= targetReps) {
-            setShowFinishedModal(true);
-          }
+      const lE = pose.leftElbow?.conf > 0.3 ? pose.leftElbow.y : null;
+      const rE = pose.rightElbow?.conf > 0.3 ? pose.rightElbow.y : null;
+      const avgElbowY = lE !== null && rE !== null ? (lE + rE) / 2 : (lE ?? rE ?? 0);
+
+      const lS = pose.leftShoulder?.conf > 0.3 ? pose.leftShoulder.y : null;
+      const rS = pose.rightShoulder?.conf > 0.3 ? pose.rightShoulder.y : null;
+      const avgShoulderY = lS !== null && rS !== null ? (lS + rS) / 2 : (lS ?? rS ?? 0);
+
+      const currentPhase = exercisePhaseRef.current;
+
+      // Enforce strict vertical posture heuristics
+      if (isPushUp || isDip) {
+        if (avgWristY < avgElbowY) { updateFeedback('Keep hands lower!'); return; }
+        if (currentPhase === 'up' && avgElbowAngle < 90) {
+          exercisePhaseRef.current = 'down'; updateFeedback('Go lower! ✓');
+        } else if (currentPhase === 'down' && avgElbowAngle > 145) {
+          registerRep();
+        }
+      } else if (isBenchPress) {
+        if (avgWristY > avgElbowY) { updateFeedback('Push upwards!'); return; }
+        if (currentPhase === 'up' && avgElbowAngle < 90) {
+          exercisePhaseRef.current = 'down'; updateFeedback('Lower weight! ✓');
+        } else if (currentPhase === 'down' && avgElbowAngle > 145) {
+          registerRep();
+        }
+      } else if (isPullUp) {
+        if (avgWristY > avgShoulderY) { updateFeedback('Reach higher!'); return; }
+        if (currentPhase === 'down' && avgElbowAngle < 90) {
+          exercisePhaseRef.current = 'up'; updateFeedback('Pull up! ✓');
+        } else if (currentPhase === 'up' && avgElbowAngle > 140) {
+          registerRep();
+        }
+      } else if (isRow) {
+        if (currentPhase === 'down' && avgElbowAngle < 100) {
+          exercisePhaseRef.current = 'up'; updateFeedback('Pull back! ✓');
+        } else if (currentPhase === 'up' && avgElbowAngle > 140) {
+          registerRep();
+        }
+      } else if (isCurl) {
+        if (avgElbowY < avgShoulderY) { updateFeedback('Keep elbows down!'); return; }
+        if (currentPhase === 'down' && avgElbowAngle < 60) {
+          if (avgWristY > avgElbowY) { updateFeedback('Curl all the way!'); return; }
+          exercisePhaseRef.current = 'up'; updateFeedback('Full squeeze! ✓');
+        } else if (currentPhase === 'up' && avgElbowAngle > 140) {
+          registerRep();
         }
       } else {
-        if (currentPhase === 'down' && avgElbowAngle < upThreshold) {
-          exercisePhaseRef.current = 'up';
-          updateFeedback('Up position! ✓');
-        } else if (currentPhase === 'up' && avgElbowAngle > downThreshold) {
-          const newReps = reps + 1;
-          setReps(newReps);
-          exercisePhaseRef.current = 'down';
-          updateFeedback('Rep counted! ✓');
-
-          if (targetReps > 0 && newReps >= targetReps) {
-            setShowFinishedModal(true);
+        // Generic Push/Pull fallback
+        if (isPushExercise) {
+          if (currentPhase === 'up' && avgElbowAngle < 90) {
+            exercisePhaseRef.current = 'down'; updateFeedback('Go lower! ✓');
+          } else if (currentPhase === 'down' && avgElbowAngle > 145) {
+            registerRep();
+          }
+        } else {
+          if (currentPhase === 'down' && avgElbowAngle < 60) {
+            exercisePhaseRef.current = 'up'; updateFeedback('Full squeeze! ✓');
+          } else if (currentPhase === 'up' && avgElbowAngle > 140) {
+            registerRep();
           }
         }
       }
@@ -368,7 +405,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
   const handleRestToggle = () => {
     if (isResting) {
-      setReps(0);
+      // Don't reset reps so they can continue from where they left off
       exercisePhaseRef.current = 'down';
       consecutiveGoodFormFrames.current = 0;
     }
