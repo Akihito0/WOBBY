@@ -161,6 +161,12 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   
   const [showResultModal, setShowResultModal] = useState(false);
 
+  // Forfeit system states
+  const [opponentForfeited, setOpponentForfeited] = useState(false);
+  const [showForfeitModal, setShowForfeitModal] = useState(false);
+
+  const isNavigatingAway = useRef(false);
+
   const { heartRate: contextHR } = useHealth();
   const [activeHR, setActiveHR] = useState<number | null>(null);
   const [sessionHRData, setSessionHRData] = useState<number[]>([]);
@@ -253,12 +259,19 @@ const VersusRunScreen = ({ navigation, route }: any) => {
     };
   }, [runState, countdownValue]);
 
-  // NEW: Automatically show results when both are finished
+  // NEW: Automatically show results when both are finished OR opponent forfeited
   useEffect(() => {
-    if (runState === 'finished' && opponentFinished && !showResultModal) {
+    if (runState === 'finished' && (opponentFinished || opponentForfeited) && !showResultModal) {
+      // If opponent forfeited and user continued solo then finished, auto-win
+      if (opponentForfeited && !raceResult) {
+        setRaceResult({
+          winner: 'You',
+          reason: 'Opponent forfeited the match!',
+        });
+      }
       setShowResultModal(true);
     }
-  }, [runState, opponentFinished, showResultModal]);
+  }, [runState, opponentFinished, opponentForfeited, showResultModal]);
 
   useEffect(() => {
     const currentDistance = calcDistance(userCoordinates);
@@ -271,6 +284,8 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   // Prevent users from leaving the screen while a run is in progress
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e: {preventDefault: () => void; data: {action: any}}) => {
+      if (isNavigatingAway.current) return;
+
       // Only block if the run is still running (not finished)
       if (runState !== 'finished') {
         e.preventDefault();
@@ -285,23 +300,97 @@ const VersusRunScreen = ({ navigation, route }: any) => {
               style: 'destructive',
               onPress: async () => {
                 setRunState('finished');
-                // Insert a forfeit notification for the user
+                stopLocationTracking();
+
                 try {
                   const { data: sessionData } = await supabase.auth.getSession();
                   const uid = sessionData?.session?.user?.id;
-                  if (uid) {
-                    await supabase.from('notifications').insert([{
-                      user_id: uid,
-                      title: '🏳️ Match Result: Forfeit',
-                      message: `You forfeited the versus run before reaching the ${targetDistance}km target.`,
-                      metadata: { match_id: route.params?.matchId, forfeited: true },
-                      is_read: false,
-                    }]);
+                  const opponentId = route.params?.opponentId;
+                  const matchId = route.params?.matchId;
+
+                  if (uid && matchId) {
+                    // Update versus_run_results: set winner to opponent
+                    const { data: resultRow } = await supabase
+                      .from('versus_run_results')
+                      .select('*')
+                      .eq('match_id', matchId)
+                      .maybeSingle();
+
+                    if (resultRow) {
+                      const currentUserIsUser1 = resultRow.user_1_id === uid;
+                      const userDistance = calcDistance(userCoordinates);
+                      const updatePayload: any = {
+                        winner_id: opponentId,
+                        status: 'forfeited',
+                        completed_at: new Date().toISOString(),
+                      };
+
+                      if (currentUserIsUser1) {
+                        updatePayload.user_1_distance = userDistance;
+                        updatePayload.user_1_time = time;
+                        updatePayload.user_1_reached_target = false;
+                        updatePayload.user_1_finished = true;
+                      } else {
+                        updatePayload.user_2_distance = userDistance;
+                        updatePayload.user_2_time = time;
+                        updatePayload.user_2_reached_target = false;
+                        updatePayload.user_2_finished = true;
+                      }
+
+                      const { error: updateErr } = await supabase.from('versus_run_results').update(updatePayload).eq('match_id', matchId);
+                      if (updateErr) Alert.alert('DB Error (Update)', JSON.stringify(updateErr));
+                    } else {
+                      const insertPayload: any = {
+                        match_id: matchId,
+                        user_1_id: uid,
+                        user_2_id: opponentId,
+                        target_distance: targetDistance,
+                        winner_id: opponentId,
+                        status: 'forfeited',
+                        completed_at: new Date().toISOString(),
+                        user_1_distance: calcDistance(userCoordinates),
+                        user_1_time: time,
+                        user_1_reached_target: false,
+                        user_1_finished: true,
+                      };
+                      const { error: insertErr } = await supabase.from('versus_run_results').insert(insertPayload);
+                      if (insertErr) Alert.alert('DB Error (Insert)', JSON.stringify(insertErr));
+                    }
+
+                    // Broadcast FORFEIT to opponent
+                    if (realtimeChannelRef.current) {
+                      realtimeChannelRef.current.send({
+                        type: 'broadcast',
+                        event: 'FORFEIT',
+                        payload: { forfeitedBy: uid },
+                      });
+                    }
+
+                    // Send forfeit notifications
+                    await supabase.from('notifications').insert([
+                      {
+                        user_id: uid,
+                        title: '🏳️ Match Result: Forfeit',
+                        message: `You forfeited the versus run before reaching the ${targetDistance}km target.`,
+                        metadata: { match_id: matchId, forfeited: true },
+                        is_read: false,
+                      },
+                      ...(opponentId ? [{
+                        user_id: opponentId,
+                        title: '🏆 Match Won (Forfeit)',
+                        message: `Your opponent forfeited the ${targetDistance}km versus run. You win by default!`,
+                        metadata: { match_id: matchId, type: 'forfeit' },
+                        is_read: false,
+                      }] : []),
+                    ]);
                   }
                 } catch (notifErr) {
-                  console.warn('Could not insert forfeit notification:', notifErr);
+                  console.warn('Could not process forfeit:', notifErr);
                 }
-                navigation.dispatch(e.data.action);
+
+                // Navigate back to versus workout screen
+                isNavigatingAway.current = true;
+                navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
               }
             }
           ]
@@ -367,6 +456,21 @@ const VersusRunScreen = ({ navigation, route }: any) => {
           const data = payload.payload;
           if (data.userId === opponentId) {
             setOpponentReady(true);
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'FORFEIT' },
+        async (payload) => {
+          const data = payload.payload;
+          const { data: sessionData } = await supabase.auth.getSession();
+          const myId = sessionData?.session?.user?.id;
+          
+          if (data.forfeitedBy !== myId) {
+            console.log('🏳️ Opponent has forfeited the run!', data);
+            setOpponentForfeited(true);
+            setShowForfeitModal(true);
           }
         }
       )
@@ -627,27 +731,45 @@ const VersusRunScreen = ({ navigation, route }: any) => {
 
       const updatePayload: any = {
         winner_id: winnerId,
+        status: 'finished',
         completed_at: now.toISOString(),
       };
 
-      const currentUserIsUser1 = resultRow && resultRow.user_1_id === userId;
-
-      if (currentUserIsUser1) {
-        updatePayload.user_1_distance = userDistance;
-        updatePayload.user_1_time = userMetrics.time;
-        updatePayload.user_1_reached_target = userReachedTargetDist;
-        updatePayload.user_1_finished = true;
+      if (resultRow) {
+        const currentUserIsUser1 = resultRow.user_1_id === userId;
+        if (currentUserIsUser1) {
+          updatePayload.user_1_distance = userDistance;
+          updatePayload.user_1_time = userMetrics.time;
+          updatePayload.user_1_reached_target = userReachedTargetDist;
+          updatePayload.user_1_finished = true;
+        } else {
+          updatePayload.user_2_distance = userDistance;
+          updatePayload.user_2_time = userMetrics.time;
+          updatePayload.user_2_reached_target = userReachedTargetDist;
+          updatePayload.user_2_finished = true;
+        }
+        const { error: updateErr } = await supabase
+          .from('versus_run_results')
+          .update(updatePayload)
+          .eq('match_id', route.params?.matchId);
+        if (updateErr) Alert.alert('DB Error (Update)', JSON.stringify(updateErr));
       } else {
-        updatePayload.user_2_distance = userDistance;
-        updatePayload.user_2_time = userMetrics.time;
-        updatePayload.user_2_reached_target = userReachedTargetDist;
-        updatePayload.user_2_finished = true;
+        const insertPayload: any = {
+          match_id: route.params?.matchId,
+          user_1_id: userId,
+          user_2_id: route.params?.opponentId,
+          target_distance: targetDistance,
+          winner_id: winnerId,
+          status: 'finished',
+          completed_at: now.toISOString(),
+          user_1_distance: userDistance,
+          user_1_time: userMetrics.time,
+          user_1_reached_target: userReachedTargetDist,
+          user_1_finished: true,
+        };
+        const { error: insertErr } = await supabase.from('versus_run_results').insert(insertPayload);
+        if (insertErr) Alert.alert('DB Error (Insert)', JSON.stringify(insertErr));
       }
-
-      await supabase
-        .from('versus_run_results')
-        .update(updatePayload)
-        .eq('match_id', route.params?.matchId);
 
       // Note: We no longer insert into `runs` here. PostRunScreen will handle that if the user saves.
       // But we still insert notifications and update `versus_run_results`.
@@ -733,7 +855,7 @@ const VersusRunScreen = ({ navigation, route }: any) => {
         end={{ x: 0.2, y: 0.9 }}
         style={styles.header}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] })} style={styles.backBtn}>
           <Image source={require('../assets/back0.png')} style={styles.backBtn} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>VERSUS RUN</Text>
@@ -996,11 +1118,125 @@ const VersusRunScreen = ({ navigation, route }: any) => {
               style={styles.resultDoneButton}
               onPress={() => {
                 setShowResultModal(false);
-                navigation.goBack();
+                navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
               }}
               activeOpacity={0.8}
             >
               <Text style={styles.resultDoneButtonText}>DONE</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* 🏳️ OPPONENT FORFEIT MODAL 🏳️ */}
+      <Modal visible={showForfeitModal} transparent animationType="fade">
+        <View style={styles.resultModalOverlay}>
+          <LinearGradient colors={['#1A1D12', '#2A2E1A']} style={styles.resultModalContainer}>
+            <Text style={{ fontSize: 60, marginBottom: 10 }}>🏳️</Text>
+            <Text style={[styles.resultTitle, { color: '#CCFF00' }]}>OPPONENT FORFEITED</Text>
+            <Text style={{ color: '#AAAAAA', fontSize: 14, fontFamily: 'Montserrat-Regular', textAlign: 'center', marginBottom: 30, marginTop: 10 }}>
+              Your opponent has forfeited the run!{"\n"}What would you like to do?
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.resultDoneButton, { backgroundColor: '#CCFF00', marginBottom: 12, width: '100%' }]}
+              onPress={() => {
+                // Continue running solo
+                setShowForfeitModal(false);
+                // Opponent data freezes, user continues normally
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.resultDoneButtonText}>CONTINUE RUNNING</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.resultDoneButton, { backgroundColor: '#34D399', width: '100%' }]}
+              onPress={async () => {
+                // Accept Victory — immediately finish
+                setShowForfeitModal(false);
+                setRunState('finished');
+                stopLocationTracking();
+
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session?.user?.id) return;
+                  const userId = session.user.id;
+                  const matchId = route.params?.matchId;
+                  const opponentId = route.params?.opponentId;
+
+                  const userDistance = calcDistance(userCoordinates);
+
+                  // Update run results with victory
+                  const { data: resultRow } = await supabase
+                    .from('versus_run_results')
+                    .select('*')
+                    .eq('match_id', matchId)
+                    .maybeSingle();
+
+                  if (resultRow) {
+                    const currentUserIsUser1 = resultRow.user_1_id === userId;
+                    const updatePayload: any = {
+                      winner_id: userId,
+                      status: 'forfeited',
+                      completed_at: new Date().toISOString(),
+                    };
+
+                    if (currentUserIsUser1) {
+                      updatePayload.user_1_distance = userDistance;
+                      updatePayload.user_1_time = time;
+                      updatePayload.user_1_reached_target = userReachedTarget;
+                      updatePayload.user_1_finished = true;
+                    } else {
+                      updatePayload.user_2_distance = userDistance;
+                      updatePayload.user_2_time = time;
+                      updatePayload.user_2_reached_target = userReachedTarget;
+                      updatePayload.user_2_finished = true;
+                    }
+
+                    const { error: updateErr } = await supabase.from('versus_run_results').update(updatePayload).eq('match_id', matchId);
+                    if (updateErr) Alert.alert('DB Error (Update)', JSON.stringify(updateErr));
+                  } else {
+                    const insertPayload: any = {
+                      match_id: matchId,
+                      user_1_id: userId,
+                      user_2_id: opponentId,
+                      target_distance: targetDistance,
+                      winner_id: userId,
+                      status: 'forfeited',
+                      completed_at: new Date().toISOString(),
+                      user_1_distance: userDistance,
+                      user_1_time: time,
+                      user_1_reached_target: userReachedTarget,
+                      user_1_finished: true,
+                    };
+                    const { error: insertErr } = await supabase.from('versus_run_results').insert(insertPayload);
+                    if (insertErr) Alert.alert('DB Error (Insert)', JSON.stringify(insertErr));
+                  }
+
+                  // Send victory notification
+                  await supabase.from('notifications').insert([{
+                    user_id: userId,
+                    title: '🏆 Match Won (Forfeit)',
+                    message: `Your opponent forfeited the ${targetDistance}km versus run. You win!`,
+                    metadata: { match_id: matchId, type: 'forfeit_victory' },
+                    is_read: false,
+                  }]);
+
+                  // Show win result
+                  setRaceResult({
+                    winner: 'You',
+                    reason: 'Opponent forfeited the match!',
+                  });
+                  setShowResultModal(true);
+                } catch (err) {
+                  console.error('Accept victory error:', err);
+                  navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.resultDoneButtonText}>🏆 ACCEPT VICTORY</Text>
             </TouchableOpacity>
           </LinearGradient>
         </View>

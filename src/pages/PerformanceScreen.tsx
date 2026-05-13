@@ -59,8 +59,9 @@ const PerformanceScreen = () => {
     xp: number;
   } | null>(null);
 
-  const [challengeFilter, setChallengeFilter] = useState<'ALL' | 'VICTORY' | 'DEFEAT' | 'DECLINED' | 'FORFEITED'>('ALL');
+  const [challengeFilter, setChallengeFilter] = useState<'ALL' | 'VICTORY' | 'DEFEAT' | 'FORFEITED'>('ALL');
   const [showChallengeDropdown, setShowChallengeDropdown] = useState(false);
+  const [challengeTypeFilter, setChallengeTypeFilter] = useState<'ALL' | 'VERSUS WORKOUT' | 'VERSUS RUN'>('ALL');
 
   const [xpPoints, setXpPoints] = useState(0);
   const [dailyXp, setDailyXp] = useState(0);
@@ -230,10 +231,12 @@ const PerformanceScreen = () => {
       if (achError) console.log('Error fetching achievements:', achError);
 
       const workouts: WorkoutRecord[] = [];
+      const runMatchIds = new Set(runs?.map(r => r.match_id) || []);
 
       // Process battles
       if (battles) {
         battles.forEach(b => {
+          if (runMatchIds.has(b.id)) return; // Skip battles that are actually runs
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
 
@@ -456,6 +459,7 @@ const PerformanceScreen = () => {
 
       interface ChallengeLog {
         id: string;
+        type: 'VERSUS WORKOUT' | 'VERSUS RUN';
         status: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED';
         name: string;
         r: string | number;
@@ -469,21 +473,26 @@ const PerformanceScreen = () => {
       }
 
       const merged: ChallengeLog[] = [];
+      const runMatchIds = new Set(runs?.map(r => r.match_id) || []);
 
       if (battles) {
         battles.forEach(b => {
+          if (runMatchIds.has(b.id)) return; // Skip battles that are actually runs
           const isPlayer1 = b.player1_id === userId;
           const opponentProfile = isPlayer1 ? b.player2 : b.player1;
 
           let derivedStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED' = 'DEFEAT';
-          if (b.status === 'both_won') derivedStatus = 'BOTH WON';
+          if (b.winner_id === userId) derivedStatus = 'VICTORY';
+          else if (b.status === 'both_won') derivedStatus = 'BOTH WON';
           else if (b.status === 'both_lost') derivedStatus = 'BOTH LOST';
           else if (b.status === 'cancelled') derivedStatus = 'DECLINED';
           else if (b.status === 'forfeited') derivedStatus = 'FORFEITED';
-          else if (b.winner_id === userId) derivedStatus = 'VICTORY';
+
+          const battleTimestamp = b.updated_at ? new Date(b.updated_at).getTime() : new Date(b.created_at).getTime();
 
           merged.push({
             id: `battle_${b.id}`,
+            type: 'VERSUS WORKOUT' as const,
             status: derivedStatus,
             name: b.exercise_name || 'VERSUS BATTLE',
             r: isPlayer1 ? b.player1_reps : b.player2_reps,
@@ -493,7 +502,7 @@ const PerformanceScreen = () => {
             opp: opponentProfile?.username || 'Unknown',
             oppAvatar: opponentProfile?.avatar_url || null,
             xp: isPlayer1 ? b.player1_xp : b.player2_xp,
-            timestamp: new Date(b.created_at).getTime()
+            timestamp: battleTimestamp
           });
         });
       }
@@ -505,10 +514,12 @@ const PerformanceScreen = () => {
           const isVictory = r.winner_id === userId;
           
           let derivedRunStatus: 'VICTORY' | 'DEFEAT' | 'BOTH WON' | 'BOTH LOST' | 'DECLINED' | 'FORFEITED' = isVictory ? 'VICTORY' : 'DEFEAT';
-          if (r.status === 'both_won') derivedRunStatus = 'BOTH WON';
-          else if (r.status === 'both_lost') derivedRunStatus = 'BOTH LOST';
-          else if (r.status === 'cancelled') derivedRunStatus = 'DECLINED';
-          else if (r.status === 'forfeited') derivedRunStatus = 'FORFEITED';
+          if (!isVictory) {
+            if (r.status === 'both_won') derivedRunStatus = 'BOTH WON';
+            else if (r.status === 'both_lost') derivedRunStatus = 'BOTH LOST';
+            else if (r.status === 'cancelled') derivedRunStatus = 'DECLINED';
+            else if (r.status === 'forfeited') derivedRunStatus = 'FORFEITED';
+          }
 
           const distance = isUser1 ? r.user_1_distance : r.user_2_distance;
           const time = isUser1 ? r.user_1_time : r.user_2_time;
@@ -524,6 +535,7 @@ const PerformanceScreen = () => {
 
           merged.push({
             id: `run_${r.id}`,
+            type: 'VERSUS RUN' as const,
             status: derivedRunStatus,
             name: `${r.target_distance}KM VERSUS RUN`,
             r: distance ? Number(distance).toFixed(2) + ' km' : '0 km',
@@ -799,7 +811,7 @@ const PerformanceScreen = () => {
               
               {showChallengeDropdown && (
                 <View style={styles.challengeDropdown}>
-                  {['ALL', 'VICTORY', 'DEFEAT', 'DECLINED', 'FORFEITED'].map(f => (
+                  {['ALL', 'VICTORY', 'DEFEAT', 'FORFEITED'].map(f => (
                     <TouchableOpacity 
                       key={f} 
                       style={styles.challengeDropdownItem}
@@ -813,13 +825,42 @@ const PerformanceScreen = () => {
             </View>
           </View>
 
+          {/* Type Filter Buttons */}
+          <View style={{ flexDirection: 'row', paddingHorizontal: 20, marginBottom: 12, gap: 8 }}>
+            {(['ALL', 'VERSUS WORKOUT', 'VERSUS RUN'] as const).map(t => (
+              <TouchableOpacity
+                key={t}
+                onPress={() => setChallengeTypeFilter(t)}
+                activeOpacity={0.8}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  backgroundColor: challengeTypeFilter === t ? '#CCFF00' : '#1A1A1A',
+                  borderWidth: 1,
+                  borderColor: challengeTypeFilter === t ? '#CCFF00' : '#333',
+                }}
+              >
+                <Text style={{
+                  color: challengeTypeFilter === t ? '#000' : '#888',
+                  fontSize: 11,
+                  fontFamily: 'Montserrat-Bold',
+                }}>{t === 'ALL' ? 'All' : t === 'VERSUS WORKOUT' ? 'Workout' : 'Run'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.challengeLogsContainer}>
             {challengeLogs.filter(item => {
+              // Type filter
+              if (challengeTypeFilter !== 'ALL' && item.type !== challengeTypeFilter) return false;
+              // Status filter
               if (challengeFilter === 'ALL') return true;
               if (challengeFilter === 'VICTORY') return item.status === 'VICTORY' || item.status === 'BOTH WON';
               if (challengeFilter === 'DEFEAT') return item.status === 'DEFEAT' || item.status === 'BOTH LOST';
               return item.status === challengeFilter;
             }).length > 0 ? challengeLogs.filter(item => {
+              if (challengeTypeFilter !== 'ALL' && item.type !== challengeTypeFilter) return false;
               if (challengeFilter === 'ALL') return true;
               if (challengeFilter === 'VICTORY') return item.status === 'VICTORY' || item.status === 'BOTH WON';
               if (challengeFilter === 'DEFEAT') return item.status === 'DEFEAT' || item.status === 'BOTH LOST';
