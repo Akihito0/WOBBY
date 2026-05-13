@@ -506,7 +506,7 @@ const PerformanceScreen = () => {
             timestamp: battleTimestamp
           });
         });
-      }
+      }                                          
 
       if (runs) {
         runs.forEach(r => {
@@ -971,17 +971,26 @@ const PerformanceScreen = () => {
         onRequestClose={() => setShowLifetimeArchive(false)}
       >
         <SafeAreaView style={styles.archiveModalContainer}>
-          <View style={styles.archiveHeader}>
-            <TouchableOpacity
-              onPress={() => setShowLifetimeArchive(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.archiveCloseBtn}>← Back</Text>
+{/* Full-Width Header */}
+      <LinearGradient
+        colors={['#315200', '#000000']}
+        start={{ x: 1, y: 0 }}
+        end={{ x: 0.2, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <SafeAreaView>
+          <View style={styles.headerContent}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Image
+                source={require('../assets/back0.png')}
+                style={styles.backIcon}
+              />
             </TouchableOpacity>
-            <Text style={styles.archiveTitle}>Lifetime Archive</Text>
-            <View style={{ width: 40 }} />
+            <Text style={styles.headerTitle}>LIFETIME ARCHIVE</Text>
+            <View style={{ width: 24 }} />
           </View>
-
+        </SafeAreaView>
+      </LinearGradient>
           {/* Filter and Sort Controls */}
           <View style={styles.archiveControlsContainer}>
             {/* Workout Type Filter */}
@@ -1129,13 +1138,7 @@ const PerformanceScreen = () => {
                         </View>
                       )}
                       {workout.opponent && (
-                        <View style={styles.archiveOpponentInfo}>
-                          <Image
-                            source={workout.oppAvatar ? { uri: workout.oppAvatar } : require('../assets/5.png')}
-                            style={styles.archiveOpponentAvatar}
-                          />
-                          <Text style={styles.archiveOpponentName} numberOfLines={1}>{workout.opponent}</Text>
-                        </View>
+                        <Text style={styles.archiveOpponentLabel}>Opponent: {workout.opponent}</Text>
                       )}
                       {workout.type === 'ACHIEVEMENT' && workout.image && (
                         <View style={styles.archiveOpponentInfo}>
@@ -1597,9 +1600,9 @@ const styles = StyleSheet.create({
   },
   resultText: {
     color: '#FFFFFF',
-    fontSize: 32,
+    fontSize: 15,
     fontFamily: 'Montserrat-Black',
-    transform: [{ skewX: '25deg' }],
+    //transform: [{ skewX: '25deg' }],
     textAlign: 'center',
   },
   logInfo: {
@@ -1662,10 +1665,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1A1A1A',
   },
-  archiveCloseBtn: {
-    color: '#CCFF00',
-    fontFamily: 'Montserrat-Bold',
-    fontSize: 16,
+    headerGradient: {
+    width: '100%',
+    paddingBottom: 20,
+    paddingTop: StatusBar.currentHeight || 0,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  headerTitle: {
+    color: '#d1d1d1',
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
+    right: -45,
+    bottom: -20,
+  },
+  backIcon: {
+    width: 30,
+    height: 30,
+    position: 'absolute',
+    left: 12,
+    marginTop: -40,
   },
   archiveTitle: {
     color: '#e4f4a6',
@@ -1687,7 +1711,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Montserrat-Bold',
     fontSize: 12,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
     marginBottom: 8,
   },
   filterScroll: {
@@ -1835,6 +1858,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Barlow-SemiBold',
     fontSize: 10,
     maxWidth: 50,
+  },
+  archiveOpponentLabel: {
+    color: '#9FAE64',
+    fontFamily: 'Barlow-SemiBold',
+    fontSize: 11,
+    textAlign: 'right',
   },
 
   archiveEmpty: {
