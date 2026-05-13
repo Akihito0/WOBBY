@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useNotifications } from '../context/NotificationContext';
 import {
   View,
   Text,
@@ -30,6 +31,7 @@ export default function UserDashboard({ route }: any) {
   const [refreshStats, setRefreshStats] = useState(0);
   const [username, setUsername] = useState(prefetched?.username ?? '');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(prefetched?.avatarUrl ?? null);
+  const { unreadCount } = useNotifications();
 
   // Merged list of runs and routines, sorted newest-first.
   // Each entry: { kind: 'run' | 'routine', data, timestamp }
@@ -147,7 +149,7 @@ export default function UserDashboard({ route }: any) {
               style={styles.bellImage}
               resizeMode="contain"
             />
-            <View style={styles.notifDot} />
+            {unreadCount > 0 && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
       </View>

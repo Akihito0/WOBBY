@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../supabase';
 import { uploadRunMedia } from '../services/runUpload';
 import { ACHIEVEMENT_DATA } from './Achievements';
+import { checkAndNotifyRank } from '../utils/leaderboardUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -320,11 +321,45 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
             .from('profiles')
             .update({ xp: (profile.xp || 0) + totalXp })
             .eq('id', session.user.id);
+
+          // ── Notifications ──────────────────────────────────────────────────
+          // 1. XP earned notification
+          if (totalXp > 0) {
+            await supabase.from('notifications').insert([{
+              user_id: session.user.id,
+              title: `+${totalXp} XP Earned`,
+              message: `You earned ${xpCalculation.total} XP for completing your ${routineType} workout!${earnedAchievementIds.length > 0 ? ` (+${achievementXp} XP from achievements)` : ''}`,
+              metadata: { xp_earned: totalXp, workout_type: 'solo_workout' },
+              is_read: false,
+            }]);
+          }
+
+          // 2. Achievement notification (one per unlock)
+          const achNames: Record<string, string> = {
+            '3': 'Pushup Prodigy', '4': 'Dips Dynamo', '5': 'Squat Scholar', '6': 'Lunge Legend',
+            '7': 'The Strider I', '8': 'The Climber I', '9': 'The Pacer I',
+            '10': 'The Strider II', '11': 'The Climber II', '12': 'The Pacer II',
+            '13': 'The Strider III', '14': 'The Climber III', '15': 'The Pacer III', '16': 'The Strider IV',
+          };
+          for (const achId of earnedAchievementIds) {
+            await supabase.from('notifications').insert([{
+              user_id: session.user.id,
+              title: '🏆 Achievement Unlocked!',
+              message: `You unlocked "${achNames[achId] ?? `Achievement #${achId}`}" — +1000 XP bonus!`,
+              metadata: { achievement_id: achId },
+              is_read: false,
+            }]);
+          }
+          // ────────────────────────────────────import { checkAndNotifyRank } from '../utils/leaderboardUtils';
+          // ───────────────────────────────
         }
       } catch (xpErr) {
         console.log('XP save error (non-critical):', xpErr);
       }
-
+      
+      // Check for leaderboard rank notification
+      await checkAndNotifyRank(session.user.id);
+      // ─────────────────────────────── 
       Alert.alert('Workout Saved! 💪', `You earned +${xpCalculation.total} XP!\n\n🏋️ ${xpCalculation.totalRepsCompleted} reps × ${xpCalculation.totalSetsCompleted} sets`);
       setIsSaving(false);
       

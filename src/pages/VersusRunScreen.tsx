@@ -283,8 +283,24 @@ const VersusRunScreen = ({ navigation, route }: any) => {
             {
               text: 'Forfeit & Exit',
               style: 'destructive',
-              onPress: () => {
+              onPress: async () => {
                 setRunState('finished');
+                // Insert a forfeit notification for the user
+                try {
+                  const { data: sessionData } = await supabase.auth.getSession();
+                  const uid = sessionData?.session?.user?.id;
+                  if (uid) {
+                    await supabase.from('notifications').insert([{
+                      user_id: uid,
+                      title: '🏳️ Match Result: Forfeit',
+                      message: `You forfeited the versus run before reaching the ${targetDistance}km target.`,
+                      metadata: { match_id: route.params?.matchId, forfeited: true },
+                      is_read: false,
+                    }]);
+                  }
+                } catch (notifErr) {
+                  console.warn('Could not insert forfeit notification:', notifErr);
+                }
                 navigation.dispatch(e.data.action);
               }
             }
@@ -476,22 +492,41 @@ const VersusRunScreen = ({ navigation, route }: any) => {
   const userAhead = userMetrics.distance > opponentMetrics.distance;
   const distanceDiff = Math.abs(userMetrics.distance - opponentMetrics.distance);
 
-  const buildRaceNotificationMessage = (isWinner: boolean, reachedTargetDist: boolean, isTie: boolean) => {
+  const buildRaceNotification = (
+    isWinner: boolean,
+    reachedTargetDist: boolean,
+    isTie: boolean,
+  ): { title: string; message: string } => {
     if (isTie) {
-      return reachedTargetDist 
-        ? `You tied the ${targetDistance}km versus run.` 
-        : `You tied the versus run with equal distance.`;
+      return {
+        title: '🤝 Match Result: Tie',
+        message: reachedTargetDist
+          ? `You tied the ${targetDistance}km versus run — both runners finished neck and neck!`
+          : `You tied the versus run with equal distance covered.`,
+      };
     }
 
     if (isWinner) {
-      return reachedTargetDist
-        ? `You won the ${targetDistance}km versus run.`
-        : `You won the versus run by distance.`;
+      return {
+        title: '🥇 Match Result: Win!',
+        message: reachedTargetDist
+          ? `You won the ${targetDistance}km versus run!`
+          : `You won the versus run by covering more distance than your opponent.`,
+      };
     }
 
-    return reachedTargetDist
-      ? `You finished the ${targetDistance}km versus run, but your opponent was faster.`
-      : `You ended the run early, and your opponent won by distance.`;
+    // Forfeit = user didn't reach the target distance
+    if (!reachedTargetDist) {
+      return {
+        title: '🏳️ Match Result: Forfeit',
+        message: `You ended the run early (${targetDistance}km target not reached). Your opponent won by distance.`,
+      };
+    }
+
+    return {
+      title: '😔 Match Result: Loss',
+      message: `You finished the ${targetDistance}km run, but your opponent was faster.`,
+    };
   };
 
   const handleFinishRun = async () => {
@@ -617,10 +652,11 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       // Note: We no longer insert into `runs` here. PostRunScreen will handle that if the user saves.
       // But we still insert notifications and update `versus_run_results`.
 
+      const userNotif = buildRaceNotification(winnerId === userId, userReachedTargetDist, winnerId === null);
       const { error: userNotifError } = await supabase.from('notifications').insert([{
         user_id: userId,
-        title: 'Versus Run Result',
-        message: buildRaceNotificationMessage(winnerId === userId, userReachedTargetDist, winnerId === null),
+        title: userNotif.title,
+        message: userNotif.message,
         metadata: {
           match_id: route.params?.matchId,
           opponent_id: route.params?.opponentId,
@@ -637,10 +673,15 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       }
 
       if (route.params?.opponentId) {
+        const oppNotif = buildRaceNotification(
+          winnerId === route.params.opponentId,
+          opponentReachedTarget,
+          winnerId === null,
+        );
         const { error: oppNotifError } = await supabase.from('notifications').insert([{
           user_id: route.params.opponentId,
-          title: 'Versus Run Result',
-          message: buildRaceNotificationMessage(winnerId === route.params.opponentId, opponentReachedTarget, winnerId === null),
+          title: oppNotif.title,
+          message: oppNotif.message,
           metadata: {
             match_id: route.params?.matchId,
             opponent_id: userId,

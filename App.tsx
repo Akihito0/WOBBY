@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { TouchableOpacity, Image, StyleSheet, Dimensions, View, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from './src/supabase';
-import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { NavigationContainer, getFocusedRouteNameFromRoute, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -72,6 +71,7 @@ import LegScreen from './src/pages/LegScreen';
 import VersusRunScreen from './src/pages/VersusRunScreen';
 import ResetPasswordScreen from './src/pages/ResetPasswordScreen';
 import { HealthProvider } from './src/context/HealthContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import LiveVersusRoutine from './src/pages/LiveVersusRoutine';
 import ActiveVersusScreen from './src/pages/ActiveVersusScreen';
 
@@ -221,7 +221,6 @@ export default function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [resetPasswordEmail, setResetPasswordEmail] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [latestNotification, setLatestNotification] = useState<any | null>(null);
   const [prefetchedDashData, setPrefetchedDashData] = useState<any>(null);
 
   const [fontsLoaded] = useFonts({
@@ -462,40 +461,6 @@ export default function App() {
     return () => subscription?.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    const channel = supabase
-      .channel(`app_notifications:${currentUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${currentUserId}`,
-        },
-        (payload) => {
-          setLatestNotification(payload.new);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (!latestNotification) return;
-
-    const timer = setTimeout(() => {
-      setLatestNotification(null);
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [latestNotification]);
-
   // Handle deep link after OAuth callback or email confirmation
   useEffect(() => {
     const handleUrl = async (url: string) => {
@@ -578,49 +543,38 @@ export default function App() {
   // --- NAVIGATION FLOW ---  
   if (currentScreen === 'dashboard') {
     return (
-      <HealthProvider>
-        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-          {latestNotification && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setLatestNotification(null)}
-              style={styles.notificationBanner}
+      <NotificationProvider>
+        <HealthProvider>
+          <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <NavigationContainer
+              theme={{
+                ...DefaultTheme,
+                colors: {
+                  ...DefaultTheme.colors,
+                  background: '#121310',
+                },
+              }}
             >
-              <Text style={styles.notificationLabel}>New notification</Text>
-              <Text style={styles.notificationTitle}>{latestNotification.title}</Text>
-              <Text style={styles.notificationMessage} numberOfLines={2}>
-                {latestNotification.message}
-              </Text>
-            </TouchableOpacity>
-          )}
-          <NavigationContainer
-            theme={{
-              ...DefaultTheme,
-              colors: {
-                ...DefaultTheme.colors,
-                background: '#121310',
-              },
-            }}
-          >
-            <MainStack.Navigator screenOptions={{ headerShown: false }}>
-              <MainStack.Screen name="AppTabs" options={{ headerShown: false }}>
-                {(props: any) => <AppTabs {...props} prefetchedDashData={prefetchedDashData} />}
-              </MainStack.Screen>
-              <MainStack.Screen
-                name="Notifications"
-                component={NotificationsScreen}
-                options={{ animation: 'slide_from_right' }}
-              />
-              <MainStack.Screen
-                name="PostRunFromNotification"
-                component={PostRunFromNotification}
-                options={{ animation: 'slide_from_right' }}
-              />
-            </MainStack.Navigator>
-          </NavigationContainer>
-          <StatusBar style="light" />
-        </View>
-      </HealthProvider>
+              <MainStack.Navigator screenOptions={{ headerShown: false }}>
+                <MainStack.Screen name="AppTabs" options={{ headerShown: false }}>
+                  {(props: any) => <AppTabs {...props} prefetchedDashData={prefetchedDashData} />}
+                </MainStack.Screen>
+                <MainStack.Screen
+                  name="Notifications"
+                  component={NotificationsScreen}
+                  options={{ animation: 'slide_from_right' }}
+                />
+                <MainStack.Screen
+                  name="PostRunFromNotification"
+                  component={PostRunFromNotification}
+                  options={{ animation: 'slide_from_right' }}
+                />
+              </MainStack.Navigator>
+            </NavigationContainer>
+            <StatusBar style="light" />
+          </View>
+        </HealthProvider>
+      </NotificationProvider>
     );
   }
 

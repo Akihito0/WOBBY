@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { checkAndNotifyRank } from '../utils/leaderboardUtils';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Alert, ActivityIndicator, Modal
 } from 'react-native';
@@ -50,6 +51,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
   const { heartRate: contextHR } = useHealth();
   const [activeHR, setActiveHR] = useState<number | null>(null);
   const [sessionHRData, setSessionHRData] = useState<number[]>([]);
+  const [isFinished, setIsFinished] = useState(false);
+  const [opponentFinished, setOpponentFinished] = useState(false);
 
   // ─── HEART RATE LOGIC ───
   useEffect(() => {
@@ -83,8 +86,6 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
   const displayHR = activeHR !== null ? activeHR : contextHR;
 
-  const [isFinished, setIsFinished] = useState(false);
-  const [opponentFinished, setOpponentFinished] = useState(false);
   const [myTime, setMyTime] = useState(0);
   const [opponentTime, setOpponentTime] = useState(0);
   const [showResultModal, setShowResultModal] = useState(false);
@@ -175,6 +176,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                   // Declare opponent as winner
                   const { data } = await supabase.from('versus_battles').select('player1_id, player2_id').eq('id', matchId).single();
                   const opponentId = data ? (isPlayer1 ? data.player2_id : data.player1_id) : null;
+                  const myUserId = userIdRef.current;
 
                   await supabase
                     .from('versus_battles')
@@ -183,6 +185,32 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                       winner_id: opponentId,
                     })
                     .eq('id', matchId);
+
+                  // Send forfeit notifications
+                  if (myUserId && opponentId) {
+                    const { data: profiles } = await supabase
+                      .from('profiles')
+                      .select('id, username')
+                      .in('id', [myUserId, opponentId]);
+                    
+                    const me = profiles?.find(p => p.id === myUserId);
+                    const opponent = profiles?.find(p => p.id === opponentId);
+
+                    await supabase.from('notifications').insert([
+                      {
+                        user_id: myUserId,
+                        title: '🏳️ Match Forfeited',
+                        message: `You forfeited the ${exerciseName} match against ${opponent?.username || 'Opponent'}.`,
+                        metadata: { match_id: matchId, type: 'forfeit' },
+                      },
+                      {
+                        user_id: opponentId,
+                        title: '🏆 Match Won (Forfeit)',
+                        message: `${me?.username || 'Your opponent'} forfeited the ${exerciseName} match. You win by default!`,
+                        metadata: { match_id: matchId, type: 'forfeit' },
+                      }
+                    ]);
+                  }
                   
                   navigation.dispatch(e.data.action);
                 } catch (error) {
@@ -528,14 +556,6 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .eq('id', user.id)
         .single();
 
-      if (profile) {
-        await supabase
-          .from('profiles')
-          .update({ xp: (profile.xp || 0) + myXp })
-          .eq('id', user.id);
-        console.log(`💰 Added ${myXp} XP to profile (total: ${(profile.xp || 0) + myXp})`);
-      }
-
       // Fetch opponent username
       const opponentId = isPlayer1 ? match.player2_id : match.player1_id;
       const { data: oppProfile } = await supabase
@@ -543,6 +563,27 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
         .select('username')
         .eq('id', opponentId)
         .single();
+
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ xp: (profile.xp || 0) + myXp })
+          .eq('id', user.id);
+        console.log(`💰 Added ${myXp} XP to profile (total: ${(profile.xp || 0) + myXp})`);
+
+        // Send match result notification
+        const resultLabel = matchStatus === 'both_won' ? 'Match Tied (Both Won)' : iWon ? 'Victory' : 'Defeat';
+        const resultEmoji = iWon ? '🏆' : '💀';
+        await supabase.from('notifications').insert([{
+          user_id: user.id,
+          title: `${resultEmoji} Match Result: ${resultLabel}`,
+          message: `Your ${exerciseName} match against ${oppProfile?.username || 'Opponent'} is complete. You earned ${myXp} XP!`,
+          metadata: { match_id: matchId, type: 'match_result', status: matchStatus },
+        }]);
+
+        // Check for leaderboard rank notification
+        await checkAndNotifyRank(user.id);
+      }
 
       const totalSecs = myTime;
       const hrs = Math.floor(totalSecs / 3600);
