@@ -20,27 +20,11 @@ interface Achievement {
   subtext: string;
   xp: number;
   category: string;
-  image: any; 
+  image: any;
 }
 
 // 1. Keep the DATA outside (this is fine)
 export const ACHIEVEMENT_DATA: Achievement[] = [
-  {
-    id: '1',
-    name: 'Perfect Form',
-    subtext: 'Completing a full set with 100% repetitions in safe zones.',
-    xp: 1000,
-    category: '   Form & Technical Mastery',
-    image: require('../assets/perfect_form.png'),
-  },
-  {
-    id: '2',
-    name: 'Injury-Free Streak',
-    subtext: 'Completing 10 consecutive sessions without the model triggering a high-risk form warning.',
-    xp: 1000,
-    category: '   Form & Technical Mastery',
-    image: require('../assets/injury_free.png'),
-  },
   {
     id: '3',
     name: 'Pushup Prodigy',
@@ -49,7 +33,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Bodyweight Mastery',
     image: require('../assets/pushup_prodigy.png'),
   },
-   {
+  {
     id: '4',
     name: 'Dips Dynamo',
     subtext: 'Completing a cumulative total of 500 tricep dips.',
@@ -57,7 +41,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Bodyweight Mastery',
     image: require('../assets/dips_dynamo.png'),
   },
-   {
+  {
     id: '5',
     name: 'Squat Scholar',
     subtext: 'Reaching 500 cumulative squats.',
@@ -65,7 +49,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Bodyweight Mastery',
     image: require('../assets/squat_scholar.png'),
   },
-   {
+  {
     id: '6',
     name: 'Lunge Legend',
     subtext: 'Completing 100 lunges.',
@@ -113,7 +97,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Strides & Summits',
     image: require('../assets/climberII.png'),
   },
-   {
+  {
     id: '12',
     name: 'The Pacer II ',
     subtext: 'Achieving an average pace of 6:00/km or faster in a single run.',
@@ -137,7 +121,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Strides & Summits',
     image: require('../assets/climberIII.png'),
   },
-   {
+  {
     id: '15',
     name: 'The Pacer III ',
     subtext: 'Achieving an average pace of 3:00/km or faster in a single run.',
@@ -178,7 +162,7 @@ export const ACHIEVEMENT_DATA: Achievement[] = [
     category: '   Progression & Consistency',
     image: require('../assets/7_day_streak.png'),
   },
-   {
+  {
     id: '21',
     name: 'Habit Builder',
     subtext: 'Completing 21 days of workouts within a single month to reinforce long-term retention.',
@@ -227,7 +211,7 @@ const AchievementsScreen = ({ route, navigation }: any) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Full-Width Header */}
       <LinearGradient
         colors={['#390025', '#000000']}
@@ -238,13 +222,13 @@ const AchievementsScreen = ({ route, navigation }: any) => {
         <SafeAreaView>
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Image 
-                source={require('../assets/back0.png')} 
-                style={styles.backIcon} 
+              <Image
+                source={require('../assets/back0.png')}
+                style={styles.backIcon}
               />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>ACHIEVEMENTS</Text>
-            <View style={{ width: 24 }} /> 
+            <View style={{ width: 24 }} />
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -253,23 +237,23 @@ const AchievementsScreen = ({ route, navigation }: any) => {
         {/* Toggle Section */}
         <View style={styles.toggleSection}>
           <View style={styles.toggleWrapper}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setViewMode('list')}
               style={[styles.toggleBtn, viewMode === 'list' && styles.activeToggle]}
             >
-              <Image 
-                source={require('../assets/listview.png')} 
-                style={[styles.toggleIcon, { tintColor: viewMode === 'list' ? '#D85FAE' : '#888' }]} 
+              <Image
+                source={require('../assets/listview.png')}
+                style={[styles.toggleIcon, { tintColor: viewMode === 'list' ? '#D85FAE' : '#888' }]}
               />
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setViewMode('grid')}
               style={[styles.toggleBtn, viewMode === 'grid' && styles.activeToggle]}
             >
-              <Image 
-                source={require('../assets/gridview.png')} 
-                style={[styles.toggleIcon, { tintColor: viewMode === 'grid' ? '#D85FAE' : '#888' }]} 
+              <Image
+                source={require('../assets/gridview.png')}
+                style={[styles.toggleIcon, { tintColor: viewMode === 'grid' ? '#D85FAE' : '#888' }]}
               />
             </TouchableOpacity>
           </View>
@@ -284,20 +268,20 @@ const AchievementsScreen = ({ route, navigation }: any) => {
                 const isLocked = !unlockedAchievements.includes(item.id);
                 return viewMode === 'grid' ? (
                   <TouchableOpacity key={item.id} onPress={() => handlePressGrid(item)}>
-                    <AchievementGridCard 
-                      name={item.name} 
-                      xp={item.xp} 
-                      imageSource={item.image} 
+                    <AchievementGridCard
+                      name={item.name}
+                      xp={item.xp}
+                      imageSource={item.image}
                       isLocked={isLocked}
                     />
                   </TouchableOpacity>
                 ) : (
-                  <AchievementListCard 
+                  <AchievementListCard
                     key={item.id}
-                    name={item.name} 
-                    subtext={item.subtext} 
-                    xp={item.xp} 
-                    imageSource={item.image} 
+                    name={item.name}
+                    subtext={item.subtext}
+                    xp={item.xp}
+                    imageSource={item.image}
                     isLocked={isLocked}
                   />
                 );
@@ -308,9 +292,9 @@ const AchievementsScreen = ({ route, navigation }: any) => {
       </ScrollView>
 
       {/* 3. Modal needs to be inside the main View */}
-      <AchievementModal 
-        isVisible={isModalVisible} 
-        onClose={() => setModalVisible(false)} 
+      <AchievementModal
+        isVisible={isModalVisible}
+        onClose={() => setModalVisible(false)}
         achievement={selectedAchievement}
       />
     </View>
@@ -333,17 +317,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 10,
   },
-  headerTitle: { 
-    color: '#d1d1d1', 
-    fontSize: 32, 
-    fontFamily: 'Montserrat-Black', 
+  headerTitle: {
+    color: '#d1d1d1',
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
     right: -45,
     bottom: -20,
   },
   backIcon: {
-    width: 30, 
-    height: 30, 
-    position: 'absolute', 
+    width: 30,
+    height: 30,
+    position: 'absolute',
     left: 12,
     marginTop: -40,
   },

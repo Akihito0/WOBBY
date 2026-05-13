@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 👇 Added Async Storage
 import AddDeviceModal from '../components/AddDeviceModal';
 import { useHealth } from '../context/HealthContext';
+import { supabase } from '../supabase';
 
 type YouStackParamList = {
   YouMain: undefined;
@@ -89,6 +90,8 @@ export default function LinkedDevices({ navigation }: Props) {
     });
   }, [isAuthorized, heartRate]);
 
+  // Achievement checking is now handled globally in HealthContext.tsx
+
   const handleAddDevice = () => setModalVisible(true);
 
   // 👇 3. Save to hard drive when pairing a new device
@@ -102,7 +105,7 @@ export default function LinkedDevices({ navigation }: Props) {
 
     // Filter out duplicates just in case, then add the new device
     const updatedDevices = [...devices.filter(d => d.id !== device.id), newDevice];
-    
+
     setDevices(updatedDevices);
     setModalVisible(false);
 
@@ -117,7 +120,7 @@ export default function LinkedDevices({ navigation }: Props) {
   const handleRemoveDevice = async (id: string) => {
     const updatedDevices = devices.filter(device => device.id !== id);
     setDevices(updatedDevices);
-    
+
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDevices));
     } catch (error) {
@@ -281,7 +284,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   backButton: {
-   width: 44,
+    width: 44,
     height: 44,
     borderRadius: 12,
     justifyContent: 'center',
@@ -292,7 +295,7 @@ const styles = StyleSheet.create({
     height: 30,
     resizeMode: 'contain',
     marginLeft: -15,
-    marginTop: 70, 
+    marginTop: 70,
   },
   headerTitle: {
     color: '#F8FAFC',
