@@ -134,7 +134,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
   );
 
   const handleEmailSupport = async () => {
-    const email = 'clarkjaca@gmail.com';
+    const email = 'wobby@gmail.com';
     const subject = 'WOBBY Support Ticket';
     const body = 'Hi Wobby Support Team,\n\nI need help with...';
     
@@ -145,7 +145,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
       if (canOpen) {
         await Linking.openURL(mailtoUrl);
       } else {
-        Alert.alert("Error", "No email app found. Please email us directly at clarkjaca@gmail.com");
+        Alert.alert("Error", "No email app found. Please email us directly at wobby@gmail.com");
       }
     } catch (error) {
       Alert.alert("Error", "Could not open email app.");
@@ -249,12 +249,38 @@ export default function HelpCenterScreen({ navigation }: Props) {
 const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
-  header: { height: 117, flexDirection: 'row', alignItems: 'flex-end', paddingBottom: 18, paddingHorizontal: 22 },
-  backBtn: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  backIcon: { width: 30, height: 30 },
-  headerTitle: { flex: 1, fontFamily: 'Montserrat_900Black', fontSize: 28, color: COLORS.textWhite, textAlign: 'right' },
-  scroll: { flex: 1 }, 
+  root: { 
+    flex: 1, 
+    backgroundColor: COLORS.bg 
+  },
+  header: { 
+    height: 117, 
+    flexDirection: 'row', 
+    alignItems: 'flex-end', 
+    paddingBottom: 18, 
+    paddingHorizontal: 22 
+  },
+  backBtn: { 
+    width: 34, 
+    height: 34, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 12 
+  },
+  backIcon: { 
+    width: 30, 
+    height: 30 
+  },
+  headerTitle: { 
+    flex: 1, 
+    fontFamily: 'Montserrat_900Black', 
+    fontSize: 28, 
+    color: COLORS.textWhite, 
+    textAlign: 'right' 
+  },
+  scroll: { 
+    flex: 1 
+  }, 
   
   /* UPDATED SCROLL CONTENT */
   scrollContent: { 
@@ -262,14 +288,59 @@ const styles = StyleSheet.create({
     paddingBottom: 48 
   },
   
-  searchWrapper: { paddingHorizontal: 40, marginTop: 20, marginBottom: 28 },
-  searchBar: { backgroundColor: COLORS.searchBg, borderRadius: 15, height: 45, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
-  searchInput: { flex: 1, fontFamily: 'Montserrat_400Regular', fontSize: 15, color: COLORS.textPrimary, padding: 0 },
-  searchIcon: { marginLeft: 8 },
-  categoryRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40, marginBottom: 32 },
-  categoryCard: { flex: 1, backgroundColor: COLORS.categoryBg, borderRadius: 16, height: 110, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  categoryIcon: { marginBottom: 8 }, categoryLabel: { fontFamily: 'Montserrat_400Regular', fontSize: 14, color: COLORS.textPrimary, textAlign: 'center' },
-  categoryDivider: { width: 1, height: 70, backgroundColor: COLORS.divider, marginHorizontal: 15 },
+  searchWrapper: { 
+    paddingHorizontal: 40, 
+    marginTop: 20, 
+    marginBottom: 28 },
+  searchBar: { 
+    backgroundColor: COLORS.searchBg, 
+    borderRadius: 15, 
+    height: 45, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 16 
+  },
+  searchInput: { 
+    flex: 1, 
+    fontFamily: 'Montserrat_600SemiBold', 
+    fontSize: 15, 
+    color: COLORS.textPrimary, 
+    padding: 0 },
+  searchIcon: { 
+    marginLeft: 8 
+  },
+  categoryRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 40, 
+    marginBottom: 32 
+  },
+  categoryCard: { 
+    flex: 1, 
+    backgroundColor: COLORS.categoryBg, 
+    borderRadius: 16, 
+    height: 110, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 8, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.05)' 
+  },
+  categoryIcon: { 
+    marginBottom: 8 
+  }, 
+  categoryLabel: { 
+    fontFamily: 'Montserrat_600SemiBold', 
+    fontSize: 14, 
+    color: COLORS.textPrimary, 
+    textAlign: 'center' 
+  },
+  categoryDivider: { 
+    width: 1, 
+    height: 70, 
+    backgroundColor: COLORS.divider, 
+    marginHorizontal: 15 
+  },
   
   /* NEW WRAPPER TO PUSH TO BOTTOM */
   bottomSection: {
@@ -278,19 +349,112 @@ const styles = StyleSheet.create({
     paddingTop: 20, // Gives breathing room on smaller screens
   },
 
-  faqSectionTitle: { fontFamily: 'Montserrat_400Regular', fontSize: 15, color: COLORS.textPrimary, marginHorizontal: 26, marginBottom: 16 },
-  sectionPanel: { backgroundColor: 'rgba(34,34,29,0.25)', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingTop: 16, paddingHorizontal: 16, paddingBottom: 24, marginHorizontal: 16 },
-  faqRow: { position: 'relative', marginBottom: 12 },
-  faqCardShadow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 15 },
-  faqCardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.cardOverlay, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  faqContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 72, paddingHorizontal: 18, paddingVertical: 12 },
-  faqQuestion: { flex: 1, fontFamily: 'Montserrat_400Regular', fontSize: 15, color: COLORS.textPrimary, paddingRight: 12 },
-  faqAnswer: { fontFamily: 'Montserrat_400Regular', fontSize: 13, color: COLORS.textPrimary, lineHeight: 20, paddingHorizontal: 18, paddingBottom: 16, opacity: 0.85 },
-  emptyStateContainer: { paddingVertical: 24, alignItems: 'center', justifyContent: 'center' },
-  emptyStateText: { fontFamily: 'Montserrat_400Regular', fontSize: 14, color: COLORS.textPrimary, fontStyle: 'italic', opacity: 0.8 },
-  supportSection: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20, marginBottom: 8, gap: 16 },
-  stillGotQuestions: { fontFamily: 'Montserrat_400Regular', fontSize: 14, color: COLORS.textPrimary },
-  submitBtn: { position: 'relative', height: 38, paddingHorizontal: 22, borderRadius: 19, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-  submitBtnBg: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.accent },
-  submitBtnText: { fontFamily: 'Montserrat_500Medium', fontSize: 14, color: COLORS.textWhite, textAlign: 'center' },
+  faqSectionTitle: { 
+    fontFamily: 'Montserrat_800ExtraBold', 
+    fontSize: 19, 
+    color: COLORS.textPrimary, 
+    marginHorizontal: 26, 
+    marginBottom: 16 
+  },
+  sectionPanel: { 
+    backgroundColor: 'rgba(34,34,29,0.25)', 
+    borderRadius: 24, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.08)', 
+    paddingTop: 16, 
+    paddingHorizontal: 16, 
+    paddingBottom: 24, 
+    marginHorizontal: 16 
+  },
+  faqRow: { 
+    position: 'relative', 
+    marginBottom: 12 
+  },
+  faqCardShadow: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    backgroundColor: 'rgba(0,0,0,0.4)', 
+    borderRadius: 15 
+  },
+  faqCardOverlay: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    backgroundColor: COLORS.cardOverlay, 
+    borderRadius: 15, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.12)' 
+  },
+  faqContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    minHeight: 72, 
+    paddingHorizontal: 18, 
+    paddingVertical: 12 
+  },
+  faqQuestion: { 
+    flex: 1, 
+    fontFamily: 'Montserrat_700Bold', 
+    fontSize: 15, 
+    color: COLORS.textPrimary, 
+    paddingRight: 12 
+  },
+  faqAnswer: { 
+    fontFamily: 'Montserrat_400Regular', 
+    fontSize: 13, 
+    color: COLORS.textPrimary, 
+    lineHeight: 20, 
+    paddingHorizontal: 18, 
+    paddingBottom: 16, 
+    opacity: 0.85 
+  },
+  emptyStateContainer: { 
+    paddingVertical: 24, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  emptyStateText: { 
+    fontFamily: 'Montserrat_400Regular', 
+    fontSize: 14, 
+    color: COLORS.textPrimary, 
+    fontStyle: 'italic',
+    opacity: 0.8 },
+  supportSection: { 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginTop: 20, 
+    marginBottom: 8, 
+    gap: 16 
+  },
+  stillGotQuestions: { 
+    fontFamily: 'Montserrat_600SemiBold', 
+    fontSize: 14, 
+    color: COLORS.textPrimary 
+  },
+  submitBtn: { 
+    position: 'relative', 
+    height: 38, 
+    paddingHorizontal: 22, 
+    borderRadius: 19, 
+    overflow: 'hidden', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  submitBtnBg: { 
+    ...StyleSheet.absoluteFillObject, 
+    backgroundColor: COLORS.accent 
+  },
+  submitBtnText: { 
+    fontFamily: 'Montserrat_600SemiBold', 
+    fontSize: 14, color: 
+    COLORS.textWhite, 
+    textAlign: 'center' 
+  },
 });

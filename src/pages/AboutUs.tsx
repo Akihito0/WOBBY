@@ -34,14 +34,14 @@ const TEAM_MEMBERS = [
     id: 0, 
     name: "Cliff Edward E. Alsonado", 
     role: "Full Stack Developer", 
-    desc: "Architects the core systems and ensures seamless integration across the Wobby ecosystem.", 
-    avatar: ASSETS.avatar1 
+    desc: "Builds robust backend logic and scalable infrastructure for real-time fitness tracking.", 
+    avatar: ASSETS.avatar5
   },
   { 
     id: 1, 
     name: "Nesserain C. De La Cruz", 
     role: "Full Stack Developer", 
-    desc: "Builds robust backend logic and scalable infrastructure for real-time fitness tracking.", 
+    desc: "Architects the core systems and ensures seamless integration across the Wobby ecosystem.", 
     avatar: ASSETS.avatar2 
   },
   { 
@@ -63,7 +63,7 @@ const TEAM_MEMBERS = [
     name: "Tweetie M. Zapanta", 
     role: "Full Stack Developer", 
     desc: "Engineers the social and gamification mechanics to drive user retention and engagement.", 
-    avatar: ASSETS.avatar5 
+    avatar: ASSETS.avatar1 
   },
 ];
 
@@ -289,7 +289,7 @@ export default function AboutUsScreen({ navigation }: Props) {
           <Text style={styles.cardTitle}>Our Story</Text>
           <Text style={styles.cardBody}>
             Developed by Libraphase Technologies, Wobby is the creation of a five-member 
-            engineering team: Cliff, Nesserain, Clark, Noah, and Tweetie. We built this 
+            engineering team: Noah, Cliff, Nesserain, Clark, and Tweetie. We built this 
             cross-platform app to act as an active training partner, integrating an RPG-style 
             progression system where physical effort is rewarded with XP, levels, and 
             community competition.
@@ -351,9 +351,11 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 18,
-    fontWeight: '800',
+    marginTop: 20,
+    marginBottom: -10,
     color: COLORS.white,
     letterSpacing: 0.5,
+    fontFamily: 'Montserrat-Black',
   },
   scroll: {
     paddingHorizontal: 20,
@@ -369,7 +371,7 @@ const styles = StyleSheet.create({
   logoCard: {
     width: 240, 
     height: 250, 
-    backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+    backgroundColor: 'rgba(26, 236, 148, 0.05)', 
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
@@ -388,15 +390,15 @@ const styles = StyleSheet.create({
   },
   logoName: {
     fontSize: 34,
-    fontWeight: '900',
     color: COLORS.accent,
     letterSpacing: 1.5,
+    fontFamily: 'Montserrat-Black',
   },
   logoTagline: {
     fontSize: 13,
-    fontWeight: '400',
     color: COLORS.muted,
-    marginTop: 6,
+    marginTop: 3,
+    fontFamily: 'Montserrat-Bold',
   },
   card: {
     backgroundColor: COLORS.card,
@@ -411,17 +413,17 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 22,
-    fontWeight: '700',
     color: COLORS.white,
     textAlign: 'left', 
     marginBottom: 12,
+    fontFamily: 'Montserrat-ExtraBold',
   },
   cardBody: {
     fontSize: 15,
-    fontWeight: '400',
     color: COLORS.muted,
     lineHeight: 24,
     textAlign: 'left',
+    fontFamily: 'Montserrat-SemiBold',
   },
 
   // ── Team Section Styles ──
@@ -491,6 +493,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 6,
     textAlign: 'center',
+    fontFamily: 'Montserrat',
   },
   memberRole: {
     color: COLORS.accent,
@@ -499,12 +502,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 16,
+    fontFamily: 'Montserrat',
   },
   memberDesc: {
     color: COLORS.muted,
     fontSize: 15, 
     textAlign: 'center',
     lineHeight: 24,
+    fontFamily: 'Montserrat',
   },
   
   // ── Navigation Arrows ──
