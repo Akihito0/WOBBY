@@ -5,7 +5,7 @@ module.exports = {
     version: "1.0.0",
     scheme: "wobby",
     orientation: "portrait",
-    icon: "./src/assets/wob.png",
+    icon: "./src/assets/wob1.png",
     userInterfaceStyle: "light",
     splash: {
       image: "./src/assets/splash.png",
@@ -31,8 +31,8 @@ module.exports = {
       // Removed minSdkVersion and targetSdkVersion from here!
       adaptiveIcon: {
         backgroundColor: "#000000",
-        foregroundImage: "./src/assets/wob.png",
-        backgroundImage: "./src/assets/wob.png"
+        foregroundImage: "./src/assets/wob1.png",
+        backgroundImage: "./src/assets/wob1.png"
       },
       predictiveBackGestureEnabled: false,
       permissions: [
@@ -45,7 +45,7 @@ module.exports = {
       ]
     },
     web: {
-      favicon: "./src/assets/wob.png"
+      favicon: "./src/assets/wob1.png"
     },
     plugins: [
       "expo-font",
