@@ -31,8 +31,9 @@ interface ExerciseSet {
   weight: string;
   reps: number;
   status: 'START' | 'WAITING' | 'FINISHED' | 'INCOMPLETE';
-  avgHR?: number; 
-  maxHR?: number; 
+  avgHR?: number;
+  maxHR?: number;
+  minHR?: number;
   duration?: number; // 👇 To store the duration of the set
 }
 
@@ -184,7 +185,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     // 👇 Included `duration` in the extraction
-    const { finished, incomplete, exerciseId, setId, avgHR, maxHR, duration } = route.params || {};
+    const { finished, incomplete, exerciseId, setId, avgHR, maxHR, minHR, duration } = route.params || {};
     const paramKey = `${finished}-${incomplete}-${exerciseId}-${setId}`;
 
     if (finished && exerciseId && setId && lastProcessedKeyRef.current !== paramKey) {
@@ -203,7 +204,8 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
             status: incomplete ? 'INCOMPLETE' : 'FINISHED',
             avgHR: avgHR,
             maxHR: maxHR,
-            duration: duration // 👇 Saved duration here
+            minHR: minHR,
+            duration: duration
           };
 
           const nextWaitIdx = updatedSets.findIndex(
@@ -222,7 +224,7 @@ const RoutineSelectedScreen = ({ navigation, route }: any) => {
         });
       });
 
-      navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined, avgHR: undefined, maxHR: undefined, duration: undefined });
+      navigation.setParams({ finished: undefined, exerciseId: undefined, setId: undefined, avgHR: undefined, maxHR: undefined, minHR: undefined, duration: undefined });
     }
   }, [route.params]);
 

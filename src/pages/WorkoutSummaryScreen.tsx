@@ -72,7 +72,8 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     let dataPoints: any[] = [];
     let sum = 0;
     let max = 0;
-    let min = 999;
+    let trueMin = 999;
+    let trueMax = 0;
 
     exercises.forEach((ex: any) => {
       if (Array.isArray(ex.sets)) {
@@ -81,10 +82,15 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
             const hr = set.avgHR;
             sum += hr;
             if (hr > max) max = hr;
-            if (hr < min) min = hr;
 
-            const pillHeight = 8;
-            const baseValue = Math.max(0, hr - pillHeight);
+            // Use tracked min/max from the actual session readings
+            const setMax = set.maxHR && set.maxHR > 0 ? set.maxHR : hr;
+            const setMin = set.minHR && set.minHR > 0 ? set.minHR : hr;
+            if (setMax > trueMax) trueMax = setMax;
+            if (setMin < trueMin) trueMin = setMin;
+
+            const pillHeight = Math.max(8, setMax - setMin);
+            const baseValue = Math.max(0, setMin - pillHeight * 0.1);
 
             dataPoints.push({
               stacks: [
@@ -102,8 +108,8 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
       stackedData: dataPoints,
       workoutStats: {
         avg: dataPoints.length > 0 ? Math.round(sum / dataPoints.length) : 0,
-        max: max,
-        min: min === 999 ? 0 : min,
+        max: trueMax > 0 ? trueMax : max,
+        min: trueMin === 999 ? 0 : trueMin,
       }
     };
   }, [exercises]);
