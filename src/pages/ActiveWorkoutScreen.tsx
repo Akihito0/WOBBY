@@ -74,12 +74,24 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
       try {
         const history: HeartRateSample[] = await getHeartRateHistory(1);
         if (history && history.length > 0) {
-          const val = Math.round(history[history.length - 1].value);
-          setActiveHR(val);
+          const latest = history[history.length - 1];
+          const sampleTime = new Date(latest.date).getTime();
+          const now = Date.now();
+          const ageMs = now - sampleTime;
 
-          // Record this point in our session array if actively lifting
-          if (isWorkoutStarted && !isResting) {
-            setSessionHRData(prev => [...prev, val]);
+          // Only accept readings from the last 30 seconds to avoid stale
+          // HealthKit data when no watch is actively connected
+          if (ageMs <= 30000) {
+            const val = Math.round(latest.value);
+            setActiveHR(val);
+
+            // Record this point in our session array if actively lifting
+            if (isWorkoutStarted && !isResting) {
+              setSessionHRData(prev => [...prev, val]);
+            }
+          } else {
+            // Reading is stale — no active watch sending data
+            setActiveHR(null);
           }
         }
       } catch (error) {

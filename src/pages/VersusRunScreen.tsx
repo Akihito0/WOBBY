@@ -178,11 +178,20 @@ const VersusRunScreen = ({ navigation, route }: any) => {
       try {
         const history: HeartRateSample[] = await getHeartRateHistory(1);
         if (history && history.length > 0) {
-          const val = Math.round(history[history.length - 1].value);
-          setActiveHR(val);
+          const latest = history[history.length - 1];
+          const ageMs = Date.now() - new Date(latest.date).getTime();
 
-          if (runState === 'running') {
-            setSessionHRData(prev => [...prev, val]);
+          // Only accept readings from the last 30 seconds to avoid stale
+          // HealthKit data when no watch is actively connected
+          if (ageMs <= 30000) {
+            const val = Math.round(latest.value);
+            setActiveHR(val);
+
+            if (runState === 'running') {
+              setSessionHRData(prev => [...prev, val]);
+            }
+          } else {
+            setActiveHR(null);
           }
         }
       } catch (error) {
