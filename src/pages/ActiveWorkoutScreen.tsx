@@ -103,6 +103,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const sessionStats = {
     avg: sessionHRData.length > 0 ? Math.round(sessionHRData.reduce((a, b) => a + b, 0) / sessionHRData.length) : 0,
     max: sessionHRData.length > 0 ? Math.max(...sessionHRData) : 0,
+    min: sessionHRData.length > 0 ? Math.min(...sessionHRData) : 0,
   };
 
   // ─── WebRTC Manager Integration ──────────────────────────────────────────
@@ -389,6 +390,7 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
             setId,
             avgHR: sessionStats.avg,
             maxHR: sessionStats.max,
+            minHR: sessionStats.min,
             duration: time,
           },
         })

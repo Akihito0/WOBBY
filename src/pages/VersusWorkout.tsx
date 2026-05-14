@@ -8,8 +8,6 @@ import MatchFoundModal from '../components/MatchFoundModal';
 import { supabase } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useVersusMatchmaking } from '../services/useVersusMatchmaking';
-import { useHealth } from '../context/HealthContext';
-
 const VersusWorkoutScreen = ({ navigation }: any) => {
   const [workoutExpanded, setWorkoutExpanded] = useState(false);
   const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
@@ -17,8 +15,6 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
   const [distanceModalVisible, setDistanceModalVisible] = useState(false);
   const [isRunFinding, setIsRunFinding] = useState(false);
   const [selectedRoutine, setSelectedRoutine] = useState({ type: '', exercises: [] as string[] });
-
-  const { heartRate } = useHealth();
 
   const { matchState, startMatchmaking: startRunMatchmaking, cancelMatchmaking: cancelRunMatchmaking, acceptMatch } = useVersusMatchmaking();
   const [matchModalVisible, setMatchModalVisible] = useState(false);
@@ -601,12 +597,6 @@ const VersusWorkoutScreen = ({ navigation }: any) => {
         end={{ x: 1, y: 0.5 }}
         style={styles.statsCard} 
       >
-        <View style={{ position: 'absolute', top: 15, right: 15, flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ fontSize: 10, marginRight: 4 }}>❤️</Text>
-          <Text style={{ color: '#FF4444', fontSize: 12, fontFamily: 'Barlow-Bold' }}>
-            {heartRate !== null && heartRate !== undefined ? `${heartRate} BPM` : '-- BPM'}
-          </Text>
-        </View>
         <Text style={styles.labelSmall}>DURATION</Text>
         <Text style={styles.timerText}>00:00:00</Text>
         <View style={styles.row}>

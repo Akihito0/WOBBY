@@ -16,17 +16,18 @@ interface HeartRateModalProps {
 type TabOption = 'H' | 'D' | 'W' | 'M';
 
 const TABS: { id: TabOption; label: string; days: number }[] = [
-  { id: 'H', label: 'H', days: 1 }, 
-  { id: 'D', label: 'D', days: 1 },
-  { id: 'W', label: 'W', days: 7 },
-  { id: 'M', label: 'M', days: 30 },
+  { id: 'H', label: 'H', days: 1 },
+  { id: 'D', label: 'D', days: 7 },
+  { id: 'W', label: 'W', days: 30 },
+  { id: 'M', label: 'M', days: 180 },
 ];
 
 export default function HeartRateModal({ visible, onClose }: HeartRateModalProps) {
-  const { heartRate: liveHeartRate } = useHealth();
+  const { heartRate: liveHeartRate, refreshHeartRate } = useHealth();
   
   const [activeTab, setActiveTab] = useState<TabOption>('H');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({ max: 0, min: 0, avg: 0 });
 
@@ -35,6 +36,13 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
       fetchData();
     }
   }, [visible, activeTab]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    refreshHeartRate();
+    await fetchData();
+    setRefreshing(false);
+  };
 
   const handleTabPress = (tabId: TabOption) => {
     if (activeTab === tabId) return;
@@ -45,23 +53,28 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
 
   const getGroupKey = (dateString: string, tab: TabOption) => {
     const d = new Date(dateString);
-    if (tab === 'H') return `${d.getHours()}:${d.getMinutes()}`; 
-    if (tab === 'D') return `${d.getDate()}-${d.getHours()}`; 
-    return `${d.getMonth()}-${d.getDate()}`; 
+    if (tab === 'H') return `${d.getHours()}:${d.getMinutes()}`;
+    if (tab === 'D') return `${d.getDate()}-${d.getHours()}`;
+    if (tab === 'M') return `${d.getFullYear()}-${d.getMonth()}`;
+    return `${d.getMonth()}-${d.getDate()}`;
   };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const selectedTab = TABS.find((t) => t.id === activeTab) || TABS[0];
-      const rawHistory: HeartRateSample[] = await getHeartRateHistory(selectedTab.days);
-      
-      let history = rawHistory;
-      if (activeTab === 'H') {
-        const oneHourAgo = new Date().getTime() - (60 * 60 * 1000);
-        history = rawHistory.filter(item => new Date(item.date).getTime() >= oneHourAgo);
+
+      let daysToFetch = selectedTab.days;
+      if (activeTab === 'M') {
+        // Anchor to the 1st of the month 5 months back so every bar is a clean calendar month
+        const now = new Date();
+        const startOfRange = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        daysToFetch = Math.ceil((now.getTime() - startOfRange.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       }
-      
+
+      const rawHistory: HeartRateSample[] = await getHeartRateHistory(daysToFetch);
+      const history = rawHistory;
+
       if (history && history.length > 0) {
         let globalMax = 0;
         let globalMin = 999;
@@ -108,27 +121,26 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
           const date = d.dateObj;
 
           if (activeTab === 'H') {
-            if (index % 5 === 0) {
-              let hours = date.getHours();
-              let mins = date.getMinutes();
-              const ampm = hours >= 12 ? 'PM' : 'AM';
-              hours = hours % 12 || 12;
-              const minsStr = mins < 10 ? '0' + mins : mins;
-              label = `${hours}:${minsStr} ${ampm}`;
-            }
-          } else if (activeTab === 'D') {
-            if (index % 4 === 0) {
+            // ~288 points across 24h → label every ~hour
+            if (index % 12 === 0) {
               let hours = date.getHours();
               const ampm = hours >= 12 ? 'PM' : 'AM';
               hours = hours % 12 || 12;
               label = `${hours} ${ampm}`;
             }
-          } else if (activeTab === 'W') {
-            label = date.toLocaleDateString('en-US', { weekday: 'short' });
-          } else if (activeTab === 'M') {
-            if (index % 5 === 0) {
+          } else if (activeTab === 'D') {
+            // ~168 points across 7 days → label every 12 hours
+            if (index % 12 === 0) {
               label = `${date.getMonth() + 1}/${date.getDate()}`;
             }
+          } else if (activeTab === 'W') {
+            // ~30 points across 30 days → label every 3 days
+            if (index % 3 === 0) {
+              label = `${date.getMonth() + 1}/${date.getDate()}`;
+            }
+          } else if (activeTab === 'M') {
+            // ~6 bars, one per calendar month → label every bar
+            label = date.toLocaleDateString('en-US', { month: 'short' });
           }
 
           if (activeTab === 'H') {
@@ -174,10 +186,9 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
 
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = screenWidth - 80;
-  
-  const numPoints = chartData.length || 1;
-  const hourlySpacing = Math.max(5, (chartWidth - 20) / numPoints);
-  const barSpacing = Math.max(8, (chartWidth - 30 - (numPoints * 6)) / Math.max(numPoints - 1, 1));
+
+  const HOURLY_SPACING = 30;
+  const BAR_SPACING = 22;
 
   const chartPointerConfig = useMemo(() => ({
     pointerStripHeight: 200,
@@ -217,9 +228,17 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
         
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Heart Rate Tracker</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
-            <Ionicons name="close" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleRefresh} disabled={refreshing} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} style={styles.refreshButton}>
+              {refreshing
+                ? <ActivityIndicator size="small" color="#ccff00" />
+                : <Ionicons name="refresh" size={22} color="#ccff00" />
+              }
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -250,7 +269,7 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
                   style={[styles.featureCard, { flex: 1, marginRight: 10 }]}
                 >
                   <Text style={styles.cardSubtitle}>
-                    {activeTab === 'H' ? "HOURLY AVG" : activeTab === 'D' ? "DAILY AVG" : activeTab === 'W' ? "7-DAY AVG" : "30-DAY AVG"}
+                    {activeTab === 'H' ? "24H AVG" : activeTab === 'D' ? "7-DAY AVG" : activeTab === 'W' ? "30-DAY AVG" : "6-MONTH AVG"}
                   </Text>
                   <View style={styles.row}>
                     <Text style={styles.mainValue}>{stats.avg}</Text>
@@ -278,16 +297,15 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
                     data={chartData}
                     height={220}
                     width={chartWidth}
-                    thickness={0} 
+                    thickness={0}
                     hideDataPoints={false}
                     dataPointsColor="#ccff00"
                     dataPointsRadius={4}
                     initialSpacing={10}
-                    spacing={hourlySpacing} 
-                    
+                    spacing={HOURLY_SPACING}
+                    scrollToEnd
                     yAxisTextStyle={{ color: '#94A3B8', fontSize: 10, fontFamily: 'Montserrat_600SemiBold' }}
-                    xAxisLabelTextStyle={xAxisLabelStyle} // 👇 Applied fix here
-                    
+                    xAxisLabelTextStyle={xAxisLabelStyle}
                     yAxisColor="transparent"
                     xAxisColor="#333333"
                     hideRules={false}
@@ -305,11 +323,10 @@ export default function HeartRateModal({ visible, onClose }: HeartRateModalProps
                     width={chartWidth}
                     barWidth={6}
                     initialSpacing={10}
-                    spacing={barSpacing} 
-
+                    spacing={BAR_SPACING}
+                    scrollToEnd
                     yAxisTextStyle={{ color: '#94A3B8', fontSize: 10, fontFamily: 'Montserrat_600SemiBold' }}
-                    xAxisLabelTextStyle={xAxisLabelStyle} // 👇 Applied fix here
-                    
+                    xAxisLabelTextStyle={xAxisLabelStyle}
                     yAxisColor="transparent"
                     xAxisColor="#333333"
                     hideRules={false}
@@ -373,6 +390,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 24,
     fontFamily: 'Montserrat_800ExtraBold',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  refreshButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
