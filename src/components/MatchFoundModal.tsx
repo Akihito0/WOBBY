@@ -63,7 +63,7 @@ export default function MatchFoundModal({
       // Start countdown timer
       setCountdown(30);
       setIsAccepted(false);
-      
+
       timerRef.current = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -106,7 +106,7 @@ export default function MatchFoundModal({
       const source = typeof user.avatar === 'string' ? { uri: user.avatar } : user.avatar;
       return <Image source={source} style={styles.avatarImg} />;
     }
-    
+
     // Generate initials (e.g., "John Doe" -> "JD")
     const initials = (user?.name || 'User')
       .split(' ')
@@ -239,6 +239,7 @@ const styles = StyleSheet.create({
   },
   timerContainer: {
     position: 'absolute',
+    height: 40,
     top: 20,
     right: 20,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -267,7 +268,7 @@ const styles = StyleSheet.create({
   headerImage: {
     width: '90%',
     height: 100,
-    marginTop: -30,
+    marginTop: -5,
   },
   vsContainer: {
     flexDirection: 'row',
@@ -353,6 +354,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#D4FF52',
+    marginBottom: -10,
   },
   distanceLabel: {
     color: '#888888',
