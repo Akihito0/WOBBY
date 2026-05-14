@@ -97,8 +97,8 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
     };
 
     if (isWorkoutStarted && !isFinished) {
-      fetchLiveHR(); 
-      hrIntervalId = setInterval(fetchLiveHR, 2000); 
+      fetchLiveHR();
+      hrIntervalId = setInterval(fetchLiveHR, 2000);
     }
 
     return () => {
@@ -183,13 +183,13 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
 
   // Prevent users from leaving the screen while a match is in progress
   useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e: {preventDefault: () => void; data: {action: any}}) => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: { preventDefault: () => void; data: { action: any } }) => {
       if (isNavigatingAway.current) return;
 
       // If challengeData is null, the match result hasn't been finalized yet
       if (!challengeData) {
         e.preventDefault();
-        
+
         Alert.alert(
           '⚠️ Versus Match In Progress',
           'You are still in an active versus match. If you leave now, you will forfeit the match. Continue?',
@@ -201,7 +201,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
               onPress: async () => {
                 try {
                   stopWebRTC();
-                  
+
                   // Declare opponent as winner
                   const { data } = await supabase.from('versus_battles').select('player1_id, player2_id').eq('id', matchId).single();
                   const opponentId = data ? (isPlayer1 ? data.player2_id : data.player1_id) : null;
@@ -228,7 +228,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                       .from('profiles')
                       .select('id, username')
                       .in('id', [myUserId, opponentId]);
-                    
+
                     const me = profiles?.find(p => p.id === myUserId);
                     const opponent = profiles?.find(p => p.id === opponentId);
 
@@ -247,7 +247,7 @@ export default function ActiveVersusScreen({ navigation, route }: any) {
                       }
                     ]);
                   }
-                  
+
                   // Navigate back to versus workout screen
                   isNavigatingAway.current = true;
                   navigation.reset({ index: 0, routes: [{ name: 'VersusWorkoutScreen' }] });
@@ -1041,11 +1041,11 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
   resultContainer: { width: '90%', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: '#CCFF00' },
-  resultTitle: { color: '#FFF', fontSize: 24, fontFamily: 'Montserrat-Black', marginBottom: 30 },
+  resultTitle: { color: '#FFF', fontSize: 15, fontFamily: 'Montserrat-Black', marginBottom: 30 },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', width: '100%', marginBottom: 30 },
   resultCol: { alignItems: 'center' },
   resultName: { color: '#888', fontSize: 14, fontFamily: 'Montserrat-Bold', marginBottom: 10 },
-  resultTime: { color: '#FFF', fontSize: 32, fontFamily: 'Montserrat-Black' },
+  resultTime: { color: '#FFF', fontSize: 25, fontFamily: 'Montserrat-Black' },
   vsCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
   resultVs: { color: '#CCFF00', fontSize: 18, fontFamily: 'Montserrat-Black' },
   winnerMsg: { fontSize: 20, fontFamily: 'Montserrat-Bold', textAlign: 'center', marginBottom: 40 },
