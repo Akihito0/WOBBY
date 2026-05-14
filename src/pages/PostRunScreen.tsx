@@ -12,6 +12,8 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  StatusBar,
+  SafeAreaView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +22,7 @@ import { supabase } from '../supabase';
 import { uploadRunMedia, uploadMapSnapshot } from '../services/runUpload';
 import MapboxGL from '@rnmapbox/maps';
 import { checkAndNotifyRank } from '../utils/leaderboardUtils';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -556,15 +559,27 @@ if (isEditing && editingPostId) {
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
       <View style={styles.modalContainer}>
-        <ScrollView contentContainerStyle={styles.modalScroll}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={onBackToPaused}>
-              <Text style={styles.modalBackIcon}>{'<'}</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{isEditing ? 'EDIT WORKOUT' : 'FINISH WORKOUT'}</Text>
-            <View style={{ width: 24 }} />
-          </View>
+        <LinearGradient
+          colors={['#5C2C2C', '#000000']}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0.2, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <SafeAreaView>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={onBackToPaused}>
+                <Image
+                  source={require('../assets/back0.png')}
+                  style={styles.backIcon}
+                />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>{isEditing ? 'EDIT WORKOUT' : 'FINISH WORKOUT'}</Text>
+              <View style={{ width: 24 }} />
+            </View>
+          </SafeAreaView>
+        </LinearGradient>
 
+        <ScrollView contentContainerStyle={styles.modalScroll}>
           {sessionStats.avg > 0 ? (
             <>
               <TouchableOpacity
@@ -781,9 +796,31 @@ if (isEditing && editingPostId) {
 const styles = StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: '#121212' },
   modalScroll: { padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
-  modalBackIcon: { color: '#C8FF00', fontSize: 28, fontWeight: 'bold' },
-  modalTitle: { color: '#FFF', fontSize: 20, fontFamily: 'Montserrat-Black', letterSpacing: 1 },
+  headerGradient: {
+      width: '100%',
+      paddingBottom: 20,
+      paddingTop: StatusBar.currentHeight || 0,
+    },
+  modalHeader: { 
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: 10,
+  },
+  backIcon: {
+    width: 30,
+    height: 30,
+    position: 'absolute',
+    left: 12,
+    marginTop: -40,
+  }, 
+  modalTitle: { color: '#d1d1d1',
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
+    right: -45,
+    bottom: -20,},
   hrSummaryBox: {
     flexDirection: 'row',
     alignItems: 'center',
