@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     marginTop: -40,
-  },
+  }, 
   scrollContent: {
     paddingBottom: 70,
   },

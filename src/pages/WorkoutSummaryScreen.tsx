@@ -9,7 +9,8 @@ import {
   Dimensions,
   Image,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -384,17 +385,23 @@ export default function WorkoutSummaryScreen({ route, navigation }: any) {
     <View style={styles.container}>
       {/* HEADER GRADIENT */}
       <LinearGradient
-        colors={['#3a1a1a', '#18181b']}
-        locations={[0, 1]}
-        style={styles.headerGradient}
+        colors={['#5C2C2C', '#000000']}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0.2, y: 1 }}
+          style={styles.headerGradient}
       >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#CCFF00" />
+        <SafeAreaView>
+                    <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Image
+                              source={require('../assets/back0.png')}
+                              style={styles.backIcon}
+                            />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>FINISH WORKOUT</Text>
-          <View style={{ width: 28 }} />
-        </View>
+          <View style={{ width: 24 }} />
+          </View>
+        </SafeAreaView>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -695,25 +702,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#18181b', 
   },
   headerGradient: {
+    width: '100%',
     paddingTop: 50,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
+    borderBottomColor: '#222',  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
-  backButton: {
-    padding: 5,
+ modalHeader: { 
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: 10,
   },
+  backIcon: {
+    width: 30,
+    height: 30,
+    position: 'absolute',
+    left: 12,
+    marginTop: -40,
+  }, 
   headerTitle: {
-    fontFamily: 'Barlow-ExtraBold',
-    fontSize: 22,
-    color: '#FFF',
-    textTransform: 'uppercase',
+  color: '#d1d1d1',
+    fontSize: 32,
+    fontFamily: 'Montserrat-Black',
+    right: -45,
+    bottom: -20,
   },
   scrollContent: {
     padding: 20,
