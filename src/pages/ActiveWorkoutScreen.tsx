@@ -63,6 +63,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
   const exercisePhaseRef = useRef<'up' | 'down'>('down');
   const lastRepTimeRef = useRef<number>(0);
   const consecutiveGoodFormFrames = useRef<number>(0);
+  // Use a ref to track reps count inside the pose effect to avoid stale closure
+  const repsRef = useRef<number>(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -231,13 +233,23 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
     };
 
     const registerRep = () => {
-      const newReps = reps + 1;
+      // ─── Cooldown guard: ignore calls within 500 ms of the last rep ───
+      const now = Date.now();
+      if (now - lastRepTimeRef.current < 500) return;
+      lastRepTimeRef.current = now;
+
+      const newReps = repsRef.current + 1;
+      repsRef.current = newReps;
       setReps(newReps);
-      
-      if (isLegExercise) exercisePhaseRef.current = 'up';
+
+      // After a rep is counted the user is back at the START position:
+      //  • Leg exercises  → standing (knees extended)  → phase = 'down' (ready to squat)
+      //  • Push / press   → arms extended              → phase = 'up'
+      //  • Pull / curl    → arms extended              → phase = 'down'
+      if (isLegExercise) exercisePhaseRef.current = 'down';
       else if (isPushUp || isBenchPress || isDip || isPushExercise) exercisePhaseRef.current = 'up';
       else exercisePhaseRef.current = 'down';
-      
+
       updateFeedback('Rep counted! ✓');
 
       if (targetReps > 0 && newReps >= targetReps) {
@@ -264,6 +276,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
 
       const currentPhase = exercisePhaseRef.current;
 
+      // Phase 'down' = standing (knees ~straight). User squats → angle drops below 100 → phase becomes 'up'
+      // Phase 'up'   = squatted down. User stands back up → angle rises above 160 → rep counted, phase resets to 'down'
       if (currentPhase === 'down' && avgKneeAngle < 100) {
         exercisePhaseRef.current = 'up';
         updateFeedback('Good depth! ✓');
@@ -373,7 +387,10 @@ export default function ActiveWorkoutScreen({ navigation, route }: any) {
         }
       }
     }
-  }, [pose, isWorkoutStarted, isResting, exerciseName, reps, targetReps, isFocused]);
+  // NOTE: reps is intentionally removed from the dependency array — we use repsRef
+  // to read the current value inside registerRep to avoid a stale closure that
+  // would cause the effect to re-run (and re-trigger) on every rep increment.
+  }, [pose, isWorkoutStarted, isResting, exerciseName, targetReps, isFocused]);
 
   const toggleCameraFacing = () => {
     const newFacing = cameraFacing === 'back' ? 'front' : 'back';
