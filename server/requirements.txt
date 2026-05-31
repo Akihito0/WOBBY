@@ -1,5 +1,5 @@
 websockets>=12.0
 aiortc>=1.9.0
-mediapipe>=0.10.14
+mediapipe==0.10.18
 opencv-python-headless>=4.10.0
 numpy>=1.26.0
