@@ -1,4 +1,5 @@
 import asyncio
+import os
 import websockets
 import json
 import cv2
@@ -178,9 +179,15 @@ async def handler(websocket):
     finally:
         await pc.close()
 
+async def health_check(path, request_headers):
+    """Respond to HTTP health checks from Render"""
+    if path == "/healthz" or path == "/":
+        return (200, [], b"OK\n")
+
 async def main():
-    print("Starting WebRTC Signaling Server on ws://0.0.0.0:8765")
-    async with websockets.serve(handler, "0.0.0.0", 8765):
+    port = int(os.environ.get("PORT", 8765))
+    print(f"Starting WebRTC Signaling Server on ws://0.0.0.0:{port}")
+    async with websockets.serve(handler, "0.0.0.0", port, process_request=health_check):
         await asyncio.Future()
 
 if __name__ == "__main__":
